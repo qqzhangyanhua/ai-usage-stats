@@ -177,7 +177,7 @@ fn kimi_adapter_keeps_last_status_update_per_turn() {
 }
 
 #[test]
-fn dsh_adapter_reads_final_message_not_chunks() {
+fn dsh_adapter_reads_final_assistant_turn_not_chunks() {
     let records = dsh::parse_dsh_jsonl(
         &fixture("dsh.jsonl"),
         "/Users/zhangyanhua/.dsh/sessions/--Users-zhangyanhua-AI-pi--/session.jsonl.zstd",
@@ -186,9 +186,20 @@ fn dsh_adapter_reads_final_message_not_chunks() {
     assert_eq!(records[0].source, Source::Dsh);
     assert_eq!(records[0].model, "deepseek-v4-flash");
     assert_eq!(records[0].provider, "deepseek-official");
+    assert_eq!(records[0].project, "/Users/zhangyanhua/AI/pi");
+    assert_eq!(records[0].session_id, "session-f1cbbe01-e379-4152-8d13-46440f595d2d");
     assert_eq!(records[0].input_tokens, 13672);
+    assert_eq!(records[0].output_tokens, 442);
+    assert_eq!(records[0].cache_read_tokens, 0);
+    assert_eq!(records[0].cache_creation_tokens, 0);
     assert_eq!(records[0].reasoning_tokens, 321);
+    assert_eq!(records[0].total_tokens, 14435);
+    assert_ne!(records[0].input_tokens, 1);
+    assert_eq!(records[1].input_tokens, 1603);
+    assert_eq!(records[1].output_tokens, 430);
     assert_eq!(records[1].cache_read_tokens, 14080);
+    assert_eq!(records[1].reasoning_tokens, 281);
+    assert_eq!(records[1].total_tokens, 16394);
 }
 
 #[test]
@@ -198,6 +209,8 @@ fn dsh_adapter_reads_compressed_session_as_usage_records() {
     let records = dsh::parse_dsh_zstd(&compressed, "session.jsonl.zstd").unwrap();
     assert_eq!(records.len(), 2);
     assert_eq!(records[0].input_tokens, 13672);
+    assert_eq!(records[0].total_tokens, 14435);
+    assert_eq!(records[1].cache_read_tokens, 14080);
 }
 
 #[test]
@@ -407,6 +420,26 @@ fn overview_from_kimi_fixture_uses_last_status_update_totals() {
     assert_eq!(dto.reasoning_tokens, 0);
     assert_eq!(dto.session_count, 1);
     assert_ne!(dto.total_tokens, 2547 + 142 + 3000 + 200 + 330 + 339);
+}
+
+#[test]
+fn overview_from_dsh_fixture_uses_final_assistant_totals() {
+    let records = dsh::parse_dsh_jsonl(
+        &fixture("dsh.jsonl"),
+        "/Users/zhangyanhua/.dsh/sessions/--Users-zhangyanhua-AI-pi--/session.jsonl.zstd",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 30829);
+    assert_eq!(dto.input_tokens, 15275);
+    assert_eq!(dto.output_tokens, 872);
+    assert_eq!(dto.cache_read_tokens, 14080);
+    assert_eq!(dto.cache_creation_tokens, 0);
+    assert_eq!(dto.reasoning_tokens, 602);
+    assert_eq!(dto.session_count, 1);
+    assert_ne!(dto.total_tokens, 30829 + 4);
 }
 
 #[test]
