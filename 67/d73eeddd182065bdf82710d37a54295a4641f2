@@ -1,0 +1,167 @@
+src-tauri/src/adapters/claude.rs
+  s_5e8fd97e9bc69d::t_a84d210cadc47a 1-5,8,13,15,26-39,41-62
+  s_5e8fd97e9bc69d::t_9ea170ccdd6b44 40
+  s_5e8fd97e9bc69d::t_7d9d2b60382889 6-7,9-12,14,16-25
+src-tauri/src/lib.rs
+  s_5e8fd97e9bc69d::t_05f4a8d8478ce5 1-123,126-129,137-167,170-195
+  s_5e8fd97e9bc69d::t_0836909175f334 124-125,130-136
+  s_5e8fd97e9bc69d::t_8c694fe96b4f9d 168-169
+src-tauri/tests/fixtures/pi.jsonl
+  s_5e8fd97e9bc69d::t_2a5c7bd9a1fbef 1-5
+docs/adr/0002-tauri-rust-desktop-app.md
+  s_6f7f01d5ff5320::t_70802bdddba82c 1-12
+vite.config.ts
+  s_5e8fd97e9bc69d::t_cb55e9c790f2ba 1-24
+package.json
+  s_5e8fd97e9bc69d::t_3d191be87f1919 1-27
+src-tauri/tests/fixtures/opencode-messages.json
+  s_5e8fd97e9bc69d::t_58bd3c1854f23a 1-22
+src-tauri/src/tests.rs
+  s_5e8fd97e9bc69d::t_9d216aad5b0d3d 163,166,168
+  s_5e8fd97e9bc69d::t_54983e0d0ca0bb 337,340-342
+  s_5e8fd97e9bc69d::t_b0be1fefc7196e 1-80,82-162,164-165,167,169-200,202-235,237-336,338-339,343-378,386-388,415-479,482-483,485
+  s_5e8fd97e9bc69d::t_283a04f33d4f39 81
+  s_5e8fd97e9bc69d::t_6d85fbfc9a77b3 201
+  s_5e8fd97e9bc69d::t_0fcd023050d5c1 236
+  s_5e8fd97e9bc69d::t_88b9ce3e2ca2c4 480-481,484
+  s_5e8fd97e9bc69d::t_aded719438e530 379-385,389-414
+docs/probe/token-fields.md
+  s_5e8fd97e9bc69d::t_62005866b3eee2 1-45
+src-tauri/tests/fixtures/kimi-wire.jsonl
+  s_5e8fd97e9bc69d::t_31974253740a5f 1-4
+src/App.tsx
+  s_5e8fd97e9bc69d::t_5b2dc05cea334e 94-97
+  s_5e8fd97e9bc69d::t_6d3b4fa2b7333f 1-20,22-41,45,47-48,67-93,98-112,115-123,131-171,173-219,226-274,276-346,348-383,393-396,405-406,408-418,420-428,430-451,454-461,463-473,475-489,493-497,504-512,518-657
+  s_5e8fd97e9bc69d::t_0c34698f3f3173 124-130
+  s_5e8fd97e9bc69d::t_d1bf9bb017df6a 42-44,46,49-66
+  s_5e8fd97e9bc69d::t_86a59e507009bb 220
+  s_5e8fd97e9bc69d::t_aa22bb95076b19 384-392,397-404,407,419,429
+  s_5e8fd97e9bc69d::t_61903123a68835 275
+  s_5e8fd97e9bc69d::t_68aa29a7488935 452-453,462,474,490-492,498-503,513-517
+  s_5e8fd97e9bc69d::t_f07a419aaa389d 113-114
+  s_5e8fd97e9bc69d::t_3dbbea10101ee3 172
+  s_5e8fd97e9bc69d::t_5e75e79de050ef 21
+  s_5e8fd97e9bc69d::t_a60afd51483a27 347
+  s_5e8fd97e9bc69d::t_b24c99018c26b6 221-225
+src-tauri/src/aggregate.rs
+  s_5e8fd97e9bc69d::t_333fda98faab92 231-232,238-239
+  s_5e8fd97e9bc69d::t_99664d40636788 1-2,5-230,233-237,240-285
+  s_5e8fd97e9bc69d::t_4c264000931a4d 3-4
+docs/adr/0001-adapter-per-source-architecture.md
+  s_6f7f01d5ff5320::t_a179c3b2ab39bd 1-11
+src-tauri/tests/fixtures/codex.jsonl
+  s_5e8fd97e9bc69d::t_cc69d327dc269f 1-5
+src-tauri/src/adapters/kimi.rs
+  s_5e8fd97e9bc69d::t_8c6e4f137cacc0 1-67
+src-tauri/src/main.rs
+  s_5e8fd97e9bc69d::t_4ce65f30cb90dc 1-5
+src-tauri/tests/fixtures/gemini-session.json
+  s_5e8fd97e9bc69d::t_d8d085cd4a7b4a 1-14
+src/main.tsx
+  s_5e8fd97e9bc69d::t_74a2423a5c8549 1-10
+src/types.ts
+  s_5e8fd97e9bc69d::t_72d207696ffbe5 1-96
+README.md
+  s_5e8fd97e9bc69d::t_740d9ba53a40e4 1-27
+.gitignore
+  s_5e8fd97e9bc69d::t_761fdce018d9bb 1,3-11
+  s_5e8fd97e9bc69d::t_f74b3bff0acb5d 2
+src-tauri/src/adapters/cursor.rs
+  s_5e8fd97e9bc69d::t_801d51d675b72a 1-34,37,44-52
+  s_5e8fd97e9bc69d::t_4c1f400af6f571 35-36,38-43
+src-tauri/src/cost.rs
+  s_5e8fd97e9bc69d::t_5d411a9885a4b9 1-66
+src-tauri/src/adapters/gemini.rs
+  s_5e8fd97e9bc69d::t_55f827617c384a 1-57
+CONTEXT.md
+  s_6f7f01d5ff5320::t_c769373d88bd78 1-7,9-42
+  s_6f7f01d5ff5320::t_797bf11a9c4f8c 8
+src-tauri/tests/fixtures/factory.settings.json
+  s_5e8fd97e9bc69d::t_640281e28b8b13 1-12
+src/vite-env.d.ts
+  s_5e8fd97e9bc69d::t_6142f495ecc0ab 1
+src-tauri/capabilities/default.json
+  s_5e8fd97e9bc69d::t_bdde5396e5d0b5 1-7
+src-tauri/tests/fixtures/dsh.jsonl
+  s_5e8fd97e9bc69d::t_a3265d556d373d 1-5
+src-tauri/src/ingest.rs
+  s_5e8fd97e9bc69d::t_491da296b15f29 288
+  s_5e8fd97e9bc69d::t_2d549fbf097b26 321-329
+  s_5e8fd97e9bc69d::t_0bedc5336dae65 1-124,133-169,171-229,231-253,255-287,289-320,330-374
+  s_5e8fd97e9bc69d::t_cd04113f0d7e25 125-132
+  s_5e8fd97e9bc69d::t_68714b492c4b94 230
+  s_5e8fd97e9bc69d::t_16074ce1dc39b8 254
+  s_5e8fd97e9bc69d::t_36c0feac02a46b 170
+src-tauri/src/adapters/mod.rs
+  s_5e8fd97e9bc69d::t_971388e7cb1d81 1-55
+src-tauri/tauri.conf.json
+  s_5e8fd97e9bc69d::t_4735c040a139ed 1-37
+src-tauri/tests/fixtures/qwen-logs.json
+  s_5e8fd97e9bc69d::t_699ef5c9bada45 1-3
+src-tauri/src/adapters/grok.rs
+  s_5e8fd97e9bc69d::t_535a5f74dfdd9c 1-81
+index.html
+  s_5e8fd97e9bc69d::t_877db910f3e105 1-12
+src-tauri/src/adapters/codex.rs
+  s_5e8fd97e9bc69d::t_e31e5d4bf558ea 1-76
+src/styles.css
+  s_5e8fd97e9bc69d::t_f776d2b80ceac7 1-182
+tsconfig.json
+  s_5e8fd97e9bc69d::t_e67e7ba70d5870 1-21
+src-tauri/src/adapters/opencode.rs
+  s_5e8fd97e9bc69d::t_3736617263f2bc 1-64
+src-tauri/src/adapters/qwen.rs
+  s_5e8fd97e9bc69d::t_e08d07c09ea671 3
+  s_5e8fd97e9bc69d::t_8ab5da2a678f1e 1-2,4-5
+src-tauri/src/domain.rs
+  s_5e8fd97e9bc69d::t_b9842d207987db 1-206
+src-tauri/src/adapters/dsh.rs
+  s_5e8fd97e9bc69d::t_4760ad5034e634 1-82,84,87-93
+  s_5e8fd97e9bc69d::t_3231a2dcf8237e 83,85-86
+src-tauri/build.rs
+  s_5e8fd97e9bc69d::t_2389743bcc7730 1-3
+src-tauri/src/adapters/factory.rs
+  s_5e8fd97e9bc69d::t_19b94ed4840467 1-15,18,23-46
+  s_5e8fd97e9bc69d::t_90900ab2566d1a 16-17,19-22
+src-tauri/src/adapters/project.rs
+  s_5e8fd97e9bc69d::t_4c898c69f1f0a0 1-10,12-45
+  s_5e8fd97e9bc69d::t_3750cdbb37cdba 11
+src-tauri/src/store.rs
+  s_5e8fd97e9bc69d::t_1ab93f6cf4e0b5 1-154
+src-tauri/tests/fixtures/grok-updates.jsonl
+  s_5e8fd97e9bc69d::t_9961132496c5a7 1-4
+src-tauri/Cargo.toml
+  s_5e8fd97e9bc69d::t_5457915ca68bea 1-27
+src-tauri/src/adapters/pi.rs
+  s_5e8fd97e9bc69d::t_57a00a77f71bdb 1-76
+src-tauri/tests/fixtures/claude.jsonl
+  s_5e8fd97e9bc69d::t_df0cf56219b88d 1-3
+package-lock.json
+  s_5e8fd97e9bc69d::t_84bc798ab3bc01 1-2123
+src-tauri/Cargo.lock
+  s_5e8fd97e9bc69d::t_421bf6bec9157b 1-4887
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "67d73eeddd182065bdf82710d37a54295a4641f2",
+  "prompts": {},
+  "sessions": {
+    "s_5e8fd97e9bc69d": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "4c0b7d6e-8a24-420e-bea5-b471273aa352",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_6f7f01d5ff5320": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "0c729343-70bd-4855-a471-b5dc88ff111a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
