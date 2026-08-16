@@ -307,6 +307,83 @@ fn cursor_code_volume_stays_outside_usage_records() {
     assert_eq!(summary.lines_added, 156);
     assert_eq!(summary.composer_lines_added, 32);
     assert!((summary.ai_percentage.unwrap() - 20.51282051282051).abs() < 1e-9);
+    assert_ne!(summary.ai_percentage.unwrap(), 100.0);
+
+    let empty = summarize_code_volume(&[]);
+    assert_eq!(empty.commit_count, 0);
+    assert_eq!(empty.lines_added, 0);
+    assert_eq!(empty.ai_percentage, None);
+
+    let fallback = summarize_code_volume(&parse_cursor_commits(&[
+        CursorCommitRow {
+            commit_hash: "a".into(),
+            branch: "main".into(),
+            scored_at_ms: 1,
+            lines_added: 0,
+            composer_lines_added: 0,
+            human_lines_added: 0,
+            ai_percentage: Some(40.0),
+        },
+        CursorCommitRow {
+            commit_hash: "b".into(),
+            branch: "main".into(),
+            scored_at_ms: 2,
+            lines_added: 0,
+            composer_lines_added: 0,
+            human_lines_added: 0,
+            ai_percentage: Some(60.0),
+        },
+    ]));
+    assert_eq!(fallback.lines_added, 0);
+    assert!((fallback.ai_percentage.unwrap() - 50.0).abs() < 1e-9);
+
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 450);
+    assert_eq!(stored.len(), 3);
+}
+
+#[test]
+fn load_code_volume_reads_sqlite_without_writing_usage() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    assert_eq!(ingest::load_code_volume(home).unwrap().commit_count, 0);
+    assert_eq!(ingest::load_code_volume(home).unwrap().ai_percentage, None);
+
+    let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let src = rusqlite::Connection::open(&db_path).unwrap();
+    src.execute_batch(
+        r#"
+        CREATE TABLE scored_commits (
+            commitHash TEXT,
+            branchName TEXT,
+            scoredAt INTEGER,
+            linesAdded INTEGER,
+            composerLinesAdded INTEGER,
+            humanLinesAdded INTEGER,
+            v2AiPercentage TEXT
+        );
+        INSERT INTO scored_commits VALUES
+            ('abc', 'main', 1771411050440, 156, 32, 0, '100'),
+            ('skip', 'main', 1771411050441, NULL, NULL, NULL, NULL);
+        "#,
+    )
+    .unwrap();
+    drop(src);
+
+    let conn = store::open_memory().unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(report.records_written, 0);
+    assert!(store::load_all(&conn).unwrap().is_empty());
+
+    let volume = ingest::load_code_volume(home).unwrap();
+    assert_eq!(volume.commit_count, 1);
+    assert_eq!(volume.lines_added, 156);
+    assert_eq!(volume.composer_lines_added, 32);
+    assert!((volume.ai_percentage.unwrap() - 20.51282051282051).abs() < 1e-9);
 }
 
 fn seed_records() -> Vec<UsageRecord> {
