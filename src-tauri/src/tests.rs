@@ -104,10 +104,20 @@ fn pi_adapter_uses_native_cost() {
     assert_eq!(records[0].model, "gpt-5.5");
     assert_eq!(records[0].provider, "subapi");
     assert_eq!(records[0].project, "/Users/zhangyanhua/workCode/ruoyi-ui-vue3");
+    assert_eq!(records[0].session_id, "019f5abc-b360-79e4-bd7d-9a794da8cfc5");
     assert_eq!(records[0].input_tokens, 12658);
+    assert_eq!(records[0].output_tokens, 35);
+    assert_eq!(records[0].cache_read_tokens, 0);
+    assert_eq!(records[0].cache_creation_tokens, 0);
     assert_eq!(records[0].reasoning_tokens, 12);
+    assert_eq!(records[0].total_tokens, 12693);
     assert_eq!(records[0].native_cost, Some(0.06434));
+    assert_eq!(records[1].input_tokens, 517);
+    assert_eq!(records[1].output_tokens, 41);
     assert_eq!(records[1].cache_read_tokens, 12288);
+    assert_eq!(records[1].cache_creation_tokens, 0);
+    assert_eq!(records[1].reasoning_tokens, 13);
+    assert_eq!(records[1].total_tokens, 12846);
     assert!((records[1].native_cost.unwrap() - 0.009959).abs() < 1e-9);
 }
 
@@ -312,6 +322,27 @@ fn overview_from_claude_fixture_sums_per_record_token_dimensions() {
     assert_eq!(dto.cache_creation_tokens, 56332);
     assert_eq!(dto.reasoning_tokens, 0);
     assert_eq!(dto.session_count, 1);
+}
+
+#[test]
+fn overview_from_pi_fixture_uses_native_cost() {
+    let records = pi::parse_pi_jsonl(
+        &fixture("pi.jsonl"),
+        "/Users/zhangyanhua/.pi/agent/sessions/--Users-zhangyanhua-workCode-ruoyi-ui-vue3--/s.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 25539);
+    assert_eq!(dto.input_tokens, 13175);
+    assert_eq!(dto.output_tokens, 76);
+    assert_eq!(dto.cache_read_tokens, 12288);
+    assert_eq!(dto.cache_creation_tokens, 0);
+    assert_eq!(dto.reasoning_tokens, 25);
+    assert_eq!(dto.session_count, 1);
+    assert!((dto.cost.unwrap() - 0.074299).abs() < 1e-9);
+    assert!(!dto.unpriced);
 }
 
 #[test]
