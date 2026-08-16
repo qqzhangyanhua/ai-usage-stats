@@ -1108,6 +1108,126 @@ fn cost_prefers_native_and_marks_unpriced() {
     let derived = derive_cost(&missing, &table);
     assert_eq!(derived.amount, None);
     assert!(derived.unpriced);
+
+    priced.reasoning_tokens = 999;
+    let derived = derive_cost(&priced, &table);
+    assert_eq!(derived.amount, Some(2.4));
+
+    let mut by_provider = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Pi,
+        "gpt-5.5",
+        "subapi",
+        "/proj/b",
+        "s3",
+        0,
+    );
+    by_provider.input_tokens = 100;
+    let mixed = PriceTable {
+        prices: vec![
+            PriceEntry {
+                model: "gpt-5.5".into(),
+                provider: Some("subapi".into()),
+                input: 0.02,
+                output: 0.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+            },
+            PriceEntry {
+                model: "gpt-5.5".into(),
+                provider: None,
+                input: 0.01,
+                output: 0.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+            },
+        ],
+    };
+    assert_eq!(derive_cost(&by_provider, &mixed).amount, Some(2.0));
+    by_provider.provider = "siliconflow".into();
+    assert_eq!(derive_cost(&by_provider, &mixed).amount, Some(1.0));
+    by_provider.model = "unknown-model".into();
+    let unknown = derive_cost(&by_provider, &mixed);
+    assert_eq!(unknown.amount, None);
+    assert!(unknown.unpriced);
+}
+
+#[test]
+fn overview_and_turns_use_price_table_and_flag_unpriced() {
+    let mut priced = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    priced.input_tokens = 1000;
+    priced.total_tokens = 1000;
+    let unpriced = rec(
+        "2026-08-02T10:00:00Z",
+        Source::Claude,
+        "claude-sonnet-5",
+        "anthropic",
+        "/proj/a",
+        "s2",
+        10,
+    );
+    let mut native = rec(
+        "2026-08-08T10:00:00Z",
+        Source::Pi,
+        "gpt-5.5",
+        "subapi",
+        "/proj/b",
+        "s3",
+        50,
+    );
+    native.native_cost = Some(0.5);
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &[priced, unpriced, native]).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let table = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-5.1-codex".into(),
+            provider: Some("official".into()),
+            input: 0.001,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+
+    let dto = aggregate::overview(&stored, &Filter::default(), &table);
+    assert_eq!(dto.cost, Some(1.5));
+    assert!(dto.unpriced);
+
+    let priced_turns = aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &table);
+    assert_eq!(priced_turns[0].cost, Some(1.0));
+    assert_eq!(priced_turns[0].cost_note, None);
+    let unpriced_turns =
+        aggregate::session_turns(&stored, "s2", Some("claude"), &Filter::default(), &table);
+    assert_eq!(unpriced_turns[0].cost, None);
+    assert!(unpriced_turns[0].unpriced);
+    assert_eq!(
+        unpriced_turns[0].cost_note.as_deref(),
+        Some("单价未配置")
+    );
+    let native_turns = aggregate::session_turns(&stored, "s3", Some("pi"), &Filter::default(), &table);
+    assert_eq!(native_turns[0].cost, Some(0.5));
+    assert_eq!(native_turns[0].cost_note, None);
+
+    let by_source = aggregate::by_name(&stored, &Filter::default(), &table, |r| {
+        r.source.as_str().to_string()
+    });
+    assert_eq!(by_source[0].name, "codex");
+    assert_eq!(by_source[0].cost, Some(1.0));
+    assert!(!by_source[0].unpriced);
+    assert_eq!(by_source[1].name, "pi");
+    assert_eq!(by_source[1].cost, Some(0.5));
+    assert_eq!(by_source[2].name, "claude");
+    assert_eq!(by_source[2].cost, None);
+    assert!(by_source[2].unpriced);
 }
 
 #[test]
