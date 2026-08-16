@@ -671,15 +671,51 @@ fn filter_options_list_distinct_sources_models_projects() {
 
 #[test]
 fn trend_buckets_by_day_and_week() {
-    let records = seed_records();
-    let days = aggregate::trend(&records, &Filter::default(), &PriceTable::default(), "day");
+    let mut records = seed_records();
+    records.push(rec(
+        "2026-08-01T11:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "s1",
+        20,
+    ));
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let prices = PriceTable::default();
+
+    let days = aggregate::trend(&stored, &Filter::default(), &prices, "day");
     assert_eq!(days.len(), 3);
     assert_eq!(days[0].bucket, "2026-08-01");
-    assert_eq!(days[0].total_tokens, 100);
-    let weeks = aggregate::trend(&records, &Filter::default(), &PriceTable::default(), "week");
+    assert_eq!(days[0].total_tokens, 120);
+    assert_eq!(days[1].bucket, "2026-08-02");
+    assert_eq!(days[1].total_tokens, 300);
+    assert_eq!(days[2].bucket, "2026-08-08");
+    assert_eq!(days[2].total_tokens, 50);
+
+    let weeks = aggregate::trend(&stored, &Filter::default(), &prices, "week");
     assert_eq!(weeks.len(), 2);
-    assert_eq!(weeks[0].total_tokens, 400);
+    assert_eq!(weeks[0].bucket, "2026-W31");
+    assert_eq!(weeks[0].total_tokens, 420);
+    assert_eq!(weeks[1].bucket, "2026-W32");
     assert_eq!(weeks[1].total_tokens, 50);
+
+    let from_aug2 = Filter {
+        from: Some("2026-08-02T00:00:00Z".into()),
+        ..Filter::default()
+    };
+    let filtered_days = aggregate::trend(&stored, &from_aug2, &prices, "day");
+    assert_eq!(filtered_days.len(), 2);
+    assert_eq!(filtered_days[0].bucket, "2026-08-02");
+    assert_eq!(filtered_days[0].total_tokens, 300);
+    let filtered_weeks = aggregate::trend(&stored, &from_aug2, &prices, "week");
+    assert_eq!(filtered_weeks.len(), 2);
+    assert_eq!(filtered_weeks[0].bucket, "2026-W31");
+    assert_eq!(filtered_weeks[0].total_tokens, 300);
+    assert_eq!(filtered_weeks[1].bucket, "2026-W32");
+    assert_eq!(filtered_weeks[1].total_tokens, 50);
 }
 
 #[test]
