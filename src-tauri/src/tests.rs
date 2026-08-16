@@ -558,21 +558,38 @@ fn overview_sums_seeded_sqlite_records() {
 
 #[test]
 fn filters_restrict_overview_to_matching_subset() {
-    let records = seed_records();
-    let last7 = Filter {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let records = store::load_all(&conn).unwrap();
+    let prices = PriceTable::default();
+
+    let all = aggregate::overview(&records, &Filter::default(), &prices);
+    assert_eq!(all.total_tokens, 450);
+    assert_eq!(all.session_count, 3);
+
+    let from_aug2 = Filter {
         from: Some("2026-08-02T00:00:00Z".into()),
         ..Filter::default()
     };
-    let dto = aggregate::overview(&records, &last7, &PriceTable::default());
+    let dto = aggregate::overview(&records, &from_aug2, &prices);
     assert_eq!(dto.total_tokens, 350);
     assert_eq!(dto.session_count, 2);
+
+    let until = Filter {
+        to: Some("2026-08-02T00:00:00Z".into()),
+        ..Filter::default()
+    };
+    assert_eq!(
+        aggregate::overview(&records, &until, &prices).total_tokens,
+        100
+    );
 
     let by_source = Filter {
         sources: vec!["codex".into()],
         ..Filter::default()
     };
     assert_eq!(
-        aggregate::overview(&records, &by_source, &PriceTable::default()).total_tokens,
+        aggregate::overview(&records, &by_source, &prices).total_tokens,
         100
     );
 
@@ -581,7 +598,7 @@ fn filters_restrict_overview_to_matching_subset() {
         ..Filter::default()
     };
     assert_eq!(
-        aggregate::overview(&records, &by_model, &PriceTable::default()).total_tokens,
+        aggregate::overview(&records, &by_model, &prices).total_tokens,
         50
     );
 
@@ -590,9 +607,66 @@ fn filters_restrict_overview_to_matching_subset() {
         ..Filter::default()
     };
     assert_eq!(
-        aggregate::overview(&records, &by_project, &PriceTable::default()).total_tokens,
+        aggregate::overview(&records, &by_project, &prices).total_tokens,
         400
     );
+
+    let intersect = Filter {
+        from: Some("2026-08-02T00:00:00Z".into()),
+        projects: vec!["/proj/a".into()],
+        ..Filter::default()
+    };
+    assert_eq!(
+        aggregate::overview(&records, &intersect, &prices).total_tokens,
+        300
+    );
+}
+
+#[test]
+fn filters_apply_across_trend_breakdown_and_sessions() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let records = store::load_all(&conn).unwrap();
+    let prices = PriceTable::default();
+    let by_project = Filter {
+        projects: vec!["/proj/a".into()],
+        ..Filter::default()
+    };
+
+    let days = aggregate::trend(&records, &by_project, &prices, "day");
+    assert_eq!(days.len(), 2);
+    assert_eq!(days[0].bucket, "2026-08-01");
+    assert_eq!(days[0].total_tokens, 100);
+    assert_eq!(days[1].bucket, "2026-08-02");
+    assert_eq!(days[1].total_tokens, 300);
+
+    let by_source = aggregate::by_name(&records, &by_project, &prices, |r| {
+        r.source.as_str().to_string()
+    });
+    assert_eq!(by_source.len(), 2);
+    assert_eq!(by_source[0].name, "claude");
+    assert_eq!(by_source[0].total_tokens, 300);
+    assert_eq!(by_source[1].name, "codex");
+    assert_eq!(by_source[1].total_tokens, 100);
+
+    let top = aggregate::top_sessions(&records, &by_project, &prices, 10);
+    assert_eq!(top.len(), 2);
+    assert_eq!(top[0].session_id, "s2");
+    assert_eq!(top[1].session_id, "s1");
+}
+
+#[test]
+fn filter_options_list_distinct_sources_models_projects() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let records = store::load_all(&conn).unwrap();
+    let options = aggregate::filter_options(&records);
+    assert_eq!(options.sources, vec!["claude", "codex", "pi"]);
+    assert_eq!(
+        options.models,
+        vec!["claude-sonnet-5", "gpt-5.1-codex", "gpt-5.5"]
+    );
+    assert_eq!(options.projects, vec!["/proj/a", "/proj/b"]);
 }
 
 #[test]
