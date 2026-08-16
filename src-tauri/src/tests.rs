@@ -497,8 +497,38 @@ fn ingest_skips_unchanged_file_on_second_pass() {
     std::fs::create_dir_all(&session_dir).unwrap();
     std::fs::write(session_dir.join("one.jsonl"), fixture("codex.jsonl")).unwrap();
     let conn = store::open_memory().unwrap();
+    let first = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(first.files_parsed, 1);
+    assert_eq!(first.files_skipped, 0);
+    assert_eq!(first.records_written, 2);
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.files_parsed, 0);
+    assert_eq!(second.files_skipped, 1);
+    assert_eq!(second.records_written, 0);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+}
+
+#[test]
+fn ingest_rewrites_changed_file_without_duplicates() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
     ingest::ingest_all(&conn, home).unwrap();
-    ingest::ingest_all(&conn, home).unwrap();
+
+    let mut changed = fixture("codex.jsonl");
+    changed.push('\n');
+    std::fs::write(&path, changed).unwrap();
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.files_parsed, 1);
+    assert_eq!(second.files_skipped, 0);
+    assert_eq!(second.records_written, 2);
+
     let records = store::load_all(&conn).unwrap();
     assert_eq!(records.len(), 2);
     assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
