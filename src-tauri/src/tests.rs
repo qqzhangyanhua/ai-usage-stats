@@ -150,19 +150,30 @@ fn opencode_adapter_skips_user_and_keeps_native_cost() {
 }
 
 #[test]
-fn kimi_adapter_keeps_last_status_update_per_message() {
+fn kimi_adapter_keeps_last_status_update_per_turn() {
     let records = kimi::parse_kimi_wire(
         &fixture("kimi-wire.jsonl"),
         "/Users/zhangyanhua/.kimi/sessions/hash/bd1ab6fc-768d-4cff-b4c4-221a583c3af8/wire.jsonl",
         "/Users/zhangyanhua/workCode/app-storage",
     );
     assert_eq!(records.len(), 2);
+    assert_eq!(records[0].source, Source::Kimi);
     assert_eq!(records[0].session_id, "bd1ab6fc-768d-4cff-b4c4-221a583c3af8");
+    assert_eq!(records[0].project, "/Users/zhangyanhua/workCode/app-storage");
+    assert_eq!(records[0].model, "");
     assert_eq!(records[0].input_tokens, 3000);
     assert_eq!(records[0].output_tokens, 200);
+    assert_eq!(records[0].cache_read_tokens, 4352);
     assert_eq!(records[0].cache_creation_tokens, 10);
+    assert_eq!(records[0].reasoning_tokens, 0);
+    assert_eq!(records[0].total_tokens, 7562);
+    assert_ne!(records[0].input_tokens, 2547);
+    assert_ne!(records[0].output_tokens, 142);
     assert_eq!(records[1].input_tokens, 330);
     assert_eq!(records[1].output_tokens, 339);
+    assert_eq!(records[1].cache_read_tokens, 6656);
+    assert_eq!(records[1].cache_creation_tokens, 0);
+    assert_eq!(records[1].total_tokens, 7325);
 }
 
 #[test]
@@ -375,6 +386,27 @@ fn overview_from_opencode_fixture_uses_native_cost() {
     assert_eq!(dto.session_count, 1);
     assert_eq!(dto.cost, Some(0.42));
     assert!(!dto.unpriced);
+}
+
+#[test]
+fn overview_from_kimi_fixture_uses_last_status_update_totals() {
+    let records = kimi::parse_kimi_wire(
+        &fixture("kimi-wire.jsonl"),
+        "/Users/zhangyanhua/.kimi/sessions/hash/bd1ab6fc-768d-4cff-b4c4-221a583c3af8/wire.jsonl",
+        "/Users/zhangyanhua/workCode/app-storage",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 14887);
+    assert_eq!(dto.input_tokens, 3330);
+    assert_eq!(dto.output_tokens, 539);
+    assert_eq!(dto.cache_read_tokens, 11008);
+    assert_eq!(dto.cache_creation_tokens, 10);
+    assert_eq!(dto.reasoning_tokens, 0);
+    assert_eq!(dto.session_count, 1);
+    assert_ne!(dto.total_tokens, 2547 + 142 + 3000 + 200 + 330 + 339);
 }
 
 #[test]
