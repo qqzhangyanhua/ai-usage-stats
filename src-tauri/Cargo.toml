@@ -10,6 +10,10 @@ default-run = "ai-usage-stats"
 name = "ai_usage_stats_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "probe"
+path = "src/bin/probe.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

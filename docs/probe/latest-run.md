@@ -1,0 +1,61 @@
+# 探测程序最近一次实测
+
+命令：`cargo run --bin probe --manifest-path src-tauri/Cargo.toml`  
+时间：2026-08-16。只记录字段位置，不含会话正文。
+
+## dsh
+
+- 有 token：是
+- zstd 解压：成功
+- 最终口径：`assistant/message.data.usage`
+  - input ← `inputTokens`
+  - output ← `outputTokens`
+  - cache_read ← `cacheReadTokens`
+  - cache_creation：无
+  - reasoning ← `reasoningTokens`
+  - total：各口径之和
+- 模型 / provider：`data.message.source` 或 `request/header.config`
+- 项目 / 会话：`session.cwd` / `session.id`
+- 去重：只用 `assistant/message`，忽略流式 `assistant/chunk`
+
+## gemini
+
+- 有 token：是（在 `tmp/*/chats/session-*.json`，不在 `logs.json`）
+- 口径：`tokens.input` / `output` / `cached` / `thoughts` / `total`
+- 口径：`tokens.input` / `output` / `cached` / `thoughts` / `total`；cache_creation：无
+- 模型：`message.model`
+- provider：文件中不存在
+- 会话：`sessionId`
+- 项目：tmp 子目录名
+- 原始文件：该 `session-*.json`
+
+## grok
+
+- 有 token：部分（仅上下文总量）
+- 口径：`params._meta.totalTokens` → total；无 input/output/cache/reasoning
+- 模型：`params.update._meta.modelId`
+- 项目：url-decode 的会话父目录
+- 会话：目录 uuid
+- 去重：同一 `promptId` 取最后一次 totalTokens
+
+## qwen
+
+- 有 token：否
+- 本机 `~/.qwen/tmp/*/logs.json` 只有 user 文本与 `sessionId`
+- 模型 / provider / 项目：文件中不存在
+
+## factory
+
+- 有 token：是（会话累计，非每轮）
+- 口径：`<id>.settings.json` 的 `tokenUsage`
+  - input ← `inputTokens`
+  - output ← `outputTokens`
+  - cache_read ← `cacheReadTokens`
+  - cache_creation ← `cacheCreationTokens`
+  - reasoning ← `thinkingTokens`
+  - total：各口径之和
+- 模型：settings 中不存在
+- provider：`providerLock`
+- 项目：会话目录 dashed 名解码（根级 settings 则空）
+- 会话：文件名前缀 uuid
+- 原始文件：该 `<id>.settings.json`

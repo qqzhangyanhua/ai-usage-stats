@@ -25,3 +25,9 @@ npm run tauri build
 - React + Vite + ECharts 界面
 
 详见 `CONTEXT.md`、`docs/adr/`、`docs/probe/token-fields.md`。
+
+复跑本机 token 字段探测：
+
+```bash
+cargo run --bin probe --manifest-path src-tauri/Cargo.toml
+```

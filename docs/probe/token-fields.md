@@ -21,7 +21,41 @@
 | `total_tokens` | i64 | 总量；来源未给时按各口径之和 |
 | `native_cost` | f64? | 来源自带费用（仅 pi / opencode） |
 
-不含会话正文。sqlite 表结构见 `usage_records` / `ingested_files`（实现内）。
+不含会话正文。
+
+复跑探测：
+
+```bash
+cargo run --bin probe --manifest-path src-tauri/Cargo.toml
+```
+
+## sqlite schema
+
+```sql
+CREATE TABLE IF NOT EXISTS usage_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurred_at TEXT NOT NULL,
+    source TEXT NOT NULL,
+    model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    project TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL,
+    cache_creation_tokens INTEGER NOT NULL,
+    reasoning_tokens INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    native_cost REAL
+);
+
+CREATE TABLE IF NOT EXISTS ingested_files (
+    path TEXT PRIMARY KEY,
+    mtime_ms INTEGER NOT NULL,
+    size INTEGER NOT NULL
+);
+```
 
 ## 字段映射
 
@@ -35,7 +69,7 @@
 | dsh | `~/.dsh/sessions/<dashed-cwd>/**/session.jsonl.zstd` | 是 | 解压后 `assistant/message.data.usage`：inputTokens / outputTokens / cacheReadTokens / reasoningTokens。忽略流式 `assistant/chunk` | 模型/provider：`data.message.source` 或最近 `request/header.config`；项目：session.cwd；会话：session.id | 只用最终 `assistant/message` |
 | gemini | `~/.gemini/tmp/*/chats/session-*.json` | 是 | 消息 `type=gemini` 的 `tokens`：input / output / cached→cache_read / thoughts→reasoning / total。`logs.json` 无 token | 模型：`message.model`；项目：tmp 子目录名或 `projectHash`；会话：`sessionId` | 每条 gemini 消息一条 |
 | grok | `~/.grok/sessions/<url-encoded-cwd>/<session-id>/updates.jsonl` | 部分 | `_meta.totalTokens` 仅为上下文占用总量，无 input/output 拆分。按 `promptId` 取该轮最后一次 totalTokens → total | 模型：`update._meta.modelId` 或 summary `current_model_id`；项目：url-decode 目录名；会话：目录 uuid | 每 promptId 一条（最后值），不按 chunk 累加 |
-| qwen | `~/.qwen/tmp/*/logs.json` | 否 | 本机仅有 user 文本日志，无 token 字段。适配器输出空列表 | 会话：`sessionId`；无模型/费用 | 无可计用量 |
+| qwen | `~/.qwen/tmp/*/logs.json` | 否 | 本机仅有 user 文本，无 token 字段。适配器输出空列表 | 会话：`sessionId`；模型 / provider / 项目：文件中不存在 | 无可计用量 |
 | factory | `~/.factory/sessions/**/<id>.settings.json` 的 `tokenUsage` | 是（会话累计） | jsonl 正文无 per-turn usage。`tokenUsage`：inputTokens / outputTokens / cacheCreationTokens / cacheReadTokens / thinkingTokens | provider：`providerLock`；项目：dashed 目录名解码；会话：文件名前缀 uuid | 每会话一条累计记录（本机无轮级口径） |
 | Cursor | `~/.cursor/ai-tracking/ai-code-tracking.db` 的 `scored_commits` | 否（代码量） | `linesAdded` / `composerLinesAdded` / `v2AiPercentage` 等。**不进入 Usage Record** | — | 独立代码量面板 |
 | amp | 本机仅配置 | 否 | 不纳入 | — | — |
