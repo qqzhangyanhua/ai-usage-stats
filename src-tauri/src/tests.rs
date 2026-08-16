@@ -139,9 +139,13 @@ fn opencode_adapter_skips_user_and_keeps_native_cost() {
     assert_eq!(records[0].model, "gemini-claude-sonnet-4-5-thinking");
     assert_eq!(records[0].provider, "anthropic");
     assert_eq!(records[0].project, "/Users/zhangyanhua/workCode/project_front");
+    assert_eq!(records[0].session_id, "ses_4064c35bcffeKnRpPdbo4Ege2l");
     assert_eq!(records[0].input_tokens, 20882);
+    assert_eq!(records[0].output_tokens, 138);
     assert_eq!(records[0].cache_read_tokens, 100);
     assert_eq!(records[0].cache_creation_tokens, 20);
+    assert_eq!(records[0].reasoning_tokens, 0);
+    assert_eq!(records[0].total_tokens, 21140);
     assert_eq!(records[0].native_cost, Some(0.42));
 }
 
@@ -342,6 +346,34 @@ fn overview_from_pi_fixture_uses_native_cost() {
     assert_eq!(dto.reasoning_tokens, 25);
     assert_eq!(dto.session_count, 1);
     assert!((dto.cost.unwrap() - 0.074299).abs() < 1e-9);
+    assert!(!dto.unpriced);
+}
+
+#[test]
+fn overview_from_opencode_fixture_uses_native_cost() {
+    let raw = fixture("opencode-messages.json");
+    let values: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap();
+    let rows: Vec<OpencodeMessage> = values
+        .into_iter()
+        .map(|v| OpencodeMessage {
+            session_id: v["session_id"].as_str().unwrap().to_string(),
+            source_file: "opencode.db".to_string(),
+            data: v["data"].clone(),
+        })
+        .collect();
+    let records = parse_opencode_messages(&rows);
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 21140);
+    assert_eq!(dto.input_tokens, 20882);
+    assert_eq!(dto.output_tokens, 138);
+    assert_eq!(dto.cache_read_tokens, 100);
+    assert_eq!(dto.cache_creation_tokens, 20);
+    assert_eq!(dto.reasoning_tokens, 0);
+    assert_eq!(dto.session_count, 1);
+    assert_eq!(dto.cost, Some(0.42));
     assert!(!dto.unpriced);
 }
 
