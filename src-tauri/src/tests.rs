@@ -240,9 +240,17 @@ fn grok_adapter_decodes_project_and_dedups_prompt() {
         "grok-4.5",
     );
     assert_eq!(records.len(), 2);
+    assert_eq!(records[0].source, Source::Grok);
     assert_eq!(records[0].project, "/Users/zhangyanhua/AI/TradingAgents-CN");
+    assert_eq!(records[0].session_id, "019fd235");
     assert_eq!(records[0].model, "grok-4.5");
+    assert_eq!(records[0].input_tokens, 0);
+    assert_eq!(records[0].output_tokens, 0);
+    assert_eq!(records[0].cache_read_tokens, 0);
+    assert_eq!(records[0].cache_creation_tokens, 0);
+    assert_eq!(records[0].reasoning_tokens, 0);
     assert_eq!(records[0].total_tokens, 26857);
+    assert_ne!(records[0].total_tokens, 15681);
     assert_eq!(records[1].total_tokens, 71351);
 }
 
@@ -464,6 +472,27 @@ fn overview_from_gemini_fixture_sums_per_record_token_dimensions() {
     assert_eq!(dto.cache_creation_tokens, 0);
     assert_eq!(dto.reasoning_tokens, 285);
     assert_eq!(dto.session_count, 1);
+}
+
+#[test]
+fn overview_from_grok_fixture_uses_last_total_per_prompt() {
+    let records = grok::parse_grok_updates(
+        &fixture("grok-updates.jsonl"),
+        "/Users/zhangyanhua/.grok/sessions/%2FUsers%2Fzhangyanhua%2FAI%2FTradingAgents-CN/019fd235/updates.jsonl",
+        "grok-4.5",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 98208);
+    assert_eq!(dto.input_tokens, 0);
+    assert_eq!(dto.output_tokens, 0);
+    assert_eq!(dto.cache_read_tokens, 0);
+    assert_eq!(dto.cache_creation_tokens, 0);
+    assert_eq!(dto.reasoning_tokens, 0);
+    assert_eq!(dto.session_count, 1);
+    assert_ne!(dto.total_tokens, 15681 + 26857 + 71351);
 }
 
 #[test]
