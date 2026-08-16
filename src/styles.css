@@ -1,0 +1,182 @@
+:root {
+  color-scheme: light;
+  font-family: "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  color: #122033;
+  background: #f4f6fb;
+  line-height: 1.45;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #122033;
+  color: #e8eef7;
+  padding: 20px 16px;
+}
+
+.sidebar h1 {
+  font-size: 16px;
+  margin: 0 0 18px;
+}
+
+.nav-btn,
+.refresh-btn,
+.ghost-btn {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.nav-btn.active,
+.nav-btn:hover {
+  background: #2a415f;
+}
+
+.refresh-btn {
+  margin-top: 18px;
+  background: #2f6fed;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #b8c4d6;
+}
+
+.main {
+  padding: 20px 24px 40px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #516178;
+}
+
+.filters select,
+.filters input,
+.card input {
+  min-width: 160px;
+  border: 1px solid #d5dbe6;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 6%);
+}
+
+.card .label {
+  color: #66758a;
+  font-size: 12px;
+}
+
+.card .value {
+  font-size: 24px;
+  font-weight: 650;
+  margin-top: 4px;
+}
+
+.note {
+  color: #9a4b16;
+  font-size: 12px;
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #edf0f5;
+  font-size: 13px;
+}
+
+tr.clickable {
+  cursor: pointer;
+}
+
+tr.clickable:hover {
+  background: #f3f7ff;
+}
+
+.partition {
+  border: 1px dashed #c9b48a;
+  background: #fff8ea;
+}
+
+.price-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr repeat(4, 0.8fr) auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ghost-btn {
+  width: auto;
+  background: #e8eef7;
+  color: #122033;
+}

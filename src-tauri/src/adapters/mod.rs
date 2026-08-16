@@ -1,0 +1,55 @@
+pub mod claude;
+pub mod codex;
+pub mod cursor;
+pub mod dsh;
+pub mod factory;
+pub mod gemini;
+pub mod grok;
+pub mod kimi;
+pub mod opencode;
+pub mod pi;
+pub mod project;
+pub mod qwen;
+
+use crate::domain::UsageRecord;
+
+pub fn parse_jsonl_values(content: &str) -> Vec<serde_json::Value> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            serde_json::from_str(line).ok()
+        })
+        .collect()
+}
+
+pub fn i64_field(value: &serde_json::Value, keys: &[&str]) -> i64 {
+    for key in keys {
+        if let Some(n) = value.get(key).and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_u64().map(|n| n as i64))
+                .or_else(|| v.as_f64().map(|n| n.round() as i64))
+        }) {
+            return n;
+        }
+    }
+    0
+}
+
+pub fn text_field(value: &serde_json::Value, keys: &[&str]) -> String {
+    for key in keys {
+        if let Some(s) = value.get(*key).and_then(|v| v.as_str()) {
+            if !s.is_empty() {
+                return s.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+pub fn finish(record: UsageRecord) -> UsageRecord {
+    record.with_total()
+}

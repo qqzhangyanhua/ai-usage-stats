@@ -1,0 +1,285 @@
+use std::collections::BTreeMap;
+
+use chrono::Datelike;
+
+use crate::cost::{derive_cost, sum_costs};
+use crate::domain::{
+    Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable, SeriesPoint, SessionRow, TurnRow,
+    UsageRecord,
+};
+
+pub fn matches_filter(record: &UsageRecord, filter: &Filter) -> bool {
+    if let Some(from) = &filter.from {
+        if record.occurred_at.as_str() < from.as_str() {
+            return false;
+        }
+    }
+    if let Some(to) = &filter.to {
+        if record.occurred_at.as_str() > to.as_str() {
+            return false;
+        }
+    }
+    if !filter.sources.is_empty() && !filter.sources.iter().any(|s| s == record.source.as_str()) {
+        return false;
+    }
+    if !filter.models.is_empty() && !filter.models.iter().any(|m| m == &record.model) {
+        return false;
+    }
+    if !filter.projects.is_empty() && !filter.projects.iter().any(|p| p == &record.project) {
+        return false;
+    }
+    true
+}
+
+pub fn apply_filter<'a>(records: &'a [UsageRecord], filter: &Filter) -> Vec<&'a UsageRecord> {
+    records.iter().filter(|r| matches_filter(r, filter)).collect()
+}
+
+pub fn overview(records: &[UsageRecord], filter: &Filter, prices: &PriceTable) -> OverviewDto {
+    let filtered = apply_filter(records, filter);
+    let mut sessions = std::collections::BTreeSet::new();
+    let mut dto = OverviewDto {
+        total_tokens: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        reasoning_tokens: 0,
+        session_count: 0,
+        cost: None,
+        unpriced: false,
+    };
+    let owned: Vec<UsageRecord> = filtered.into_iter().cloned().collect();
+    for record in &owned {
+        dto.total_tokens += record.total_tokens;
+        dto.input_tokens += record.input_tokens;
+        dto.output_tokens += record.output_tokens;
+        dto.cache_read_tokens += record.cache_read_tokens;
+        dto.cache_creation_tokens += record.cache_creation_tokens;
+        dto.reasoning_tokens += record.reasoning_tokens;
+        sessions.insert((record.source.as_str().to_string(), record.session_id.clone()));
+    }
+    dto.session_count = sessions.len() as i64;
+    let (cost, unpriced) = sum_costs(&owned, prices);
+    dto.cost = cost;
+    dto.unpriced = unpriced;
+    dto
+}
+
+pub fn trend(
+    records: &[UsageRecord],
+    filter: &Filter,
+    prices: &PriceTable,
+    grain: &str,
+) -> Vec<SeriesPoint> {
+    let filtered = apply_filter(records, filter);
+    let mut buckets: BTreeMap<String, (i64, Option<f64>, bool)> = BTreeMap::new();
+    for record in filtered {
+        let key = bucket_key(&record.occurred_at, grain);
+        let entry = buckets.entry(key).or_insert((0, None, false));
+        entry.0 += record.total_tokens;
+        let derived = derive_cost(record, prices);
+        if let Some(amount) = derived.amount {
+            entry.1 = Some(entry.1.unwrap_or(0.0) + amount);
+        }
+        if derived.unpriced {
+            entry.2 = true;
+        }
+    }
+    buckets
+        .into_iter()
+        .map(|(bucket, (total_tokens, cost, _))| SeriesPoint {
+            bucket,
+            total_tokens,
+            cost,
+        })
+        .collect()
+}
+
+fn bucket_key(occurred_at: &str, grain: &str) -> String {
+    let date = occurred_at.get(0..10).unwrap_or(occurred_at);
+    if grain == "week" {
+        if let Ok(parsed) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") {
+            let week = parsed.iso_week();
+            return format!("{:04}-W{:02}", week.year(), week.week());
+        }
+    }
+    date.to_string()
+}
+
+pub fn by_name(
+    records: &[UsageRecord],
+    filter: &Filter,
+    prices: &PriceTable,
+    selector: impl Fn(&UsageRecord) -> String,
+) -> Vec<NamedAmount> {
+    let filtered = apply_filter(records, filter);
+    let mut map: BTreeMap<String, (i64, Option<f64>, bool)> = BTreeMap::new();
+    let mut grand = 0i64;
+    for record in filtered {
+        let name = selector(record);
+        let key = if name.is_empty() {
+            "（未标注）".to_string()
+        } else {
+            name
+        };
+        let entry = map.entry(key).or_insert((0, None, false));
+        entry.0 += record.total_tokens;
+        grand += record.total_tokens;
+        let derived = derive_cost(record, prices);
+        if let Some(amount) = derived.amount {
+            entry.1 = Some(entry.1.unwrap_or(0.0) + amount);
+        }
+        if derived.unpriced {
+            entry.2 = true;
+        }
+    }
+    let mut rows: Vec<NamedAmount> = map
+        .into_iter()
+        .map(|(name, (total_tokens, cost, unpriced))| NamedAmount {
+            name,
+            total_tokens,
+            share: if grand == 0 {
+                0.0
+            } else {
+                total_tokens as f64 / grand as f64
+            },
+            cost,
+            unpriced,
+        })
+        .collect();
+    rows.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens));
+    rows
+}
+
+pub fn top_sessions(
+    records: &[UsageRecord],
+    filter: &Filter,
+    prices: &PriceTable,
+    limit: usize,
+) -> Vec<SessionRow> {
+    let filtered = apply_filter(records, filter);
+    let mut map: BTreeMap<(String, String), SessionAcc> = BTreeMap::new();
+    for record in filtered {
+        let key = (record.source.as_str().to_string(), record.session_id.clone());
+        let entry = map.entry(key).or_insert_with(|| SessionAcc {
+            source: record.source.as_str().to_string(),
+            session_id: record.session_id.clone(),
+            project: record.project.clone(),
+            model: record.model.clone(),
+            source_file: record.source_file.clone(),
+            total_tokens: 0,
+            started_at: record.occurred_at.clone(),
+            ended_at: record.occurred_at.clone(),
+            cost: None,
+            unpriced: false,
+        });
+        entry.total_tokens += record.total_tokens;
+        if record.occurred_at < entry.started_at || entry.started_at.is_empty() {
+            entry.started_at = record.occurred_at.clone();
+        }
+        if record.occurred_at > entry.ended_at {
+            entry.ended_at = record.occurred_at.clone();
+        }
+        if !record.model.is_empty() {
+            entry.model = record.model.clone();
+        }
+        let derived = derive_cost(record, prices);
+        if let Some(amount) = derived.amount {
+            entry.cost = Some(entry.cost.unwrap_or(0.0) + amount);
+        }
+        if derived.unpriced {
+            entry.unpriced = true;
+        }
+    }
+    let mut rows: Vec<SessionRow> = map
+        .into_values()
+        .map(|acc| SessionRow {
+            session_id: acc.session_id,
+            source: acc.source,
+            project: acc.project,
+            model: acc.model,
+            total_tokens: acc.total_tokens,
+            started_at: acc.started_at,
+            ended_at: acc.ended_at,
+            source_file: acc.source_file,
+            cost: acc.cost,
+            unpriced: acc.unpriced,
+        })
+        .collect();
+    rows.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens));
+    rows.truncate(limit);
+    rows
+}
+
+struct SessionAcc {
+    source: String,
+    session_id: String,
+    project: String,
+    model: String,
+    source_file: String,
+    total_tokens: i64,
+    started_at: String,
+    ended_at: String,
+    cost: Option<f64>,
+    unpriced: bool,
+}
+
+pub fn session_turns(
+    records: &[UsageRecord],
+    session_id: &str,
+    source: Option<&str>,
+    filter: &Filter,
+    prices: &PriceTable,
+) -> Vec<TurnRow> {
+    let mut rows: Vec<TurnRow> = records
+        .iter()
+        .filter(|r| r.session_id == session_id)
+        .filter(|r| source.map(|s| r.source.as_str() == s).unwrap_or(true))
+        .filter(|r| matches_filter(r, filter))
+        .map(|record| {
+            let derived = derive_cost(record, prices);
+            TurnRow {
+                occurred_at: record.occurred_at.clone(),
+                model: record.model.clone(),
+                provider: record.provider.clone(),
+                input_tokens: record.input_tokens,
+                output_tokens: record.output_tokens,
+                cache_read_tokens: record.cache_read_tokens,
+                cache_creation_tokens: record.cache_creation_tokens,
+                reasoning_tokens: record.reasoning_tokens,
+                total_tokens: record.total_tokens,
+                source_file: record.source_file.clone(),
+                cost: derived.amount,
+                unpriced: derived.unpriced,
+                cost_note: if derived.unpriced {
+                    Some("单价未配置".to_string())
+                } else {
+                    None
+                },
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at));
+    rows
+}
+
+pub fn filter_options(records: &[UsageRecord]) -> FilterOptions {
+    let mut sources = std::collections::BTreeSet::new();
+    let mut models = std::collections::BTreeSet::new();
+    let mut projects = std::collections::BTreeSet::new();
+    for record in records {
+        sources.insert(record.source.as_str().to_string());
+        if !record.model.is_empty() {
+            models.insert(record.model.clone());
+        }
+        if !record.project.is_empty() {
+            projects.insert(record.project.clone());
+        }
+    }
+    FilterOptions {
+        sources: sources.into_iter().collect(),
+        models: models.into_iter().collect(),
+        projects: projects.into_iter().collect(),
+    }
+}

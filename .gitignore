@@ -1,0 +1,11 @@
+target/
+src-tauri/target/
+node_modules/
+dist/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+.DS_Store
+src-tauri/gen/
+.scratch/

@@ -1,0 +1,4 @@
+{"method":"session/update","params":{"sessionId":"019fd235","update":{"_meta":{"modelId":"grok-4.5"}},"_meta":{"eventId":"e0"}}}
+{"method":"session/update","params":{"_meta":{"promptId":"p1","totalTokens":15681,"agentTimestampMs":1785938172913}}}
+{"method":"session/update","params":{"_meta":{"promptId":"p1","totalTokens":26857,"agentTimestampMs":1785938173269}}}
+{"method":"session/update","params":{"_meta":{"promptId":"p2","totalTokens":71351,"agentTimestampMs":1785938200000}}}

@@ -1,0 +1,4 @@
+{"type":"metadata","protocol_version":1}
+{"timestamp":1769421917.184911,"message":{"type":"StatusUpdate","payload":{"token_usage":{"input_other":2547,"output":142,"input_cache_read":4352,"input_cache_creation":0},"message_id":"chatcmpl-1"}}}
+{"timestamp":1769421918.0,"message":{"type":"StatusUpdate","payload":{"token_usage":{"input_other":3000,"output":200,"input_cache_read":4352,"input_cache_creation":10},"message_id":"chatcmpl-1"}}}
+{"timestamp":1769421972.200951,"message":{"type":"StatusUpdate","payload":{"token_usage":{"input_other":330,"output":339,"input_cache_read":6656,"input_cache_creation":0},"message_id":"chatcmpl-2"}}}

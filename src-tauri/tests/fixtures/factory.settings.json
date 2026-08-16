@@ -1,0 +1,12 @@
+{
+  "assistantActiveTimeMs": 24054,
+  "providerLock": "anthropic",
+  "providerLockTimestamp": "2025-10-24T06:12:17.268Z",
+  "tokenUsage": {
+    "inputTokens": 3,
+    "outputTokens": 1022,
+    "cacheCreationTokens": 8125,
+    "cacheReadTokens": 11084,
+    "thinkingTokens": 0
+  }
+}

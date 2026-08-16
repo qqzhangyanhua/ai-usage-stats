@@ -1,0 +1,5 @@
+{"type":"session","version":0,"id":"session-f1cbbe01-e379-4152-8d13-46440f595d2d","createdAt":1786629319248,"cwd":"/Users/zhangyanhua/AI/pi"}
+{"type":"request/header","seq":14,"time":1786629376742,"data":{"header":{"config":{"provider":"deepseek-official","model":"deepseek-v4-flash"}}}}
+{"type":"assistant/chunk","seq":42,"time":1786629380000,"data":{"chunk":{"usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":1,"reasoningTokens":1}}}}
+{"type":"assistant/message","seq":44,"time":1786629381000,"data":{"message":{"source":{"provider":"deepseek-official","model":"deepseek-v4-flash"}},"usage":{"inputTokens":13672,"outputTokens":442,"cacheReadTokens":0,"reasoningTokens":321}}}
+{"type":"assistant/message","seq":75,"time":1786629390000,"data":{"message":{"source":{"provider":"deepseek-official","model":"deepseek-v4-flash"}},"usage":{"inputTokens":1603,"outputTokens":430,"cacheReadTokens":14080,"reasoningTokens":281}}}

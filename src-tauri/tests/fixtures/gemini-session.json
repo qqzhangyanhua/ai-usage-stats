@@ -1,0 +1,14 @@
+{
+  "sessionId": "2392a2f0-142a-407e-a08f-8f37781ba76c",
+  "projectHash": "ruoyi",
+  "messages": [
+    {"id": "u1", "timestamp": "2026-03-07T07:27:26.060Z", "type": "user", "content": "hi"},
+    {
+      "id": "a1",
+      "timestamp": "2026-03-07T07:27:34.399Z",
+      "type": "gemini",
+      "model": "gemini-3-flash-preview",
+      "tokens": {"input": 13354, "output": 662, "cached": 0, "thoughts": 285, "tool": 0, "total": 14301}
+    }
+  ]
+}

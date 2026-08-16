@@ -1,0 +1,27 @@
+[package]
+name = "ai-usage-stats"
+version = "0.1.0"
+description = "本机 AI 用量统计"
+authors = ["zhangyanhua"]
+edition = "2021"
+default-run = "ai-usage-stats"
+
+[lib]
+name = "ai_usage_stats_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+zstd = "0.13"
+chrono = { version = "0.4", features = ["serde"] }
+urlencoding = "2"
+dirs = "6"
+
+[dev-dependencies]
+tempfile = "3"

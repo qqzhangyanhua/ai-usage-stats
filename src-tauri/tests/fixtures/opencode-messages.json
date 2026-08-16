@@ -1,0 +1,22 @@
+[
+  {
+    "session_id": "ses_4064c35bcffeKnRpPdbo4Ege2l",
+    "data": {
+      "role": "user",
+      "tokens": {"input": 10, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+      "cost": 1.23
+    }
+  },
+  {
+    "session_id": "ses_4064c35bcffeKnRpPdbo4Ege2l",
+    "data": {
+      "role": "assistant",
+      "modelID": "gemini-claude-sonnet-4-5-thinking",
+      "providerID": "anthropic",
+      "path": {"cwd": "/Users/zhangyanhua/workCode/app-storage", "root": "/Users/zhangyanhua/workCode/project_front"},
+      "time": {"created": 1769420868178, "completed": 1769420875548},
+      "tokens": {"input": 20882, "output": 138, "reasoning": 0, "cache": {"read": 100, "write": 20}},
+      "cost": 0.42
+    }
+  }
+]
