@@ -1351,3 +1351,133 @@ fn ingest_rewrites_changed_file_without_duplicates() {
     assert_eq!(records.len(), 2);
     assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
 }
+
+fn rollup_sum(
+    records: &[UsageRecord],
+    filter: &Filter,
+    prices: &PriceTable,
+    selector: impl Fn(&UsageRecord) -> String,
+) -> i64 {
+    aggregate::by_name(records, filter, prices, selector)
+        .iter()
+        .map(|row| row.total_tokens)
+        .sum()
+}
+
+fn assert_rollups_match_overview(records: &[UsageRecord], filter: &Filter) {
+    let prices = PriceTable::default();
+    let overview = aggregate::overview(records, filter, &prices);
+    assert_eq!(
+        overview.total_tokens,
+        rollup_sum(records, filter, &prices, |r| r.source.as_str().to_string())
+    );
+    assert_eq!(
+        overview.total_tokens,
+        rollup_sum(records, filter, &prices, |r| r.model.clone())
+    );
+    assert_eq!(
+        overview.total_tokens,
+        rollup_sum(records, filter, &prices, |r| r.provider.clone())
+    );
+    assert_eq!(
+        overview.total_tokens,
+        rollup_sum(records, filter, &prices, |r| r.project.clone())
+    );
+    let session_total: i64 = aggregate::top_sessions(records, filter, &prices, usize::MAX)
+        .iter()
+        .map(|row| row.total_tokens)
+        .sum();
+    assert_eq!(overview.total_tokens, session_total);
+}
+
+#[test]
+fn overview_matches_source_model_project_and_session_rollups() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let records = store::load_all(&conn).unwrap();
+    assert_rollups_match_overview(&records, &Filter::default());
+
+    let from_aug2 = Filter {
+        from: Some("2026-08-02T00:00:00Z".into()),
+        ..Filter::default()
+    };
+    let filtered = aggregate::overview(&records, &from_aug2, &PriceTable::default());
+    assert_eq!(filtered.total_tokens, 350);
+    assert_rollups_match_overview(&records, &from_aug2);
+}
+
+fn write_all_source_fixtures(home: &std::path::Path) {
+    let paths: [(&str, &str); 7] = [
+        (".codex/sessions/one.jsonl", "codex.jsonl"),
+        (
+            ".claude/projects/-Users-zhangyanhua-AI-TradingAgents-CN/04868551-34c3-4588-b984-6ae9a5d95f8a.jsonl",
+            "claude.jsonl",
+        ),
+        (
+            ".pi/agent/sessions/--Users-zhangyanhua-workCode-ruoyi-ui-vue3--/s.jsonl",
+            "pi.jsonl",
+        ),
+        (
+            ".kimi/sessions/hash/bd1ab6fc-768d-4cff-b4c4-221a583c3af8/wire.jsonl",
+            "kimi-wire.jsonl",
+        ),
+        (
+            ".gemini/tmp/ruoyi-ui-vue3/chats/session-2026-03-07.json",
+            "gemini-session.json",
+        ),
+        (
+            ".grok/sessions/%2FUsers%2Fzhangyanhua%2FAI%2FTradingAgents-CN/019fd235/updates.jsonl",
+            "grok-updates.jsonl",
+        ),
+        (".qwen/tmp/hash/logs.json", "qwen-logs.json"),
+    ];
+    for (rel, name) in paths {
+        let path = home.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, fixture(name)).unwrap();
+    }
+    let factory = home.join(
+        ".factory/sessions/-Users-zhangyanhua-AI-cli/9ab2ca7b-bd30-495b-9434-07892ee0e5e6.settings.json",
+    );
+    std::fs::create_dir_all(factory.parent().unwrap()).unwrap();
+    std::fs::write(&factory, fixture("factory.settings.json")).unwrap();
+    let dsh = home.join(".dsh/sessions/--Users-zhangyanhua-AI-pi--/session.jsonl.zstd");
+    std::fs::create_dir_all(dsh.parent().unwrap()).unwrap();
+    let compressed = zstd::encode_all(fixture("dsh.jsonl").as_bytes(), 0).unwrap();
+    std::fs::write(&dsh, compressed).unwrap();
+}
+
+#[test]
+fn ingest_all_fixtures_is_stable_on_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    write_all_source_fixtures(home);
+    let conn = store::open_memory().unwrap();
+    let first = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(first.files_parsed, 9);
+    assert_eq!(first.records_written, 14);
+    let stored = store::load_all(&conn).unwrap();
+    assert_eq!(stored.len(), 14);
+    assert_eq!(
+        stored.iter().map(|r| r.total_tokens).sum::<i64>(),
+        335997
+    );
+    assert_rollups_match_overview(&stored, &Filter::default());
+
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.files_parsed, 0);
+    assert_eq!(second.files_skipped, 9);
+    assert_eq!(second.records_written, 0);
+    let again = store::load_all(&conn).unwrap();
+    assert_eq!(again.len(), 14);
+    assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 335997);
+}
+
+#[ignore]
+#[test]
+fn ingest_real_home_rollups_match_overview() {
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, &ingest::default_home()).unwrap();
+    let records = store::load_all(&conn).unwrap();
+    assert_rollups_match_overview(&records, &Filter::default());
+}
