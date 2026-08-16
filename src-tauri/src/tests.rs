@@ -269,6 +269,26 @@ fn seed_records() -> Vec<UsageRecord> {
 }
 
 #[test]
+fn overview_from_codex_fixture_uses_last_token_usage_totals() {
+    let records = codex::parse_codex_jsonl(
+        &fixture("codex.jsonl"),
+        "/Users/zhangyanhua/.codex/sessions/rollout.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 19113);
+    assert_eq!(dto.input_tokens, 18413);
+    assert_eq!(dto.output_tokens, 700);
+    assert_eq!(dto.cache_read_tokens, 2048);
+    assert_eq!(dto.cache_creation_tokens, 0);
+    assert_eq!(dto.reasoning_tokens, 64);
+    assert_eq!(dto.session_count, 1);
+    assert_ne!(dto.total_tokens, 9496 + 19113);
+}
+
+#[test]
 fn overview_sums_seeded_sqlite_records() {
     let conn = store::open_memory().unwrap();
     store::insert_records(&conn, &seed_records()).unwrap();
