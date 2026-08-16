@@ -80,10 +80,17 @@ fn claude_adapter_maps_usage_and_project_dir() {
         records[0].project,
         "/Users/zhangyanhua/AI/TradingAgents-CN"
     );
-    assert_eq!(records[0].cache_creation_tokens, 56332);
+    assert_eq!(records[0].input_tokens, 0);
     assert_eq!(records[0].output_tokens, 62);
-    assert_eq!(records[1].cache_read_tokens, 56332);
+    assert_eq!(records[0].cache_read_tokens, 0);
+    assert_eq!(records[0].cache_creation_tokens, 56332);
+    assert_eq!(records[0].reasoning_tokens, 0);
+    assert_eq!(records[0].total_tokens, 56394);
     assert_eq!(records[1].input_tokens, 120);
+    assert_eq!(records[1].output_tokens, 40);
+    assert_eq!(records[1].cache_read_tokens, 56332);
+    assert_eq!(records[1].cache_creation_tokens, 0);
+    assert_eq!(records[1].total_tokens, 56492);
 }
 
 #[test]
@@ -286,6 +293,25 @@ fn overview_from_codex_fixture_uses_last_token_usage_totals() {
     assert_eq!(dto.reasoning_tokens, 64);
     assert_eq!(dto.session_count, 1);
     assert_ne!(dto.total_tokens, 9496 + 19113);
+}
+
+#[test]
+fn overview_from_claude_fixture_sums_per_record_token_dimensions() {
+    let records = claude::parse_claude_jsonl(
+        &fixture("claude.jsonl"),
+        "/Users/zhangyanhua/.claude/projects/-Users-zhangyanhua-AI-TradingAgents-CN/04868551-34c3-4588-b984-6ae9a5d95f8a.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 112886);
+    assert_eq!(dto.input_tokens, 120);
+    assert_eq!(dto.output_tokens, 102);
+    assert_eq!(dto.cache_read_tokens, 56332);
+    assert_eq!(dto.cache_creation_tokens, 56332);
+    assert_eq!(dto.reasoning_tokens, 0);
+    assert_eq!(dto.session_count, 1);
 }
 
 #[test]
