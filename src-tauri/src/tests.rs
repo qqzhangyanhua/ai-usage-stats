@@ -269,11 +269,26 @@ fn factory_adapter_maps_session_token_usage() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].source, Source::Factory);
     assert_eq!(records[0].provider, "anthropic");
+    assert_eq!(records[0].model, "");
+    assert_eq!(records[0].project, "/Users/zhangyanhua/AI/cli");
     assert_eq!(records[0].session_id, "9ab2ca7b-bd30-495b-9434-07892ee0e5e6");
     assert_eq!(records[0].input_tokens, 3);
     assert_eq!(records[0].output_tokens, 1022);
     assert_eq!(records[0].cache_creation_tokens, 8125);
     assert_eq!(records[0].cache_read_tokens, 11084);
+    assert_eq!(records[0].reasoning_tokens, 0);
+    assert_eq!(records[0].total_tokens, 20234);
+}
+
+#[test]
+fn factory_adapter_root_settings_have_empty_project() {
+    let records = factory::parse_factory_settings(
+        &fixture("factory.settings.json"),
+        "/Users/zhangyanhua/.factory/sessions/9ab2ca7b-bd30-495b-9434-07892ee0e5e6.settings.json",
+    );
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].project, "");
+    assert_eq!(records[0].session_id, "9ab2ca7b-bd30-495b-9434-07892ee0e5e6");
 }
 
 #[test]
@@ -509,6 +524,25 @@ fn overview_from_qwen_fixture_contributes_no_tokens() {
     assert_eq!(dto.cache_creation_tokens, 0);
     assert_eq!(dto.reasoning_tokens, 0);
     assert_eq!(dto.session_count, 0);
+}
+
+#[test]
+fn overview_from_factory_fixture_uses_session_token_usage() {
+    let records = factory::parse_factory_settings(
+        &fixture("factory.settings.json"),
+        "/Users/zhangyanhua/.factory/sessions/-Users-zhangyanhua-AI-cli/9ab2ca7b-bd30-495b-9434-07892ee0e5e6.settings.json",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 20234);
+    assert_eq!(dto.input_tokens, 3);
+    assert_eq!(dto.output_tokens, 1022);
+    assert_eq!(dto.cache_read_tokens, 11084);
+    assert_eq!(dto.cache_creation_tokens, 8125);
+    assert_eq!(dto.reasoning_tokens, 0);
+    assert_eq!(dto.session_count, 1);
 }
 
 #[test]

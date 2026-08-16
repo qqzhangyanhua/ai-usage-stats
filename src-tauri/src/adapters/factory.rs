@@ -21,12 +21,16 @@ pub fn parse_factory_settings(content: &str, source_file: &str) -> Vec<UsageReco
         .strip_suffix(".settings.json")
         .unwrap_or(file_name)
         .to_string();
-    let project = std::path::Path::new(source_file)
+    let parent = std::path::Path::new(source_file)
         .parent()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .map(decode_dashed_dir)
-        .unwrap_or_default();
+        .unwrap_or("");
+    let project = if parent.starts_with('-') {
+        decode_dashed_dir(parent)
+    } else {
+        String::new()
+    };
     vec![finish(UsageRecord {
         occurred_at: text_field(&value, &["providerLockTimestamp"]),
         source: Source::Factory,
