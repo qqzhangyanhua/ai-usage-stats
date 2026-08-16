@@ -1,0 +1,31 @@
+README.md
+  s_5e8fd97e9bc69d::t_f0b1c9fb4805bc 28-33
+docs/probe/token-fields.md
+  s_5e8fd97e9bc69d::t_cf2b8faca9d03f 24-58
+  s_5e8fd97e9bc69d::t_dfe26b00a4f823 72
+src-tauri/Cargo.toml
+  s_5e8fd97e9bc69d::t_648b75b13c6b1a 13-16
+docs/probe/latest-run.md
+  s_5e8fd97e9bc69d::t_7bfeb46d4d9cdf 56-57,59,61
+  s_5e8fd97e9bc69d::t_6012906d11cbbc 25,27,30
+  s_5e8fd97e9bc69d::t_f5d2a01e14fc17 1-24,26,28-29,31-44,46-55,58,60
+  s_5e8fd97e9bc69d::t_229d993c284b43 45
+src-tauri/src/bin/probe.rs
+  s_5e8fd97e9bc69d::t_2bc3a8b1f99390 1-402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "a51e9e08654a35871f70b9ecd8f89c3430324135",
+  "prompts": {},
+  "sessions": {
+    "s_5e8fd97e9bc69d": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "4c0b7d6e-8a24-420e-bea5-b471273aa352",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
