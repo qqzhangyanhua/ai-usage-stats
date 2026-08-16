@@ -982,23 +982,6 @@ fn top_sessions_and_turns_preserve_source_file() {
         "s1",
         20,
     ));
-    let top = aggregate::top_sessions(&records, &Filter::default(), &PriceTable::default(), 2);
-    assert_eq!(top[0].session_id, "s2");
-    assert_eq!(top[0].total_tokens, 300);
-    assert_eq!(top[1].session_id, "s1");
-    assert_eq!(top[1].total_tokens, 120);
-    assert_eq!(top[1].source_file, "/s1.jsonl");
-    let turns = aggregate::session_turns(
-        &records,
-        "s1",
-        Some("codex"),
-        &Filter::default(),
-        &PriceTable::default(),
-    );
-    assert_eq!(turns.len(), 2);
-    assert_eq!(turns[0].total_tokens, 100);
-    assert_eq!(turns[1].total_tokens, 20);
-
     records.push(rec(
         "2026-08-01T12:00:00Z",
         Source::Claude,
@@ -1008,22 +991,68 @@ fn top_sessions_and_turns_preserve_source_file() {
         "s1",
         99,
     ));
-    let same_id_other_source = aggregate::session_turns(
-        &records,
-        "s1",
-        Some("codex"),
-        &Filter::default(),
-        &PriceTable::default(),
-    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let prices = PriceTable::default();
+
+    let top = aggregate::top_sessions(&stored, &Filter::default(), &prices, 2);
+    assert_eq!(top.len(), 2);
+    assert_eq!(top[0].session_id, "s2");
+    assert_eq!(top[0].source, "claude");
+    assert_eq!(top[0].project, "/proj/a");
+    assert_eq!(top[0].total_tokens, 300);
+    assert_eq!(top[0].started_at, "2026-08-02T10:00:00Z");
+    assert_eq!(top[0].ended_at, "2026-08-02T10:00:00Z");
+    assert_eq!(top[0].source_file, "/s2.jsonl");
+    assert_eq!(top[1].session_id, "s1");
+    assert_eq!(top[1].source, "codex");
+    assert_eq!(top[1].total_tokens, 120);
+    assert_eq!(top[1].started_at, "2026-08-01T10:00:00Z");
+    assert_eq!(top[1].ended_at, "2026-08-01T11:00:00Z");
+    assert_eq!(top[1].source_file, "/s1.jsonl");
+
+    let all = aggregate::top_sessions(&stored, &Filter::default(), &prices, 10);
+    assert_eq!(all.len(), 4);
+    assert_eq!(all[2].session_id, "s1");
+    assert_eq!(all[2].source, "claude");
+    assert_eq!(all[2].total_tokens, 99);
+
+    let from_aug2 = Filter {
+        from: Some("2026-08-02T00:00:00Z".into()),
+        ..Filter::default()
+    };
+    let filtered_top = aggregate::top_sessions(&stored, &from_aug2, &prices, 10);
+    assert_eq!(filtered_top.len(), 2);
+    assert_eq!(filtered_top[0].session_id, "s2");
+    assert_eq!(filtered_top[0].total_tokens, 300);
+    assert_eq!(filtered_top[1].session_id, "s3");
+    assert_eq!(filtered_top[1].total_tokens, 50);
+
+    let turns = aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &prices);
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0].occurred_at, "2026-08-01T10:00:00Z");
+    assert_eq!(turns[0].model, "gpt-5.1-codex");
+    assert_eq!(turns[0].total_tokens, 100);
+    assert_eq!(turns[0].source_file, "/s1.jsonl");
+    assert_eq!(turns[1].occurred_at, "2026-08-01T11:00:00Z");
+    assert_eq!(turns[1].total_tokens, 20);
+
+    let same_id_all_sources =
+        aggregate::session_turns(&stored, "s1", None, &Filter::default(), &prices);
+    assert_eq!(same_id_all_sources.len(), 3);
+    let same_id_other_source =
+        aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &prices);
     assert_eq!(same_id_other_source.len(), 2);
 
     let recent = Filter {
         from: Some("2026-08-01T10:30:00Z".into()),
         ..Filter::default()
     };
-    let filtered = aggregate::session_turns(&records, "s1", Some("codex"), &recent, &PriceTable::default());
+    let filtered = aggregate::session_turns(&stored, "s1", Some("codex"), &recent, &prices);
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].total_tokens, 20);
+    assert_eq!(filtered[0].source_file, "/s1.jsonl");
 }
 
 #[test]
