@@ -793,6 +793,61 @@ fn breakdown_by_source_ranks_share_and_follows_filter() {
 }
 
 #[test]
+fn breakdown_by_model_ranks_across_sources_and_follows_filter() {
+    let mut records = seed_records();
+    records.push(rec(
+        "2026-08-01T11:00:00Z",
+        Source::Codex,
+        "gpt-5.5",
+        "official",
+        "/proj/a",
+        "s1",
+        80,
+    ));
+    records.push(rec(
+        "2026-08-08T12:00:00Z",
+        Source::Factory,
+        "",
+        "anthropic",
+        "/proj/b",
+        "s4",
+        20,
+    ));
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let prices = PriceTable::default();
+
+    let rows = aggregate::by_name(&stored, &Filter::default(), &prices, |r| r.model.clone());
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[0].name, "claude-sonnet-5");
+    assert_eq!(rows[0].total_tokens, 300);
+    assert!((rows[0].share - 300.0 / 550.0).abs() < 1e-9);
+    assert_eq!(rows[1].name, "gpt-5.5");
+    assert_eq!(rows[1].total_tokens, 130);
+    assert!((rows[1].share - 130.0 / 550.0).abs() < 1e-9);
+    assert_eq!(rows[2].name, "gpt-5.1-codex");
+    assert_eq!(rows[2].total_tokens, 100);
+    assert_eq!(rows[3].name, "（未标注）");
+    assert_eq!(rows[3].total_tokens, 20);
+
+    let from_aug2 = Filter {
+        from: Some("2026-08-02T00:00:00Z".into()),
+        ..Filter::default()
+    };
+    let filtered = aggregate::by_name(&stored, &from_aug2, &prices, |r| r.model.clone());
+    assert_eq!(filtered.len(), 3);
+    assert_eq!(filtered[0].name, "claude-sonnet-5");
+    assert_eq!(filtered[0].total_tokens, 300);
+    assert!((filtered[0].share - 300.0 / 370.0).abs() < 1e-9);
+    assert_eq!(filtered[1].name, "gpt-5.5");
+    assert_eq!(filtered[1].total_tokens, 50);
+    assert!((filtered[1].share - 50.0 / 370.0).abs() < 1e-9);
+    assert_eq!(filtered[2].name, "（未标注）");
+    assert_eq!(filtered[2].total_tokens, 20);
+}
+
+#[test]
 fn top_sessions_and_turns_preserve_source_file() {
     let mut records = seed_records();
     records.push(rec(
