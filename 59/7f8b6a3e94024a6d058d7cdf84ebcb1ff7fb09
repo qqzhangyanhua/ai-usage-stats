@@ -1,0 +1,21 @@
+src-tauri/src/tests.rs
+  s_5e8fd97e9bc69d::t_a183062ffc388b 426-444
+  s_5e8fd97e9bc69d::t_26e8dafae2d3a3 180,189-190,192-194,196-199,201-202,212-213
+  s_5e8fd97e9bc69d::t_91eadbc2e8fb66 425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "597f8b6a3e94024a6d058d7cdf84ebcb1ff7fb09",
+  "prompts": {},
+  "sessions": {
+    "s_5e8fd97e9bc69d": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "4c0b7d6e-8a24-420e-bea5-b471273aa352",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
