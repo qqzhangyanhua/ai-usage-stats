@@ -1,0 +1,20 @@
+src-tauri/src/tests.rs
+  s_89bf505512076e::t_2dbc70e264e4f4 1041-1043
+  s_89bf505512076e::t_d2780c57e9d61f 994-1040,1044-1045,1052,1055
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "dd9a3a05c9ac94f1ea363d4e10a5adcecbce311d",
+  "prompts": {},
+  "sessions": {
+    "s_89bf505512076e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0093d-c5f2-7730-b254-e7debd006e35",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
