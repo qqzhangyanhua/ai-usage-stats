@@ -220,11 +220,16 @@ fn gemini_adapter_maps_chat_tokens() {
         "/Users/zhangyanhua/.gemini/tmp/ruoyi-ui-vue3/chats/session-2026-03-07.json",
     );
     assert_eq!(records.len(), 1);
+    assert_eq!(records[0].source, Source::Gemini);
     assert_eq!(records[0].model, "gemini-3-flash-preview");
+    assert_eq!(records[0].session_id, "2392a2f0-142a-407e-a08f-8f37781ba76c");
+    assert_eq!(records[0].project, "ruoyi-ui-vue3");
     assert_eq!(records[0].input_tokens, 13354);
+    assert_eq!(records[0].output_tokens, 662);
+    assert_eq!(records[0].cache_read_tokens, 0);
+    assert_eq!(records[0].cache_creation_tokens, 0);
     assert_eq!(records[0].reasoning_tokens, 285);
     assert_eq!(records[0].total_tokens, 14301);
-    assert_eq!(records[0].project, "ruoyi-ui-vue3");
 }
 
 #[test]
@@ -440,6 +445,25 @@ fn overview_from_dsh_fixture_uses_final_assistant_totals() {
     assert_eq!(dto.reasoning_tokens, 602);
     assert_eq!(dto.session_count, 1);
     assert_ne!(dto.total_tokens, 30829 + 4);
+}
+
+#[test]
+fn overview_from_gemini_fixture_sums_per_record_token_dimensions() {
+    let records = gemini::parse_gemini_session(
+        &fixture("gemini-session.json"),
+        "/Users/zhangyanhua/.gemini/tmp/ruoyi-ui-vue3/chats/session-2026-03-07.json",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 14301);
+    assert_eq!(dto.input_tokens, 13354);
+    assert_eq!(dto.output_tokens, 662);
+    assert_eq!(dto.cache_read_tokens, 0);
+    assert_eq!(dto.cache_creation_tokens, 0);
+    assert_eq!(dto.reasoning_tokens, 285);
+    assert_eq!(dto.session_count, 1);
 }
 
 #[test]
