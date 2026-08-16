@@ -225,6 +225,9 @@ fn ingest_qwen(conn: &Connection, root: &Path, report: &mut IngestReport) -> Res
         return Ok(());
     }
     for path in walk_files(root, "json") {
+        if path.file_name().and_then(|n| n.to_str()) != Some("logs.json") {
+            continue;
+        }
         ingest_one(conn, &path, report, |bytes, loc| {
             let content = String::from_utf8_lossy(bytes).into_owned();
             Ok(qwen::parse_qwen_session(&content, loc))
