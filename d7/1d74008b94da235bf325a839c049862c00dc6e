@@ -1,0 +1,37 @@
+src-tauri/src/domain.rs
+  s_9b494ab314bb5a::t_e28e5046e8fa1b 383-386,400-403
+src/types.ts
+  s_9b494ab314bb5a::t_fd60851bdfb107 209-212
+src-tauri/src/adapters/cursor_account.rs
+  s_9b494ab314bb5a::t_02e646e3ce510e 81-87,95,97-104,108-123,125-132
+  s_9b494ab314bb5a::t_a1b420ba3cfa1a 124
+  s_9b494ab314bb5a::t_de226ed2b19b61 4
+  s_9b494ab314bb5a::t_28a61171cb770b 133-134
+src-tauri/src/tests.rs
+  s_9b494ab314bb5a::t_98a87f776044a1 3114-3157
+  s_9b494ab314bb5a::t_fe42e6395691ef 3113
+src/styles.css
+  s_9b494ab314bb5a::t_e52ee0a9bf49cd 2294-2299
+src/components/CursorAccountUsagePanel.tsx
+  s_9b494ab314bb5a::t_c1cf9603c8b67e 104-120
+  s_9b494ab314bb5a::t_8bf19238d0c654 203-213,215,225-256
+  s_9b494ab314bb5a::t_e94e4583ed1959 214,216-224
+  s_9b494ab314bb5a::t_8e94a05a4f4991 4-5,7,10
+  s_9b494ab314bb5a::t_27c3a78321cf7a 24-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "d71d74008b94da235bf325a839c049862c00dc6e",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
