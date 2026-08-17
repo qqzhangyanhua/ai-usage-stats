@@ -109,6 +109,7 @@ export default function App() {
                     await invoke("save_price_table", { prices: data.prices });
                     data.setStatus("单价已保存");
                   }}
+                  onSnapshotRefreshed={() => data.runIngest("刷新")}
                 />
               ) : null}
             </ErrorBoundary>
