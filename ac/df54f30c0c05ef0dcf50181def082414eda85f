@@ -1,0 +1,34 @@
+package.json
+  s_f71c3dc81c93e0::t_ce2a830dbdcc6f 24,29-34,36
+  s_f71c3dc81c93e0::t_d876dc907c976d 6
+  s_f71c3dc81c93e0::t_faa559aebfbb5b 11-14
+.prettierrc.json
+  s_f71c3dc81c93e0::t_3a18546d7a4d87 1-6
+eslint.config.js
+  s_f71c3dc81c93e0::t_18dc7546e5c082 37-40
+  s_f71c3dc81c93e0::t_b9236fe18271b6 27-28
+  s_f71c3dc81c93e0::t_b8316cf75363a6 1-26,29-36,41-42
+.gitignore
+  s_f71c3dc81c93e0::t_1631f2da72bf6e 12
+.prettierignore
+  s_f71c3dc81c93e0::t_1f9a027fcb1b34 1-5
+  s_f71c3dc81c93e0::t_a80e982a6873da 6-9
+pnpm-lock.yaml
+  s_f71c3dc81c93e0::t_78ca2ea034fc85 1-2140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "acdf54f30c0c05ef0dcf50181def082414eda85f",
+  "prompts": {},
+  "sessions": {
+    "s_f71c3dc81c93e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f569826c-d693-464b-8b5c-0310af284942",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
