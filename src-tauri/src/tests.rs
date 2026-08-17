@@ -3111,6 +3111,51 @@ fn cursor_account_summary_buckets_tokens_by_local_day() {
 }
 
 #[test]
+fn cursor_account_summary_splits_by_model_and_headless() {
+    use crate::domain::CursorUsageEvent;
+
+    fn ev(model: &str, input: i64, headless: bool) -> CursorUsageEvent {
+        CursorUsageEvent {
+            occurred_at: "2024-01-15T12:00:00+00:00".into(),
+            model: model.into(),
+            input_tokens: input,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: headless,
+        }
+    }
+
+    let dto = cursor_account::summarize_cursor_usage(&[
+        ev("claude-4.5-sonnet", 300, false),
+        ev("composer-2", 100, true),
+        ev("claude-4.5-sonnet", 100, true),
+    ]);
+    assert_eq!(dto.by_model.len(), 2);
+    assert_eq!(dto.by_model[0].name, "claude-4.5-sonnet");
+    assert_eq!(dto.by_model[0].total_tokens, 400);
+    assert!((dto.by_model[0].share - 0.8).abs() < 1e-9);
+    assert_eq!(dto.by_model[1].name, "composer-2");
+    assert_eq!(dto.by_model[1].total_tokens, 100);
+    assert!((dto.by_model[1].share - 0.2).abs() < 1e-9);
+    assert_eq!(dto.headless_tokens, 200);
+    assert_eq!(dto.interactive_tokens, 300);
+    assert!((dto.headless_share.unwrap() - 0.4).abs() < 1e-9);
+
+    let interactive_only = cursor_account::summarize_cursor_usage(&[ev("gpt-5", 50, false)]);
+    assert_eq!(interactive_only.by_model.len(), 1);
+    assert_eq!(interactive_only.headless_tokens, 0);
+    assert_eq!(interactive_only.interactive_tokens, 50);
+    assert_eq!(interactive_only.headless_share, Some(0.0));
+
+    let empty = cursor_account::summarize_cursor_usage(&[]);
+    assert!(empty.by_model.is_empty());
+    assert_eq!(empty.headless_tokens, 0);
+    assert_eq!(empty.interactive_tokens, 0);
+    assert_eq!(empty.headless_share, None);
+}
+
+#[test]
 fn cursor_account_store_dedups_by_fingerprint() {
     let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
         .expect("parse");

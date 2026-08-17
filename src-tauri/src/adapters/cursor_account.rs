@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::adapters::i64_field;
-use crate::domain::{CursorAccountUsageDto, CursorUsageEvent, SeriesPoint};
+use crate::domain::{CursorAccountUsageDto, CursorUsageEvent, NamedAmount, SeriesPoint};
 
 pub struct CursorUsagePage {
     pub events: Vec<CursorUsageEvent>,
@@ -78,6 +78,13 @@ pub fn summarize_cursor_usage(events: &[CursorUsageEvent]) -> CursorAccountUsage
     let output_tokens = events.iter().map(|e| e.output_tokens).sum();
     let cache_read_tokens = events.iter().map(|e| e.cache_read_tokens).sum();
     let cache_creation_tokens = events.iter().map(|e| e.cache_creation_tokens).sum();
+    let total_tokens = events.iter().map(CursorUsageEvent::total_tokens).sum();
+    let headless_tokens = events
+        .iter()
+        .filter(|event| event.is_headless)
+        .map(CursorUsageEvent::total_tokens)
+        .sum();
+    let interactive_tokens = total_tokens - headless_tokens;
     CursorAccountUsageDto {
         as_of: None,
         event_count: events.len() as i64,
@@ -85,9 +92,44 @@ pub fn summarize_cursor_usage(events: &[CursorUsageEvent]) -> CursorAccountUsage
         output_tokens,
         cache_read_tokens,
         cache_creation_tokens,
-        total_tokens: events.iter().map(CursorUsageEvent::total_tokens).sum(),
+        total_tokens,
         daily: bucket_daily(events),
+        by_model: bucket_models(events, total_tokens),
+        headless_tokens,
+        interactive_tokens,
+        headless_share: if total_tokens > 0 {
+            Some(headless_tokens as f64 / total_tokens as f64)
+        } else {
+            None
+        },
     }
+}
+
+fn bucket_models(events: &[CursorUsageEvent], grand: i64) -> Vec<NamedAmount> {
+    let mut buckets: BTreeMap<String, i64> = BTreeMap::new();
+    for event in events {
+        *buckets.entry(event.model.clone()).or_insert(0) += event.total_tokens();
+    }
+    let mut rows: Vec<NamedAmount> = buckets
+        .into_iter()
+        .map(|(name, total_tokens)| NamedAmount {
+            name,
+            total_tokens,
+            share: if grand == 0 {
+                0.0
+            } else {
+                total_tokens as f64 / grand as f64
+            },
+            cost: None,
+            unpriced: true,
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b.total_tokens
+            .cmp(&a.total_tokens)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    rows
 }
 
 fn bucket_daily(events: &[CursorUsageEvent]) -> Vec<SeriesPoint> {

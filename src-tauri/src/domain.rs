@@ -380,6 +380,10 @@ pub struct CursorAccountUsageDto {
     pub cache_creation_tokens: i64,
     pub total_tokens: i64,
     pub daily: Vec<SeriesPoint>,
+    pub by_model: Vec<NamedAmount>,
+    pub headless_tokens: i64,
+    pub interactive_tokens: i64,
+    pub headless_share: Option<f64>,
 }
 
 impl CursorAccountUsageDto {
@@ -393,6 +397,10 @@ impl CursorAccountUsageDto {
             cache_creation_tokens: 0,
             total_tokens: 0,
             daily: Vec::new(),
+            by_model: Vec::new(),
+            headless_tokens: 0,
+            interactive_tokens: 0,
+            headless_share: None,
         }
     }
 }

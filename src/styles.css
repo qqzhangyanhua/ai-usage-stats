@@ -2291,6 +2291,12 @@ tr.selected {
   gap: 8px;
 }
 
+.split-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
 .token-row {
   display: grid;
   grid-template-columns: 1fr auto;

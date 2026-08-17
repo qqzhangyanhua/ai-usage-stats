@@ -206,6 +206,10 @@ export type CursorAccountUsageDto = {
   cache_creation_tokens: number;
   total_tokens: number;
   daily: SeriesPoint[];
+  by_model: NamedAmount[];
+  headless_tokens: number;
+  interactive_tokens: number;
+  headless_share: number | null;
 };
 
 export type FilterOptions = {

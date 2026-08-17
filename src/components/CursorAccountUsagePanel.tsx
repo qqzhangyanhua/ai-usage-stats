@@ -1,12 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import type { ResolvedTheme } from "../hooks/useTheme";
-import { areaTrendOption } from "../lib/chartTheme";
-import { formatClock, formatTokens, humanStatus } from "../lib/format";
+import { areaTrendOption, donutOption, modelSlices } from "../lib/chartTheme";
+import { formatClock, formatCompact, formatTokens, humanStatus } from "../lib/format";
 import type { CursorAccountUsageDto } from "../types";
+import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { ExportableChart } from "./ExportableChart";
-import { KpiCard } from "./Kpi";
+import { KpiCard, LegendRow } from "./Kpi";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
 
@@ -20,6 +21,10 @@ function emptyUsage(): CursorAccountUsageDto {
     cache_creation_tokens: 0,
     total_tokens: 0,
     daily: [],
+    by_model: [],
+    headless_tokens: 0,
+    interactive_tokens: 0,
+    headless_share: null,
   };
 }
 
@@ -96,6 +101,23 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
   const asOf = formatClock(data.as_of);
   const showEmpty = data.event_count === 0 && data.total_tokens === 0;
   const trendOption = useMemo(() => areaTrendOption(data.daily, theme), [data.daily, theme]);
+  const modelOption = useMemo(
+    () => donutOption(modelSlices(data.by_model), theme),
+    [data.by_model, theme],
+  );
+  const headlessOption = useMemo(
+    () =>
+      donutOption(
+        [
+          { name: "后台", value: data.headless_tokens, color: "#8b6cff" },
+          { name: "交互", value: data.interactive_tokens, color: "#22d3ee" },
+        ],
+        theme,
+      ),
+    [data.headless_tokens, data.interactive_tokens, theme],
+  );
+  const headlessPct =
+    data.headless_share == null ? "—" : `${(data.headless_share * 100).toFixed(1)}%`;
 
   return (
     <div className="stack">
@@ -178,6 +200,60 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
               style={{ height: 280 }}
             />
           </section>
+          <div className="split-2">
+            <section className="panel partition">
+              <div className="panel-head">
+                <h2>按模型</h2>
+              </div>
+              <div className="donut-wrap">
+                <DonutChart
+                  option={modelOption}
+                  centerValue={formatCompact(data.total_tokens)}
+                />
+                <div className="legend-col">
+                  {modelSlices(data.by_model).map((item) => (
+                    <LegendRow
+                      key={item.name}
+                      color={item.color}
+                      label={item.name}
+                      value={formatTokens(item.value)}
+                      extra={
+                        data.total_tokens > 0
+                          ? `${((item.value / data.total_tokens) * 100).toFixed(1)}%`
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            </section>
+            <section className="panel partition">
+              <div className="panel-head">
+                <h2>后台 / 交互</h2>
+              </div>
+              <div className="donut-wrap">
+                <DonutChart option={headlessOption} centerValue={headlessPct} />
+                <div className="legend-col">
+                  <LegendRow
+                    color="#8b6cff"
+                    label="后台"
+                    value={formatTokens(data.headless_tokens)}
+                    extra={headlessPct}
+                  />
+                  <LegendRow
+                    color="#22d3ee"
+                    label="交互"
+                    value={formatTokens(data.interactive_tokens)}
+                    extra={
+                      data.total_tokens > 0
+                        ? `${((data.interactive_tokens / data.total_tokens) * 100).toFixed(1)}%`
+                        : undefined
+                    }
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
         </>
       )}
     </div>
