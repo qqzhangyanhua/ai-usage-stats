@@ -36,9 +36,9 @@ fn probe_dsh(root: &Path) {
         return;
     };
     println!("sample={}", file.display());
-    match fs::read(&file).and_then(|bytes| {
-        zstd::decode_all(bytes.as_slice()).map_err(|e| std::io::Error::other(e))
-    }) {
+    match fs::read(&file)
+        .and_then(|bytes| zstd::decode_all(bytes.as_slice()).map_err(std::io::Error::other))
+    {
         Ok(decoded) => {
             let text = String::from_utf8_lossy(&decoded);
             let mut types = Vec::new();
@@ -144,7 +144,10 @@ fn probe_gemini(root: &Path) {
             found = true;
             println!("sample={}", file.display());
             println!("has_token=true");
-            println!("token_object_keys={}", object_keys(&msg["tokens"]).join(","));
+            println!(
+                "token_object_keys={}",
+                object_keys(&msg["tokens"]).join(",")
+            );
             println!("map.input=tokens.input");
             println!("map.output=tokens.output");
             println!("map.cache_read=tokens.cached");
@@ -199,9 +202,10 @@ fn probe_grok(root: &Path) {
             if model.is_empty() {
                 model = text_of_pointer(&value, "/params/update/_meta/modelId");
             }
-            if let Some(total) = value.pointer("/params/_meta/totalTokens").and_then(|v| {
-                v.as_i64().or_else(|| v.as_u64().map(|n| n as i64))
-            }) {
+            if let Some(total) = value
+                .pointer("/params/_meta/totalTokens")
+                .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)))
+            {
                 last_total = Some(total);
                 prompt_id = text_of_pointer(&value, "/params/_meta/promptId");
             }

@@ -3,8 +3,9 @@ use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
 use crate::adapters::{claude, codex, dsh, factory, gemini, grok, kimi, pi, qwen};
 use crate::aggregate;
 use crate::cost::derive_cost;
-use crate::domain::{Filter, PriceEntry, PriceTable, Source, UsageRecord};
+use crate::domain::{Filter, PriceEntry, PriceTable, SessionQuery, Source, UsageRecord};
 use crate::ingest;
+use crate::query;
 use crate::store;
 
 fn fixture(name: &str) -> String {
@@ -51,8 +52,14 @@ fn codex_adapter_counts_last_token_usage_not_cumulative() {
     assert_eq!(records[0].source, Source::Codex);
     assert_eq!(records[0].model, "gpt-5.1-codex");
     assert_eq!(records[0].provider, "codex_local_access");
-    assert_eq!(records[0].project, "/Users/zhangyanhua/AI/chord-creator-studio");
-    assert_eq!(records[0].session_id, "019a9618-5abf-7892-be63-df90ece3d676");
+    assert_eq!(
+        records[0].project,
+        "/Users/zhangyanhua/AI/chord-creator-studio"
+    );
+    assert_eq!(
+        records[0].session_id,
+        "019a9618-5abf-7892-be63-df90ece3d676"
+    );
     assert_eq!(records[0].input_tokens, 8904);
     assert_eq!(records[0].cache_read_tokens, 1024);
     assert_eq!(records[0].output_tokens, 592);
@@ -75,11 +82,11 @@ fn claude_adapter_maps_usage_and_project_dir() {
     assert_eq!(records.len(), 2);
     assert_eq!(records[0].source, Source::Claude);
     assert_eq!(records[0].model, "claude-sonnet-5");
-    assert_eq!(records[0].session_id, "04868551-34c3-4588-b984-6ae9a5d95f8a");
     assert_eq!(
-        records[0].project,
-        "/Users/zhangyanhua/AI/TradingAgents-CN"
+        records[0].session_id,
+        "04868551-34c3-4588-b984-6ae9a5d95f8a"
     );
+    assert_eq!(records[0].project, "/Users/zhangyanhua/AI/TradingAgents-CN");
     assert_eq!(records[0].input_tokens, 0);
     assert_eq!(records[0].output_tokens, 62);
     assert_eq!(records[0].cache_read_tokens, 0);
@@ -103,8 +110,14 @@ fn pi_adapter_uses_native_cost() {
     assert_eq!(records[0].source, Source::Pi);
     assert_eq!(records[0].model, "gpt-5.5");
     assert_eq!(records[0].provider, "subapi");
-    assert_eq!(records[0].project, "/Users/zhangyanhua/workCode/ruoyi-ui-vue3");
-    assert_eq!(records[0].session_id, "019f5abc-b360-79e4-bd7d-9a794da8cfc5");
+    assert_eq!(
+        records[0].project,
+        "/Users/zhangyanhua/workCode/ruoyi-ui-vue3"
+    );
+    assert_eq!(
+        records[0].session_id,
+        "019f5abc-b360-79e4-bd7d-9a794da8cfc5"
+    );
     assert_eq!(records[0].input_tokens, 12658);
     assert_eq!(records[0].output_tokens, 35);
     assert_eq!(records[0].cache_read_tokens, 0);
@@ -138,7 +151,10 @@ fn opencode_adapter_skips_user_and_keeps_native_cost() {
     assert_eq!(records[0].source, Source::Opencode);
     assert_eq!(records[0].model, "gemini-claude-sonnet-4-5-thinking");
     assert_eq!(records[0].provider, "anthropic");
-    assert_eq!(records[0].project, "/Users/zhangyanhua/workCode/project_front");
+    assert_eq!(
+        records[0].project,
+        "/Users/zhangyanhua/workCode/project_front"
+    );
     assert_eq!(records[0].session_id, "ses_4064c35bcffeKnRpPdbo4Ege2l");
     assert_eq!(records[0].input_tokens, 20882);
     assert_eq!(records[0].output_tokens, 138);
@@ -158,8 +174,14 @@ fn kimi_adapter_keeps_last_status_update_per_turn() {
     );
     assert_eq!(records.len(), 2);
     assert_eq!(records[0].source, Source::Kimi);
-    assert_eq!(records[0].session_id, "bd1ab6fc-768d-4cff-b4c4-221a583c3af8");
-    assert_eq!(records[0].project, "/Users/zhangyanhua/workCode/app-storage");
+    assert_eq!(
+        records[0].session_id,
+        "bd1ab6fc-768d-4cff-b4c4-221a583c3af8"
+    );
+    assert_eq!(
+        records[0].project,
+        "/Users/zhangyanhua/workCode/app-storage"
+    );
     assert_eq!(records[0].model, "");
     assert_eq!(records[0].input_tokens, 3000);
     assert_eq!(records[0].output_tokens, 200);
@@ -187,7 +209,10 @@ fn dsh_adapter_reads_final_assistant_turn_not_chunks() {
     assert_eq!(records[0].model, "deepseek-v4-flash");
     assert_eq!(records[0].provider, "deepseek-official");
     assert_eq!(records[0].project, "/Users/zhangyanhua/AI/pi");
-    assert_eq!(records[0].session_id, "session-f1cbbe01-e379-4152-8d13-46440f595d2d");
+    assert_eq!(
+        records[0].session_id,
+        "session-f1cbbe01-e379-4152-8d13-46440f595d2d"
+    );
     assert_eq!(records[0].input_tokens, 13672);
     assert_eq!(records[0].output_tokens, 442);
     assert_eq!(records[0].cache_read_tokens, 0);
@@ -222,7 +247,10 @@ fn gemini_adapter_maps_chat_tokens() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].source, Source::Gemini);
     assert_eq!(records[0].model, "gemini-3-flash-preview");
-    assert_eq!(records[0].session_id, "2392a2f0-142a-407e-a08f-8f37781ba76c");
+    assert_eq!(
+        records[0].session_id,
+        "2392a2f0-142a-407e-a08f-8f37781ba76c"
+    );
     assert_eq!(records[0].project, "ruoyi-ui-vue3");
     assert_eq!(records[0].input_tokens, 13354);
     assert_eq!(records[0].output_tokens, 662);
@@ -271,13 +299,178 @@ fn factory_adapter_maps_session_token_usage() {
     assert_eq!(records[0].provider, "anthropic");
     assert_eq!(records[0].model, "");
     assert_eq!(records[0].project, "/Users/zhangyanhua/AI/cli");
-    assert_eq!(records[0].session_id, "9ab2ca7b-bd30-495b-9434-07892ee0e5e6");
+    assert_eq!(
+        records[0].session_id,
+        "9ab2ca7b-bd30-495b-9434-07892ee0e5e6"
+    );
     assert_eq!(records[0].input_tokens, 3);
     assert_eq!(records[0].output_tokens, 1022);
     assert_eq!(records[0].cache_creation_tokens, 8125);
     assert_eq!(records[0].cache_read_tokens, 11084);
     assert_eq!(records[0].reasoning_tokens, 0);
     assert_eq!(records[0].total_tokens, 20234);
+}
+
+#[test]
+fn source_maps_to_user_facing_application_names() {
+    assert_eq!(Source::Claude.application_name(), "Claude Code");
+    assert_eq!(Source::Codex.application_name(), "Codex");
+    assert_eq!(Source::Factory.application_name(), "Droid");
+    assert_eq!(Source::Opencode.application_name(), "OpenCode");
+    assert_eq!(Source::Dsh.application_name(), "DeepSeek Harness");
+}
+
+#[test]
+fn application_breakdown_ranks_user_facing_apps() {
+    let records = seed_records();
+    let rows = aggregate::by_name(
+        &records,
+        &Filter::default(),
+        &PriceTable::default(),
+        |record| record.source.application_name().to_string(),
+    );
+
+    assert_eq!(rows[0].name, "Claude Code");
+    assert_eq!(rows[0].total_tokens, 300);
+    assert_eq!(rows[1].name, "Codex");
+    assert_eq!(rows[1].total_tokens, 100);
+    assert_eq!(rows[2].name, "Pi");
+    assert_eq!(rows[2].total_tokens, 50);
+}
+
+#[test]
+fn application_analytics_builds_trend_matrix_and_efficiency_metrics() {
+    let mut codex_day_one = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "codex-session",
+        100,
+    );
+    codex_day_one.input_tokens = 80;
+    codex_day_one.cache_read_tokens = 20;
+    codex_day_one.reasoning_tokens = 10;
+
+    let mut codex_day_two = rec(
+        "2026-08-02T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "codex-session",
+        50,
+    );
+    codex_day_two.input_tokens = 40;
+    codex_day_two.cache_read_tokens = 10;
+    codex_day_two.reasoning_tokens = 5;
+
+    let mut claude_project_a = rec(
+        "2026-08-01T11:00:00Z",
+        Source::Claude,
+        "claude-sonnet-5",
+        "anthropic",
+        "/proj/a",
+        "claude-a",
+        200,
+    );
+    claude_project_a.input_tokens = 100;
+    claude_project_a.cache_read_tokens = 100;
+    claude_project_a.reasoning_tokens = 20;
+
+    let mut claude_project_b = rec(
+        "2026-08-02T11:00:00Z",
+        Source::Claude,
+        "claude-sonnet-5",
+        "anthropic",
+        "/proj/b",
+        "claude-b",
+        100,
+    );
+    claude_project_b.input_tokens = 0;
+
+    let records = vec![
+        codex_day_one,
+        codex_day_two,
+        claude_project_a,
+        claude_project_b,
+    ];
+    let analytics = aggregate::application_analytics(&records, &Filter::default(), "day");
+
+    assert_eq!(analytics.summary.total_tokens, 450);
+    assert_eq!(analytics.summary.session_count, 3);
+    assert_eq!(analytics.summary.average_session_tokens, Some(150.0));
+    assert!((analytics.summary.cache_hit_rate.unwrap() - 130.0 / 350.0).abs() < 1e-9);
+    assert!((analytics.summary.reasoning_share.unwrap() - 35.0 / 450.0).abs() < 1e-9);
+
+    assert_eq!(analytics.by_application.len(), 2);
+    assert_eq!(analytics.by_application[0].application, "Claude Code");
+    assert_eq!(analytics.by_application[0].metrics.total_tokens, 300);
+    assert_eq!(analytics.by_application[0].metrics.session_count, 2);
+    assert_eq!(
+        analytics.by_application[0].metrics.average_session_tokens,
+        Some(150.0)
+    );
+    assert_eq!(
+        analytics.by_application[0].metrics.cache_hit_rate,
+        Some(0.5)
+    );
+    assert!(
+        (analytics.by_application[0].metrics.reasoning_share.unwrap() - 1.0 / 15.0).abs() < 1e-9
+    );
+    assert_eq!(analytics.by_application[1].source, "codex");
+    assert_eq!(
+        analytics.by_application[1].metrics.cache_hit_rate,
+        Some(0.2)
+    );
+
+    assert_eq!(analytics.trend.len(), 2);
+    assert_eq!(analytics.trend[0].bucket, "2026-08-01");
+    assert_eq!(analytics.trend[0].total_tokens, 300);
+    assert_eq!(analytics.trend[0].values["codex"], 100);
+    assert_eq!(analytics.trend[0].values["claude"], 200);
+    assert_eq!(analytics.trend[1].total_tokens, 150);
+
+    assert_eq!(analytics.projects.len(), 2);
+    assert_eq!(analytics.projects[0].project, "/proj/a");
+    assert_eq!(analytics.projects[0].total_tokens, 350);
+    assert_eq!(analytics.projects[0].values["codex"], 150);
+    assert_eq!(analytics.projects[0].values["claude"], 200);
+    assert_eq!(analytics.projects[1].project, "/proj/b");
+
+    let filtered = aggregate::application_analytics(
+        &records,
+        &Filter {
+            projects: vec!["/proj/b".into()],
+            ..Filter::default()
+        },
+        "month",
+    );
+    assert_eq!(filtered.summary.total_tokens, 100);
+    assert_eq!(filtered.by_application.len(), 1);
+    assert_eq!(filtered.by_application[0].application, "Claude Code");
+    assert_eq!(filtered.trend[0].bucket, "2026-08");
+    assert_eq!(filtered.projects.len(), 1);
+}
+
+#[test]
+fn application_efficiency_returns_none_when_ratio_denominators_are_zero() {
+    let records = vec![rec(
+        "2026-08-01T10:00:00Z",
+        Source::Factory,
+        "",
+        "anthropic",
+        "",
+        "droid-session",
+        0,
+    )];
+    let analytics = aggregate::application_analytics(&records, &Filter::default(), "day");
+
+    assert_eq!(analytics.summary.cache_hit_rate, None);
+    assert_eq!(analytics.summary.reasoning_share, None);
+    assert_eq!(analytics.summary.average_session_tokens, Some(0.0));
+    assert_eq!(analytics.projects[0].project, "（未标注）");
 }
 
 #[test]
@@ -288,7 +481,10 @@ fn factory_adapter_root_settings_have_empty_project() {
     );
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].project, "");
-    assert_eq!(records[0].session_id, "9ab2ca7b-bd30-495b-9434-07892ee0e5e6");
+    assert_eq!(
+        records[0].session_id,
+        "9ab2ca7b-bd30-495b-9434-07892ee0e5e6"
+    );
 }
 
 #[test]
@@ -767,10 +963,17 @@ fn trend_buckets_by_day_and_week() {
     assert_eq!(days.len(), 3);
     assert_eq!(days[0].bucket, "2026-08-01");
     assert_eq!(days[0].total_tokens, 120);
+    assert_eq!(days[0].input_tokens, 120);
+    assert_eq!(days[0].output_tokens, 0);
     assert_eq!(days[1].bucket, "2026-08-02");
     assert_eq!(days[1].total_tokens, 300);
     assert_eq!(days[2].bucket, "2026-08-08");
     assert_eq!(days[2].total_tokens, 50);
+
+    let months = aggregate::trend(&stored, &Filter::default(), &prices, "month");
+    assert_eq!(months.len(), 1);
+    assert_eq!(months[0].bucket, "2026-08");
+    assert_eq!(months[0].total_tokens, 470);
 
     let weeks = aggregate::trend(&stored, &Filter::default(), &prices, "week");
     assert_eq!(weeks.len(), 2);
@@ -810,14 +1013,16 @@ fn breakdowns_rank_source_model_provider_and_project() {
     });
     assert_eq!(by_model[0].name, "claude-sonnet-5");
 
-    let by_provider = aggregate::by_name(&records, &Filter::default(), &PriceTable::default(), |r| {
-        r.provider.clone()
-    });
+    let by_provider =
+        aggregate::by_name(&records, &Filter::default(), &PriceTable::default(), |r| {
+            r.provider.clone()
+        });
     assert_eq!(by_provider[0].name, "anthropic");
 
-    let by_project = aggregate::by_name(&records, &Filter::default(), &PriceTable::default(), |r| {
-        r.project.clone()
-    });
+    let by_project =
+        aggregate::by_name(&records, &Filter::default(), &PriceTable::default(), |r| {
+            r.project.clone()
+        });
     assert_eq!(by_project[0].name, "/proj/a");
     assert_eq!(by_project[0].total_tokens, 400);
 }
@@ -959,9 +1164,7 @@ fn breakdown_by_provider_ranks_and_follows_filter() {
     let stored = store::load_all(&conn).unwrap();
     let prices = PriceTable::default();
 
-    let rows = aggregate::by_name(&stored, &Filter::default(), &prices, |r| {
-        r.provider.clone()
-    });
+    let rows = aggregate::by_name(&stored, &Filter::default(), &prices, |r| r.provider.clone());
     assert_eq!(rows.len(), 5);
     assert_eq!(rows[0].name, "anthropic");
     assert_eq!(rows[0].total_tokens, 340);
@@ -1018,9 +1221,7 @@ fn breakdown_by_project_ranks_and_follows_filter() {
     let stored = store::load_all(&conn).unwrap();
     let prices = PriceTable::default();
 
-    let rows = aggregate::by_name(&stored, &Filter::default(), &prices, |r| {
-        r.project.clone()
-    });
+    let rows = aggregate::by_name(&stored, &Filter::default(), &prices, |r| r.project.clone());
     assert_eq!(rows.len(), 4);
     assert_eq!(rows[0].name, "/proj/a");
     assert_eq!(rows[0].total_tokens, 400);
@@ -1130,6 +1331,117 @@ fn top_sessions_and_turns_preserve_source_file() {
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].total_tokens, 20);
     assert_eq!(filtered[0].source_file, "/s1.jsonl");
+}
+
+#[test]
+fn sessions_page_supports_search_sort_and_pagination() {
+    let mut records = seed_records();
+    records.push(rec(
+        "2026-08-01T11:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/c",
+        "s6",
+        80,
+    ));
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let prices = PriceTable::default();
+
+    // 默认排序：按 total_tokens 降序，分页返回第一页。
+    let page1 = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            filter: Filter::default(),
+            search: None,
+            sort_by: None,
+            sort_dir: None,
+            page: Some(1),
+            page_size: Some(2),
+        },
+    )
+    .unwrap();
+    assert_eq!(page1.total, 4);
+    assert_eq!(page1.rows.len(), 2);
+    assert_eq!(page1.rows[0].session_id, "s2");
+    assert_eq!(page1.rows[0].total_tokens, 300);
+    assert_eq!(page1.rows[1].session_id, "s1");
+    assert_eq!(page1.total_tokens, 300 + 100 + 80 + 50);
+
+    let page2 = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            filter: Filter::default(),
+            search: None,
+            sort_by: None,
+            sort_dir: None,
+            page: Some(2),
+            page_size: Some(2),
+        },
+    )
+    .unwrap();
+    assert_eq!(page2.rows.len(), 2);
+    assert_eq!(page2.rows[0].session_id, "s6");
+    assert_eq!(page2.rows[1].session_id, "s3");
+
+    // 升序排序按 session_id。
+    let asc_by_session = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            filter: Filter::default(),
+            search: None,
+            sort_by: Some("session".into()),
+            sort_dir: Some("asc".into()),
+            page: Some(1),
+            page_size: Some(10),
+        },
+    )
+    .unwrap();
+    let ids: Vec<&str> = asc_by_session
+        .rows
+        .iter()
+        .map(|r| r.session_id.as_str())
+        .collect();
+    assert_eq!(ids, vec!["s1", "s2", "s3", "s6"]);
+
+    // 搜索：只命中项目名包含 "proj/c" 的会话。
+    let searched = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            filter: Filter::default(),
+            search: Some("proj/c".into()),
+            sort_by: None,
+            sort_dir: None,
+            page: Some(1),
+            page_size: Some(10),
+        },
+    )
+    .unwrap();
+    assert_eq!(searched.total, 1);
+    assert_eq!(searched.rows[0].session_id, "s6");
+
+    // 搜索无匹配时返回空结果而非报错。
+    let no_match = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            filter: Filter::default(),
+            search: Some("不存在的关键字".into()),
+            sort_by: None,
+            sort_dir: None,
+            page: Some(1),
+            page_size: Some(10),
+        },
+    )
+    .unwrap();
+    assert_eq!(no_match.total, 0);
+    assert!(no_match.rows.is_empty());
+    assert_eq!(no_match.last_ended, None);
 }
 
 #[test]
@@ -1279,18 +1591,17 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
     assert_eq!(dto.cost, Some(1.5));
     assert!(dto.unpriced);
 
-    let priced_turns = aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &table);
+    let priced_turns =
+        aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &table);
     assert_eq!(priced_turns[0].cost, Some(1.0));
     assert_eq!(priced_turns[0].cost_note, None);
     let unpriced_turns =
         aggregate::session_turns(&stored, "s2", Some("claude"), &Filter::default(), &table);
     assert_eq!(unpriced_turns[0].cost, None);
     assert!(unpriced_turns[0].unpriced);
-    assert_eq!(
-        unpriced_turns[0].cost_note.as_deref(),
-        Some("单价未配置")
-    );
-    let native_turns = aggregate::session_turns(&stored, "s3", Some("pi"), &Filter::default(), &table);
+    assert_eq!(unpriced_turns[0].cost_note.as_deref(), Some("单价未配置"));
+    let native_turns =
+        aggregate::session_turns(&stored, "s3", Some("pi"), &Filter::default(), &table);
     assert_eq!(native_turns[0].cost, Some(0.5));
     assert_eq!(native_turns[0].cost_note, None);
 
@@ -1305,6 +1616,94 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
     assert_eq!(by_source[2].name, "claude");
     assert_eq!(by_source[2].cost, None);
     assert!(by_source[2].unpriced);
+}
+
+#[test]
+fn opening_legacy_cache_adds_trusted_ingest_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy.sqlite");
+    let legacy = rusqlite::Connection::open(&path).unwrap();
+    legacy
+        .execute_batch(
+            r#"
+            CREATE TABLE usage_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                occurred_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                model TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                project TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL,
+                output_tokens INTEGER NOT NULL,
+                cache_read_tokens INTEGER NOT NULL,
+                cache_creation_tokens INTEGER NOT NULL,
+                reasoning_tokens INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                native_cost REAL
+            );
+            CREATE TABLE ingested_files (
+                path TEXT PRIMARY KEY,
+                mtime_ms INTEGER NOT NULL,
+                size INTEGER NOT NULL
+            );
+            INSERT INTO usage_records (
+                occurred_at, source, model, provider, project, session_id, source_file,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                reasoning_tokens, total_tokens, native_cost
+            ) VALUES ('2026-01-01T00:00:00Z', 'codex', '', '', '', 's', '/one.jsonl', 1, 0, 0, 0, 0, 1, NULL);
+            INSERT INTO ingested_files(path, mtime_ms, size) VALUES('/one.jsonl', 1, 1);
+            "#,
+        )
+        .unwrap();
+    drop(legacy);
+
+    let conn = store::open_db(path.to_string_lossy().as_ref()).unwrap();
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(ingested_files)")
+        .unwrap()
+        .query_map([], |row| row.get(1))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let source: String = conn
+        .query_row(
+            "SELECT source FROM ingested_files WHERE path = '/one.jsonl'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert!(columns.contains(&"fingerprint".to_string()));
+    assert!(columns.contains(&"adapter_version".to_string()));
+    assert_eq!(source, "codex");
+}
+
+#[test]
+fn usage_records_source_file_operations_use_an_index() {
+    let conn = store::open_memory().unwrap();
+    for sql in [
+        "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM usage_records WHERE source_file = ?1",
+        "EXPLAIN QUERY PLAN DELETE FROM usage_records WHERE source_file = ?1",
+    ] {
+        let plan: Vec<String> = conn
+            .prepare(sql)
+            .unwrap()
+            .query_map(["/one.jsonl"], |row| row.get(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        assert!(
+            plan.iter().any(|detail| {
+                detail.contains("USING")
+                    && detail.contains("INDEX")
+                    && detail.contains("source_file")
+            }),
+            "source_file operation must use an index, query plan: {plan:?}"
+        );
+    }
 }
 
 #[test]
@@ -1350,6 +1749,280 @@ fn ingest_rewrites_changed_file_without_duplicates() {
     let records = store::load_all(&conn).unwrap();
     assert_eq!(records.len(), 2);
     assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+}
+
+#[test]
+fn ingest_keeps_last_good_records_when_changed_jsonl_has_a_bad_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let broken = format!("{}\n{{not-json", fixture("codex.jsonl"));
+    std::fs::write(&path, broken).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(report.files_parsed, 0);
+    assert!(report.partial_success);
+    assert_eq!(report.issues.len(), 1);
+    assert_eq!(report.issues[0].source, "codex");
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+}
+
+#[test]
+fn ingest_keeps_last_good_records_when_valid_jsonl_loses_usage_events() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    let original = fixture("codex.jsonl");
+    std::fs::write(&path, &original).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let partial = original.lines().take(4).collect::<Vec<_>>().join("\n");
+    std::fs::write(&path, partial).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| record.total_tokens)
+            .sum::<i64>(),
+        19113
+    );
+}
+
+#[test]
+fn ingest_keeps_last_good_records_when_changed_file_has_no_usage_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::write(&path, "{}\n").unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+}
+
+#[test]
+fn source_with_a_failed_file_defers_deleted_file_reconciliation() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let first = session_dir.join("one.jsonl");
+    let second = session_dir.join("two.jsonl");
+    std::fs::write(&first, fixture("codex.jsonl")).unwrap();
+    std::fs::write(&second, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(store::load_all(&conn).unwrap().len(), 4);
+
+    std::fs::write(&first, "{not-json").unwrap();
+    std::fs::remove_file(second).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(report.records_removed, 0);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 4);
+}
+
+#[test]
+fn ingest_reconciles_records_after_a_source_file_is_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(path).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.records_removed, 2);
+    assert!(store::load_all(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn kimi_sidecar_change_invalidates_unchanged_session_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_id = "bd1ab6fc-768d-4cff-b4c4-221a583c3af8";
+    let wire = home.join(format!(".kimi/sessions/hash/{session_id}/wire.jsonl"));
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(
+        home.join(".kimi/kimi.json"),
+        format!(r#"{{"work_dirs":[{{"last_session_id":"{session_id}","path":"/project/one"}}]}}"#),
+    )
+    .unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(store::load_all(&conn)
+        .unwrap()
+        .iter()
+        .all(|record| record.project == "/project/one"));
+
+    std::fs::write(
+        home.join(".kimi/kimi.json"),
+        format!(r#"{{"work_dirs":[{{"last_session_id":"{session_id}","path":"/project/two"}}]}}"#),
+    )
+    .unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_parsed, 1);
+    assert!(store::load_all(&conn)
+        .unwrap()
+        .iter()
+        .all(|record| record.project == "/project/two"));
+}
+
+#[test]
+fn invalid_kimi_sidecar_keeps_last_good_project_mapping() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_id = "bd1ab6fc-768d-4cff-b4c4-221a583c3af8";
+    let wire = home.join(format!(".kimi/sessions/hash/{session_id}/wire.jsonl"));
+    let sidecar = home.join(".kimi/kimi.json");
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(
+        &sidecar,
+        format!(r#"{{"work_dirs":[{{"last_session_id":"{session_id}","path":"/project/good"}}]}}"#),
+    )
+    .unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::write(&sidecar, "{not-json").unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+    let records = store::load_all(&conn).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert!(records
+        .iter()
+        .all(|record| record.project == "/project/good"));
+}
+
+#[test]
+fn rebuilding_one_source_keeps_other_sources_and_reparses_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    let claude_dir = home.join(".claude/projects/project");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    std::fs::write(codex_dir.join("one.jsonl"), fixture("codex.jsonl")).unwrap();
+    std::fs::write(claude_dir.join("one.jsonl"), fixture("claude.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let report = ingest::rebuild_cache(&conn, home, Some(Source::Codex)).unwrap();
+    let records = store::load_all(&conn).unwrap();
+
+    assert_eq!(report.files_parsed, 1);
+    assert!(records.iter().any(|record| record.source == Source::Codex));
+    assert!(records.iter().any(|record| record.source == Source::Claude));
+}
+
+#[test]
+fn rebuild_keeps_last_good_records_when_target_file_is_broken() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    let path = codex_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    std::fs::write(&path, "{not-json").unwrap();
+
+    let report = ingest::rebuild_cache(&conn, home, Some(Source::Codex)).unwrap();
+    let records = store::load_all(&conn).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| record.total_tokens)
+            .sum::<i64>(),
+        19113
+    );
+}
+
+#[test]
+fn rebuilding_all_removes_unknown_source_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let conn = store::open_memory().unwrap();
+    conn.execute_batch(
+        r#"
+        INSERT INTO usage_records (
+            occurred_at, source, model, provider, project, session_id, source_file,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            reasoning_tokens, total_tokens, native_cost
+        ) VALUES ('2026-01-01T00:00:00Z', 'future-source', '', '', '', 's', '/future', 1, 0, 0, 0, 0, 1, NULL);
+        INSERT INTO ingested_files(path, mtime_ms, size, source, fingerprint, adapter_version)
+        VALUES('/future', 1, 1, 'future-source', '', 1);
+        "#,
+    )
+    .unwrap();
+    assert!(store::load_all(&conn).is_err());
+
+    let report = ingest::rebuild_cache(&conn, home, None).unwrap();
+
+    assert_eq!(report.records_removed, 1);
+    assert!(store::load_all(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn source_diagnostics_explain_detection_cache_and_usage_coverage() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::write(codex_dir.join("one.jsonl"), fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let codex = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "codex")
+        .unwrap();
+    let qwen = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "qwen")
+        .unwrap();
+
+    assert!(codex.detected);
+    assert_eq!(codex.cached_files, 1);
+    assert_eq!(codex.record_count, 2);
+    assert_eq!(codex.total_tokens, 19113);
+    assert_eq!(codex.coverage, "轮级 Token");
+    assert!(!qwen.detected);
+    assert_eq!(qwen.coverage, "本地无 Token");
 }
 
 fn rollup_sum(
@@ -1458,10 +2131,7 @@ fn ingest_all_fixtures_is_stable_on_refresh() {
     assert_eq!(first.records_written, 14);
     let stored = store::load_all(&conn).unwrap();
     assert_eq!(stored.len(), 14);
-    assert_eq!(
-        stored.iter().map(|r| r.total_tokens).sum::<i64>(),
-        335997
-    );
+    assert_eq!(stored.iter().map(|r| r.total_tokens).sum::<i64>(), 335997);
     assert_rollups_match_overview(&stored, &Filter::default());
 
     let second = ingest::ingest_all(&conn, home).unwrap();
@@ -1480,4 +2150,241 @@ fn ingest_real_home_rollups_match_overview() {
     ingest::ingest_all(&conn, &ingest::default_home()).unwrap();
     let records = store::load_all(&conn).unwrap();
     assert_rollups_match_overview(&records, &Filter::default());
+}
+
+fn assert_opt_f64_eq(a: Option<f64>, b: Option<f64>) {
+    match (a, b) {
+        (Some(x), Some(y)) => assert!((x - y).abs() < 1e-9, "金额不一致：{x} vs {y}"),
+        (None, None) => {}
+        (x, y) => panic!("金额 Option 不一致：{x:?} vs {y:?}"),
+    }
+}
+
+fn diverse_prices() -> PriceTable {
+    PriceTable {
+        prices: vec![
+            PriceEntry {
+                model: "gpt-5.1-codex".into(),
+                provider: Some("official".into()),
+                input: 0.001,
+                output: 0.002,
+                cache_read: 0.0005,
+                cache_creation: 0.003,
+            },
+            PriceEntry {
+                model: "claude-sonnet-5".into(),
+                provider: None,
+                input: 0.003,
+                output: 0.015,
+                cache_read: 0.001,
+                cache_creation: 0.0,
+            },
+            PriceEntry {
+                model: "gpt-5.5".into(),
+                provider: Some("subapi".into()),
+                input: 0.02,
+                output: 0.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+            },
+            PriceEntry {
+                model: "gpt-5.5".into(),
+                provider: None,
+                input: 0.01,
+                output: 0.0,
+                cache_read: 0.0,
+                cache_creation: 0.0,
+            },
+        ],
+    }
+}
+
+/// 覆盖：多来源、精确/兜底 provider 价格、native_cost、空项目、跨来源同名会话。
+fn diverse_records() -> Vec<UsageRecord> {
+    let mut r1 = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "s1",
+        100,
+    );
+    r1.input_tokens = 80;
+    r1.output_tokens = 10;
+    r1.cache_read_tokens = 5;
+    r1.cache_creation_tokens = 2;
+    r1.reasoning_tokens = 3;
+
+    let mut r2 = rec(
+        "2026-08-02T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "s1",
+        50,
+    );
+    r2.input_tokens = 40;
+    r2.output_tokens = 5;
+    r2.cache_read_tokens = 3;
+    r2.cache_creation_tokens = 1;
+    r2.reasoning_tokens = 1;
+    r2.native_cost = Some(1.5);
+
+    let mut r3 = rec(
+        "2026-08-01T11:00:00Z",
+        Source::Claude,
+        "claude-sonnet-5",
+        "anthropic",
+        "/proj/a",
+        "s2",
+        200,
+    );
+    r3.input_tokens = 150;
+    r3.output_tokens = 50;
+
+    let mut r4 = rec(
+        "2026-08-08T10:00:00Z",
+        Source::Pi,
+        "gpt-5.5",
+        "subapi",
+        "/proj/b",
+        "s3",
+        300,
+    );
+    r4.input_tokens = 100;
+    r4.output_tokens = 200;
+    r4.native_cost = Some(0.25);
+
+    let mut r5 = rec(
+        "2026-08-09T10:00:00Z",
+        Source::Pi,
+        "gpt-5.5",
+        "siliconflow",
+        "/proj/b",
+        "s4",
+        60,
+    );
+    r5.input_tokens = 60;
+
+    let mut r6 = rec(
+        "2026-08-10T10:00:00Z",
+        Source::Codex,
+        "unknown-model",
+        "official",
+        "",
+        "s5",
+        30,
+    );
+    r6.input_tokens = 30;
+
+    vec![r1, r2, r3, r4, r5, r6]
+}
+
+#[test]
+fn sql_queries_match_in_memory_aggregates() {
+    let conn = store::open_memory().unwrap();
+    let records = diverse_records();
+    store::insert_records(&conn, &records).unwrap();
+    let prices = diverse_prices();
+
+    // overview
+    let sql_ov = query::overview(&conn, &Filter::default(), &prices).unwrap();
+    let mem_ov = aggregate::overview(&records, &Filter::default(), &prices);
+    assert_eq!(sql_ov.total_tokens, mem_ov.total_tokens);
+    assert_eq!(sql_ov.input_tokens, mem_ov.input_tokens);
+    assert_eq!(sql_ov.output_tokens, mem_ov.output_tokens);
+    assert_eq!(sql_ov.cache_read_tokens, mem_ov.cache_read_tokens);
+    assert_eq!(sql_ov.cache_creation_tokens, mem_ov.cache_creation_tokens);
+    assert_eq!(sql_ov.reasoning_tokens, mem_ov.reasoning_tokens);
+    assert_eq!(sql_ov.session_count, mem_ov.session_count);
+    assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
+    assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
+
+    // trend 三种粒度
+    for grain in ["day", "week", "month"] {
+        let sql_tr = query::trend(&conn, &Filter::default(), &prices, grain).unwrap();
+        let mem_tr = aggregate::trend(&records, &Filter::default(), &prices, grain);
+        assert_eq!(sql_tr, mem_tr, "trend grain={grain} 不一致");
+    }
+
+    // breakdown 五个维度
+    for dim in ["application", "source", "model", "provider", "project"] {
+        let sql_bd = query::breakdown(&conn, &Filter::default(), &prices, dim).unwrap();
+        let mem_bd = aggregate::by_name(&records, &Filter::default(), &prices, |r| match dim {
+            "application" => r.source.application_name().to_string(),
+            "source" => r.source.as_str().to_string(),
+            "model" => r.model.clone(),
+            "provider" => r.provider.clone(),
+            "project" => r.project.clone(),
+            _ => unreachable!(),
+        });
+        assert_eq!(sql_bd.len(), mem_bd.len(), "breakdown dim={dim} 行数不一致");
+        for (s, m) in sql_bd.iter().zip(mem_bd.iter()) {
+            assert_eq!(s.name, m.name);
+            assert_eq!(s.total_tokens, m.total_tokens);
+            assert!((s.share - m.share).abs() < 1e-9);
+            assert_eq!(s.unpriced, m.unpriced);
+            assert_opt_f64_eq(s.cost, m.cost);
+        }
+    }
+
+    // application_analytics（DTO 整体相等）
+    let sql_aa = query::application_analytics(&conn, &Filter::default(), "day").unwrap();
+    let mem_aa = aggregate::application_analytics(&records, &Filter::default(), "day");
+    assert_eq!(sql_aa, mem_aa);
+
+    // top_sessions
+    let sql_top = query::top_sessions(&conn, &Filter::default(), &prices, 10).unwrap();
+    let mem_top = aggregate::top_sessions(&records, &Filter::default(), &prices, 10);
+    assert_eq!(sql_top, mem_top);
+
+    // session_turns（含 source 过滤与无 source）
+    for source in [Some("codex"), None] {
+        let sql_turns =
+            query::session_turns(&conn, "s1", source, &Filter::default(), &prices).unwrap();
+        let mem_turns =
+            aggregate::session_turns(&records, "s1", source, &Filter::default(), &prices);
+        assert_eq!(sql_turns, mem_turns, "session_turns source={source:?} 不一致");
+    }
+
+    // filter_options
+    let sql_fo = query::filter_options(&conn).unwrap();
+    let mem_fo = aggregate::filter_options(&records);
+    assert_eq!(sql_fo.sources, mem_fo.sources);
+    assert_eq!(sql_fo.models, mem_fo.models);
+    assert_eq!(sql_fo.projects, mem_fo.projects);
+
+    // 过滤条件的 overview 对照（覆盖 WHERE 子句）
+    let filters = [
+        Filter {
+            from: Some("2026-08-02T00:00:00Z".into()),
+            ..Filter::default()
+        },
+        Filter {
+            to: Some("2026-08-02T00:00:00Z".into()),
+            ..Filter::default()
+        },
+        Filter {
+            projects: vec!["/proj/b".into()],
+            ..Filter::default()
+        },
+        Filter {
+            models: vec!["gpt-5.5".into()],
+            ..Filter::default()
+        },
+        Filter {
+            sources: vec!["codex".into()],
+            ..Filter::default()
+        },
+    ];
+    for f in &filters {
+        let sql_ov = query::overview(&conn, f, &prices).unwrap();
+        let mem_ov = aggregate::overview(&records, f, &prices);
+        assert_eq!(sql_ov.total_tokens, mem_ov.total_tokens, "filter={f:?}");
+        assert_eq!(sql_ov.session_count, mem_ov.session_count);
+        assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
+        assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
+    }
 }

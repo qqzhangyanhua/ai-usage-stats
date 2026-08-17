@@ -16,6 +16,19 @@ pub enum Source {
 }
 
 impl Source {
+    pub const ALL: [Source; 10] = [
+        Source::Codex,
+        Source::Claude,
+        Source::Pi,
+        Source::Opencode,
+        Source::Kimi,
+        Source::Dsh,
+        Source::Gemini,
+        Source::Grok,
+        Source::Qwen,
+        Source::Factory,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Source::Codex => "codex",
@@ -28,6 +41,21 @@ impl Source {
             Source::Grok => "grok",
             Source::Qwen => "qwen",
             Source::Factory => "factory",
+        }
+    }
+
+    pub fn application_name(self) -> &'static str {
+        match self {
+            Source::Codex => "Codex",
+            Source::Claude => "Claude Code",
+            Source::Pi => "Pi",
+            Source::Opencode => "OpenCode",
+            Source::Kimi => "Kimi CLI",
+            Source::Dsh => "DeepSeek Harness",
+            Source::Gemini => "Gemini CLI",
+            Source::Grok => "Grok CLI",
+            Source::Qwen => "Qwen Code",
+            Source::Factory => "Droid",
         }
     }
 
@@ -105,6 +133,8 @@ pub struct OverviewDto {
 pub struct SeriesPoint {
     pub bucket: String,
     pub total_tokens: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
     pub cost: Option<f64>,
 }
 
@@ -115,6 +145,44 @@ pub struct NamedAmount {
     pub share: f64,
     pub cost: Option<f64>,
     pub unpriced: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EfficiencyMetrics {
+    pub total_tokens: i64,
+    pub session_count: i64,
+    pub cache_hit_rate: Option<f64>,
+    pub average_session_tokens: Option<f64>,
+    pub reasoning_share: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApplicationEfficiency {
+    pub source: String,
+    pub application: String,
+    pub metrics: EfficiencyMetrics,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApplicationTrendPoint {
+    pub bucket: String,
+    pub total_tokens: i64,
+    pub values: std::collections::BTreeMap<String, i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectApplicationRow {
+    pub project: String,
+    pub total_tokens: i64,
+    pub values: std::collections::BTreeMap<String, i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApplicationAnalyticsDto {
+    pub summary: EfficiencyMetrics,
+    pub by_application: Vec<ApplicationEfficiency>,
+    pub trend: Vec<ApplicationTrendPoint>,
+    pub projects: Vec<ProjectApplicationRow>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -129,6 +197,32 @@ pub struct SessionRow {
     pub source_file: String,
     pub cost: Option<f64>,
     pub unpriced: bool,
+}
+
+/// 会话列表分页查询参数：搜索/排序/分页均下沉到 SQL 层执行。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionQuery {
+    pub filter: Filter,
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub sort_by: Option<String>,
+    #[serde(default)]
+    pub sort_dir: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPage {
+    pub rows: Vec<SessionRow>,
+    pub total: u32,
+    pub total_tokens: i64,
+    pub last_ended: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,11 +285,75 @@ pub struct CodeVolumeSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceDiagnostic {
+    pub source: String,
+    pub application: String,
+    pub detected: bool,
+    pub root_path: String,
+    pub cached_files: u64,
+    pub record_count: u64,
+    pub total_tokens: i64,
+    pub coverage: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IngestIssue {
+    pub source: String,
+    pub path: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceIngestReport {
+    pub source: String,
+    pub detected: bool,
+    pub files_seen: u64,
+    pub files_parsed: u64,
+    pub files_skipped: u64,
+    pub files_failed: u64,
+    pub records_written: u64,
+    pub records_removed: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IngestReport {
     pub files_seen: u64,
     pub files_parsed: u64,
     pub files_skipped: u64,
+    pub files_failed: u64,
     pub records_written: u64,
+    pub records_removed: u64,
+    pub partial_success: bool,
+    pub issues: Vec<IngestIssue>,
+    pub sources: Vec<SourceIngestReport>,
+}
+
+impl Default for IngestReport {
+    fn default() -> Self {
+        Self {
+            files_seen: 0,
+            files_parsed: 0,
+            files_skipped: 0,
+            files_failed: 0,
+            records_written: 0,
+            records_removed: 0,
+            partial_success: false,
+            issues: Vec::new(),
+            sources: Source::ALL
+                .iter()
+                .map(|source| SourceIngestReport {
+                    source: source.as_str().to_string(),
+                    detected: false,
+                    files_seen: 0,
+                    files_parsed: 0,
+                    files_skipped: 0,
+                    files_failed: 0,
+                    records_written: 0,
+                    records_removed: 0,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

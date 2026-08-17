@@ -1,6 +1,10 @@
+use std::collections::BTreeSet;
+
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::domain::UsageRecord;
+use crate::domain::{Source, UsageRecord};
+
+pub const ADAPTER_VERSION: i64 = 2;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -39,15 +43,67 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_records(model);
         CREATE INDEX IF NOT EXISTS idx_usage_project ON usage_records(project);
         CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_records(session_id);
+        -- Ingestion replaces records by file; without this index every changed file scans the full cache.
+        CREATE INDEX IF NOT EXISTS idx_usage_source_file ON usage_records(source_file);
 
         CREATE TABLE IF NOT EXISTS ingested_files (
             path TEXT PRIMARY KEY,
             mtime_ms INTEGER NOT NULL,
-            size INTEGER NOT NULL
+            size INTEGER NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            fingerprint TEXT NOT NULL DEFAULT '',
+            adapter_version INTEGER NOT NULL DEFAULT 0
         );
         "#,
     )
+    .map_err(|e| e.to_string())?;
+    ensure_column(conn, "ingested_files", "source", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(
+        conn,
+        "ingested_files",
+        "fingerprint",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "ingested_files",
+        "adapter_version",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    conn.execute_batch(
+        r#"
+        UPDATE ingested_files
+        SET source = COALESCE(
+            (SELECT source FROM usage_records WHERE source_file = ingested_files.path LIMIT 1),
+            ''
+        )
+        WHERE source = '';
+        "#,
+    )
     .map_err(|e| e.to_string())
+}
+
+fn ensure_column(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| e.to_string())?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    if !columns.iter().any(|name| name == column) {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        ))
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn insert_records(conn: &Connection, records: &[UsageRecord]) -> Result<u64, String> {
@@ -86,37 +142,152 @@ pub fn insert_records(conn: &Connection, records: &[UsageRecord]) -> Result<u64,
     Ok(written)
 }
 
-pub fn delete_records_for_file(conn: &Connection, source_file: &str) -> Result<(), String> {
+pub fn record_count_for_file(conn: &Connection, source_file: &str) -> Result<u64, String> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM usage_records WHERE source_file = ?1",
+        params![source_file],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|count| count as u64)
+    .map_err(|e| e.to_string())
+}
+
+pub fn delete_records_for_file(conn: &Connection, source_file: &str) -> Result<u64, String> {
     conn.execute(
         "DELETE FROM usage_records WHERE source_file = ?1",
         params![source_file],
     )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    .map(|count| count as u64)
+    .map_err(|e| e.to_string())
 }
 
-pub fn file_unchanged(conn: &Connection, path: &str, mtime_ms: i64, size: i64) -> Result<bool, String> {
-    let row: Option<(i64, i64)> = conn
+pub fn file_unchanged(
+    conn: &Connection,
+    path: &str,
+    mtime_ms: i64,
+    size: i64,
+    source: Source,
+    fingerprint: &str,
+) -> Result<bool, String> {
+    let row: Option<(i64, i64, String, String, i64)> = conn
         .query_row(
-            "SELECT mtime_ms, size FROM ingested_files WHERE path = ?1",
+            "SELECT mtime_ms, size, source, fingerprint, adapter_version FROM ingested_files WHERE path = ?1",
             params![path],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    Ok(matches!(row, Some((m, s)) if m == mtime_ms && s == size))
+    Ok(matches!(
+        row,
+        Some((m, s, cached_source, cached_fingerprint, version))
+            if m == mtime_ms
+                && s == size
+                && cached_source == source.as_str()
+                && cached_fingerprint == fingerprint
+                && version == ADAPTER_VERSION
+    ))
 }
 
-pub fn mark_file(conn: &Connection, path: &str, mtime_ms: i64, size: i64) -> Result<(), String> {
+pub fn mark_file(
+    conn: &Connection,
+    path: &str,
+    mtime_ms: i64,
+    size: i64,
+    source: Source,
+    fingerprint: &str,
+) -> Result<(), String> {
     conn.execute(
         r#"
-        INSERT INTO ingested_files(path, mtime_ms, size) VALUES(?1,?2,?3)
-        ON CONFLICT(path) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size
+        INSERT INTO ingested_files(path, mtime_ms, size, source, fingerprint, adapter_version)
+        VALUES(?1,?2,?3,?4,?5,?6)
+        ON CONFLICT(path) DO UPDATE SET
+            mtime_ms = excluded.mtime_ms,
+            size = excluded.size,
+            source = excluded.source,
+            fingerprint = excluded.fingerprint,
+            adapter_version = excluded.adapter_version
         "#,
-        params![path, mtime_ms, size],
+        params![
+            path,
+            mtime_ms,
+            size,
+            source.as_str(),
+            fingerprint,
+            ADAPTER_VERSION
+        ],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+pub fn reconcile_source(
+    conn: &Connection,
+    source: Source,
+    seen_paths: &BTreeSet<String>,
+) -> Result<u64, String> {
+    let mut stmt = conn
+        .prepare("SELECT path FROM ingested_files WHERE source = ?1")
+        .map_err(|e| e.to_string())?;
+    let cached = stmt
+        .query_map(params![source.as_str()], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+
+    let mut removed = 0;
+    for path in cached {
+        if !seen_paths.contains(&path) {
+            removed += delete_records_for_file(conn, &path)?;
+            conn.execute("DELETE FROM ingested_files WHERE path = ?1", params![path])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(removed)
+}
+
+pub fn invalidate_source(conn: &Connection, source: Source) -> Result<(), String> {
+    conn.execute(
+        "UPDATE ingested_files SET adapter_version = 0 WHERE source = ?1",
+        params![source.as_str()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn remove_unknown_sources(conn: &Connection) -> Result<u64, String> {
+    const KNOWN: &str =
+        "'codex','claude','pi','opencode','kimi','dsh','gemini','grok','qwen','factory'";
+    let removed = conn
+        .execute(
+            &format!("DELETE FROM usage_records WHERE source NOT IN ({KNOWN})"),
+            [],
+        )
+        .map_err(|e| e.to_string())? as u64;
+    conn.execute(
+        &format!("DELETE FROM ingested_files WHERE source NOT IN ({KNOWN})"),
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(removed)
+}
+
+pub fn source_cache_stats(conn: &Connection, source: Source) -> Result<(u64, u64, i64), String> {
+    let cached_files = conn
+        .query_row(
+            "SELECT COUNT(*) FROM ingested_files WHERE source = ?1",
+            params![source.as_str()],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|e| e.to_string())? as u64;
+    let (record_count, total_tokens) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) FROM usage_records WHERE source = ?1",
+            params![source.as_str()],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok((cached_files, record_count as u64, total_tokens))
 }
 
 pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {
@@ -132,9 +303,17 @@ pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
+            let source_value: String = row.get(1)?;
+            let source = Source::parse(&source_value).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    format!("未知来源：{source_value}").into(),
+                )
+            })?;
             Ok(UsageRecord {
                 occurred_at: row.get(0)?,
-                source: crate::domain::Source::parse(&row.get::<_, String>(1)?).unwrap_or(crate::domain::Source::Codex),
+                source,
                 model: row.get(2)?,
                 provider: row.get(3)?,
                 project: row.get(4)?,
@@ -150,5 +329,6 @@ pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }

@@ -67,7 +67,10 @@ pub fn parse_dsh_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
                     input_tokens: i64_field(&usage, &["inputTokens"]),
                     output_tokens: i64_field(&usage, &["outputTokens"]),
                     cache_read_tokens: i64_field(&usage, &["cacheReadTokens"]),
-                    cache_creation_tokens: i64_field(&usage, &["cacheWriteTokens", "cacheCreationTokens"]),
+                    cache_creation_tokens: i64_field(
+                        &usage,
+                        &["cacheWriteTokens", "cacheCreationTokens"],
+                    ),
                     reasoning_tokens: i64_field(&usage, &["reasoningTokens"]),
                     total_tokens: 0,
                     native_cost: None,
@@ -83,6 +86,14 @@ pub fn parse_dsh_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
 pub fn parse_dsh_zstd(bytes: &[u8], source_file: &str) -> Result<Vec<UsageRecord>, String> {
     let decoded = zstd::decode_all(bytes).map_err(|e| e.to_string())?;
     let content = String::from_utf8(decoded).map_err(|e| e.to_string())?;
+    for (index, line) in content.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        serde_json::from_str::<serde_json::Value>(line)
+            .map_err(|error| format!("第 {} 行 JSON 无效：{error}", index + 1))?;
+    }
     Ok(parse_dsh_jsonl(&content, source_file))
 }
 

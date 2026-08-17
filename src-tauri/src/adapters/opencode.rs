@@ -4,9 +4,7 @@ use crate::adapters::{finish, i64_field, text_field};
 use crate::domain::{Source, UsageRecord};
 
 pub fn parse_opencode_messages(rows: &[OpencodeMessage]) -> Vec<UsageRecord> {
-    rows.iter()
-        .filter_map(|row| parse_one(row))
-        .collect()
+    rows.iter().filter_map(parse_one).collect()
 }
 
 #[derive(Debug, Clone)]

@@ -48,7 +48,7 @@ fn find_price<'a>(
         })
 }
 
-pub fn sum_costs(records: &[UsageRecord], prices: &PriceTable) -> (Option<f64>, bool) {
+pub fn sum_costs(records: &[&UsageRecord], prices: &PriceTable) -> (Option<f64>, bool) {
     let mut total = 0.0;
     let mut any = false;
     let mut unpriced = false;

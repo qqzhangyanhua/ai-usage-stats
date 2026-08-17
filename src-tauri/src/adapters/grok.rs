@@ -4,7 +4,11 @@ use crate::adapters::project::decode_url_dir;
 use crate::adapters::{finish, parse_jsonl_values, text_field};
 use crate::domain::{Source, UsageRecord};
 
-pub fn parse_grok_updates(content: &str, source_file: &str, fallback_model: &str) -> Vec<UsageRecord> {
+pub fn parse_grok_updates(
+    content: &str,
+    source_file: &str,
+    fallback_model: &str,
+) -> Vec<UsageRecord> {
     let session_id = std::path::Path::new(source_file)
         .parent()
         .and_then(|p| p.file_name())

@@ -4,8 +4,9 @@ use chrono::Datelike;
 
 use crate::cost::{derive_cost, sum_costs};
 use crate::domain::{
-    Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable, SeriesPoint, SessionRow, TurnRow,
-    UsageRecord,
+    ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, EfficiencyMetrics,
+    Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable, ProjectApplicationRow,
+    SeriesPoint, SessionRow, TurnRow, UsageRecord,
 };
 
 pub fn matches_filter(record: &UsageRecord, filter: &Filter) -> bool {
@@ -32,7 +33,10 @@ pub fn matches_filter(record: &UsageRecord, filter: &Filter) -> bool {
 }
 
 pub fn apply_filter<'a>(records: &'a [UsageRecord], filter: &Filter) -> Vec<&'a UsageRecord> {
-    records.iter().filter(|r| matches_filter(r, filter)).collect()
+    records
+        .iter()
+        .filter(|r| matches_filter(r, filter))
+        .collect()
 }
 
 pub fn overview(records: &[UsageRecord], filter: &Filter, prices: &PriceTable) -> OverviewDto {
@@ -49,18 +53,20 @@ pub fn overview(records: &[UsageRecord], filter: &Filter, prices: &PriceTable) -
         cost: None,
         unpriced: false,
     };
-    let owned: Vec<UsageRecord> = filtered.into_iter().cloned().collect();
-    for record in &owned {
+    for record in &filtered {
         dto.total_tokens += record.total_tokens;
         dto.input_tokens += record.input_tokens;
         dto.output_tokens += record.output_tokens;
         dto.cache_read_tokens += record.cache_read_tokens;
         dto.cache_creation_tokens += record.cache_creation_tokens;
         dto.reasoning_tokens += record.reasoning_tokens;
-        sessions.insert((record.source.as_str().to_string(), record.session_id.clone()));
+        sessions.insert((
+            record.source.as_str().to_string(),
+            record.session_id.clone(),
+        ));
     }
     dto.session_count = sessions.len() as i64;
-    let (cost, unpriced) = sum_costs(&owned, prices);
+    let (cost, unpriced) = sum_costs(&filtered, prices);
     dto.cost = cost;
     dto.unpriced = unpriced;
     dto
@@ -73,27 +79,40 @@ pub fn trend(
     grain: &str,
 ) -> Vec<SeriesPoint> {
     let filtered = apply_filter(records, filter);
-    let mut buckets: BTreeMap<String, (i64, Option<f64>, bool)> = BTreeMap::new();
+    let mut buckets: BTreeMap<String, TrendBucket> = BTreeMap::new();
     for record in filtered {
         let key = bucket_key(&record.occurred_at, grain);
-        let entry = buckets.entry(key).or_insert((0, None, false));
-        entry.0 += record.total_tokens;
+        let entry = buckets.entry(key).or_default();
+        entry.total_tokens += record.total_tokens;
+        entry.input_tokens += record.input_tokens;
+        entry.output_tokens += record.output_tokens;
         let derived = derive_cost(record, prices);
         if let Some(amount) = derived.amount {
-            entry.1 = Some(entry.1.unwrap_or(0.0) + amount);
+            entry.cost = Some(entry.cost.unwrap_or(0.0) + amount);
         }
         if derived.unpriced {
-            entry.2 = true;
+            entry.unpriced = true;
         }
     }
     buckets
         .into_iter()
-        .map(|(bucket, (total_tokens, cost, _))| SeriesPoint {
+        .map(|(bucket, acc)| SeriesPoint {
             bucket,
-            total_tokens,
-            cost,
+            total_tokens: acc.total_tokens,
+            input_tokens: acc.input_tokens,
+            output_tokens: acc.output_tokens,
+            cost: acc.cost,
         })
         .collect()
+}
+
+#[derive(Default)]
+struct TrendBucket {
+    total_tokens: i64,
+    input_tokens: i64,
+    output_tokens: i64,
+    cost: Option<f64>,
+    unpriced: bool,
 }
 
 fn bucket_key(occurred_at: &str, grain: &str) -> String {
@@ -104,7 +123,134 @@ fn bucket_key(occurred_at: &str, grain: &str) -> String {
             return format!("{:04}-W{:02}", week.year(), week.week());
         }
     }
+    if grain == "month" {
+        return date.get(0..7).unwrap_or(date).to_string();
+    }
     date.to_string()
+}
+
+pub fn application_analytics(
+    records: &[UsageRecord],
+    filter: &Filter,
+    grain: &str,
+) -> ApplicationAnalyticsDto {
+    let filtered = apply_filter(records, filter);
+    let mut summary = EfficiencyAcc::default();
+    let mut applications: BTreeMap<String, EfficiencyAcc> = BTreeMap::new();
+    let mut trend: BTreeMap<String, ApplicationTrendPoint> = BTreeMap::new();
+    let mut projects: BTreeMap<String, ProjectApplicationRow> = BTreeMap::new();
+
+    for record in filtered {
+        let source = record.source.as_str().to_string();
+        let session = (source.clone(), record.session_id.clone());
+
+        summary.add(record, session.clone());
+        applications
+            .entry(source.clone())
+            .or_default()
+            .add(record, session);
+
+        let bucket = bucket_key(&record.occurred_at, grain);
+        let trend_point = trend
+            .entry(bucket.clone())
+            .or_insert_with(|| ApplicationTrendPoint {
+                bucket,
+                total_tokens: 0,
+                values: BTreeMap::new(),
+            });
+        trend_point.total_tokens += record.total_tokens;
+        *trend_point.values.entry(source.clone()).or_default() += record.total_tokens;
+
+        let project = if record.project.is_empty() {
+            "（未标注）".to_string()
+        } else {
+            record.project.clone()
+        };
+        let project_row =
+            projects
+                .entry(project.clone())
+                .or_insert_with(|| ProjectApplicationRow {
+                    project,
+                    total_tokens: 0,
+                    values: BTreeMap::new(),
+                });
+        project_row.total_tokens += record.total_tokens;
+        *project_row.values.entry(source).or_default() += record.total_tokens;
+    }
+
+    let mut by_application: Vec<ApplicationEfficiency> = applications
+        .into_iter()
+        .filter_map(|(source, acc)| {
+            crate::domain::Source::parse(&source).map(|parsed| ApplicationEfficiency {
+                source,
+                application: parsed.application_name().to_string(),
+                metrics: acc.finish(),
+            })
+        })
+        .collect();
+    by_application.sort_by(|a, b| {
+        b.metrics
+            .total_tokens
+            .cmp(&a.metrics.total_tokens)
+            .then_with(|| a.application.cmp(&b.application))
+    });
+
+    let mut project_rows: Vec<ProjectApplicationRow> = projects.into_values().collect();
+    project_rows.sort_by(|a, b| {
+        b.total_tokens
+            .cmp(&a.total_tokens)
+            .then_with(|| a.project.cmp(&b.project))
+    });
+
+    ApplicationAnalyticsDto {
+        summary: summary.finish(),
+        by_application,
+        trend: trend.into_values().collect(),
+        projects: project_rows,
+    }
+}
+
+#[derive(Default)]
+struct EfficiencyAcc {
+    total_tokens: i64,
+    input_tokens: i64,
+    cache_read_tokens: i64,
+    reasoning_tokens: i64,
+    sessions: std::collections::BTreeSet<(String, String)>,
+}
+
+impl EfficiencyAcc {
+    fn add(&mut self, record: &UsageRecord, session: (String, String)) {
+        self.total_tokens += record.total_tokens;
+        self.input_tokens += record.input_tokens;
+        self.cache_read_tokens += record.cache_read_tokens;
+        self.reasoning_tokens += record.reasoning_tokens;
+        self.sessions.insert(session);
+    }
+
+    fn finish(self) -> EfficiencyMetrics {
+        let session_count = self.sessions.len() as i64;
+        let cache_context = self.input_tokens + self.cache_read_tokens;
+        EfficiencyMetrics {
+            total_tokens: self.total_tokens,
+            session_count,
+            cache_hit_rate: ratio(self.cache_read_tokens, cache_context),
+            average_session_tokens: if session_count == 0 {
+                None
+            } else {
+                Some(self.total_tokens as f64 / session_count as f64)
+            },
+            reasoning_share: ratio(self.reasoning_tokens, self.total_tokens),
+        }
+    }
+}
+
+fn ratio(numerator: i64, denominator: i64) -> Option<f64> {
+    if denominator <= 0 {
+        None
+    } else {
+        Some(numerator as f64 / denominator as f64)
+    }
 }
 
 pub fn by_name(
@@ -161,7 +307,10 @@ pub fn top_sessions(
     let filtered = apply_filter(records, filter);
     let mut map: BTreeMap<(String, String), SessionAcc> = BTreeMap::new();
     for record in filtered {
-        let key = (record.source.as_str().to_string(), record.session_id.clone());
+        let key = (
+            record.source.as_str().to_string(),
+            record.session_id.clone(),
+        );
         let entry = map.entry(key).or_insert_with(|| SessionAcc {
             source: record.source.as_str().to_string(),
             session_id: record.session_id.clone(),

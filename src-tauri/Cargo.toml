@@ -26,6 +26,8 @@ zstd = "0.13"
 chrono = { version = "0.4", features = ["serde"] }
 urlencoding = "2"
 dirs = "6"
+rfd = "0.17.2"
+base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"

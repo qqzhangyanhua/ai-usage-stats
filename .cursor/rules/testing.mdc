@@ -1,0 +1,29 @@
+---
+description: Testing strategy for the Rust core — fixtures, adapter tests, and the SQL/in-memory parity test
+globs: src-tauri/src/**/*.rs,src-tauri/tests/**/*
+alwaysApply: false
+---
+
+# 测试策略（src-tauri）
+
+运行：`cargo test --manifest-path src-tauri/Cargo.toml`（或在 `src-tauri` 目录下 `cargo test`）。所有测试集中在 `src-tauri/src/tests.rs`（单文件、按功能分节，目前 60+ 个 `#[test]`），没有单独的 `tests/` 集成测试 crate；`src-tauri/tests/fixtures/` 只放数据夹具。
+
+## Adapter 测试
+
+- 每个 adapter 至少一个测试：读取 `tests/fixtures/<source>.jsonl`/`.json`（通过 `fixture()` helper），断言解析出的 `UsageRecord` 字段，特别是去重/累计口径这种最容易出 bug 的地方（参考 `codex_adapter_counts_last_token_usage_not_cumulative` 显式断言「求和不等于双倍累计值」）
+- 新增/修改 fixture 时保持内容最小化且脱敏（不含真实用户路径、真实会话内容），复用现有 fixture 命名风格
+
+## 聚合测试：`aggregate.rs` 是 `query.rs` 的差分测试基准，不是被替代的旧代码
+
+- `aggregate.rs`（内存实现）与 `query.rs`（SQL 下推，生产实际使用）必须对同一组数据产生完全一致的结果；`sql_queries_match_in_memory_aggregates` 测试用同一份 `diverse_records()`/`diverse_prices()` 跑两条路径并逐字段 `assert_eq!`
+- **修改 `query.rs` 的任何聚合/过滤/费用 SQL 时，必须同步验证或更新 `aggregate.rs` 的等价实现，并确保这条 parity 测试仍然通过**；反之亦然。不要因为「SQL 更快」就删除 `aggregate.rs` 或跳过对照
+- 新增聚合维度/DTO 字段时，两边都要实现，并在 parity 测试里补上覆盖
+
+## Ingest / store 测试
+
+- 涉及文件系统的测试使用 `tempfile` 构造临时目录模拟 `home`，用 `store::open_memory()` 建内存 sqlite，不要依赖真实的 `~/.codex` 等本机路径
+- 覆盖 `docs/adr/0003-trusted-ingestion-cache.md` 里的场景：文件不变跳过重解析、解析失败保留旧缓存、追加日志记录数下降判定失败、来源消失后对账删除、目录读取错误不误删
+
+## 前端
+
+- 当前没有前端自动化测试（无 Jest/Vitest/Playwright 测试套件配置）；`tsc` 类型检查是 `pnpm run build` 的一部分，是前端唯一的强制校验

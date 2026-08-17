@@ -1,0 +1,27 @@
+---
+description: Trusted ingestion and rebuildable cache semantics for local session scanning
+globs: src-tauri/src/ingest.rs,src-tauri/src/store.rs
+alwaysApply: false
+---
+
+# 可信摄取与可重建缓存
+
+完整背景与理由：`docs/adr/0003-trusted-ingestion-cache.md`。核心原则：**缓存宁可保留旧结果，也不能用残缺/失败的解析结果覆盖它**。
+
+## 必须遵守的语义
+
+- 文件只有在完整读取 + 结构校验成功后，才能替换该文件在 `usage_records` 里的旧记录并更新 `ingested_files` 标记；解析失败要保留旧记录，把失败记为该 Source 的诊断问题（`record_failure`）
+- 追加型日志来源（`is_append_log_source`：codex/claude/pi/kimi/dsh/grok）如果新解析出的记录数比缓存里少，视为截断/异常，保留旧缓存并报失败，不要覆盖
+- 每个 Source 扫描完成后按本轮实际看到的路径做删除对账（`reconcile_source`）；但该 Source 本轮只要出现任何 `files_failed`，就必须跳过对账，避免把「解析失败」误判成「文件已删除」
+- 目录读取错误（`walk_matching` 报错）不能触发删除对账，只能记为来源级失败
+- 缓存键 = 主文件的 `(mtime_ms, size)` + `metadata_fingerprint`/`content_fingerprint`（辅助文件，如 Kimi 的 `kimi.json`、Grok 的 `summary.json`、OpenCode 的 `-wal`）+ `ADAPTER_VERSION`；辅助输入变化也必须使缓存失效
+
+## 修改归一化规则时
+
+- 任何改变某个 adapter 输出（新字段、修正 bug、调整去重逻辑）的改动，必须同步递增 `store.rs::ADAPTER_VERSION`，否则旧缓存不会被判定为过期，用户看到的数据不会更新
+- `rebuild_cache` 只是把 `adapter_version` 置 0 强制重解析，不会预先清空旧记录；新结果验证失败时旧记录依然保留——不要为了「简化重建」而改成先 DELETE 再解析
+
+## 边界
+
+- `usage.sqlite` 是纯缓存，可以随时删除重建；`prices.json` 是用户配置，任何清理/重建逻辑都不能触及它
+- 启动摄取（`ingest_all`）和「重建全部」都会先 `remove_unknown_sources` 清理未知 Source 残留，新增 Source 时记得同步更新 `store.rs::remove_unknown_sources` 里的 `KNOWN` 列表
