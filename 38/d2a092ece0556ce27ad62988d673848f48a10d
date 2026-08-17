@@ -1,0 +1,42 @@
+src-tauri/src/lib.rs
+  s_9b494ab314bb5a::t_9dc6f04b340443 345,348-353,373-374,376-383
+  s_9b494ab314bb5a::t_5e0bd3434f467f 9
+  s_9b494ab314bb5a::t_dedc6579071234 40
+  s_9b494ab314bb5a::t_2a2d07c99d30bd 301-307
+src-tauri/Cargo.toml
+  s_9b494ab314bb5a::t_06b65535b8e365 21
+src-tauri/src/tray.rs
+  s_9b494ab314bb5a::t_ee1d0ba9f944b4 1-7,9-16,20-76,78-88,91-96,107-186,192-211
+  s_9b494ab314bb5a::t_06d85b32812ad8 77,89-90,97-106
+  s_9b494ab314bb5a::t_9f9b4027f817ca 187-191
+  s_9b494ab314bb5a::t_1955d94a2cfd5e 8,17-19
+src-tauri/src/tests.rs
+  s_9b494ab314bb5a::t_06d85b32812ad8 2451,2462,2703
+  s_9b494ab314bb5a::t_a677c56c9a9355 11
+  s_9b494ab314bb5a::t_b6ceda8678243c 2752-2839
+README.md
+  s_9b494ab314bb5a::t_49420c6c74d42a 18
+src/components/Settings.tsx
+  s_9b494ab314bb5a::t_2421b1dbc63a7d 46-48
+src-tauri/src/billing_window.rs
+  s_9b494ab314bb5a::t_06d85b32812ad8 152-154
+src/hooks/useUsageData.ts
+  s_9b494ab314bb5a::t_d02a97e3566b18 311-315
+  s_9b494ab314bb5a::t_73c4ba6de11d3a 345-349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "38d2a092ece0556ce27ad62988d673848f48a10d",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
