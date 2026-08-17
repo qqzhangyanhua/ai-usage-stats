@@ -1,0 +1,34 @@
+src/components/Pagination.tsx
+  s_7f91528e02d7b0::t_0feccca8768427 1,22-28,35,41
+src/components/ExportButton.tsx
+  s_7f91528e02d7b0::t_2b06a5def6dba9 2,4,9-13,62-77
+src/styles.css
+  s_7f91528e02d7b0::t_7eae895192951b 376
+  s_7f91528e02d7b0::t_82806f03bb3f3b 1133-1174
+  s_7f91528e02d7b0::t_cbb4d38060f740 1992
+  s_7f91528e02d7b0::t_4ac5e294545559 1082,1084-1088,1091-1099,1102-1121
+src/components/Trend.tsx
+  s_7f91528e02d7b0::t_22f6ce0a400168 26,29-34,38-39,41-44
+  s_7f91528e02d7b0::t_2c24bacd1d0a3c 35-36,40
+  s_7f91528e02d7b0::t_4753cf93daa46a 1,10,13
+  s_7f91528e02d7b0::t_91c23bc41aca10 136-138,176-181
+  s_7f91528e02d7b0::t_7357dda1de19ce 14
+  s_7f91528e02d7b0::t_24490d638656f3 37
+  s_7f91528e02d7b0::t_e4f7807fc5981a 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "2917008c69e6ab3db92681e9173eaeb8cfc1a715",
+  "prompts": {},
+  "sessions": {
+    "s_7f91528e02d7b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f1161f00-c7e4-449a-8a01-98cb44650538",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
