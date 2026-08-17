@@ -1,0 +1,34 @@
+src-tauri/src/cursor_account.rs
+  s_9b494ab314bb5a::t_99c22f6fbcba23 71
+  s_9b494ab314bb5a::t_4d7c7fb4c26862 3,5,12
+  s_9b494ab314bb5a::t_e2598c00fbb7e7 100-102,104,106
+  s_9b494ab314bb5a::t_ffceb3f907d678 50-67,69-70,95-99,103,107-113,115-118
+  s_9b494ab314bb5a::t_c5f1e585bd3703 4
+  s_9b494ab314bb5a::t_25418141adc05e 105
+src-tauri/src/tests.rs
+  s_9b494ab314bb5a::t_0aeffef05e26ca 3015,3017-3018
+  s_9b494ab314bb5a::t_6a74f29b0d56f6 3104-3163,3167-3180,3185-3206
+  s_9b494ab314bb5a::t_9dddbcd90c043c 3164-3166,3181-3184
+src/components/CursorAccountUsagePanel.tsx
+  s_9b494ab314bb5a::t_ca1158d4ad8349 102-103
+src-tauri/src/store.rs
+  s_9b494ab314bb5a::t_02868b0d011383 442-458
+src-tauri/src/adapters/cursor_account.rs
+  s_9b494ab314bb5a::t_6cb4f91f728ba3 4-8,12-15,18-21,23-26,36-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "9b7a40603abc7993dcf7c801b33c64104ce78e8f",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
