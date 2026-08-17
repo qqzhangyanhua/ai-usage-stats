@@ -1,3 +1,4 @@
+import { Icon } from "../icons";
 import { Button } from "./ui/Button";
 
 export function Pagination({
@@ -18,18 +19,26 @@ export function Pagination({
     <nav className="pagination" aria-label="分页">
       <span className="pagination-total">共 {totalCount} 条</span>
       <div className="pagination-controls">
-        <Button disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="上一页">
+        <Button
+          className="pagination-btn"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          aria-label="上一页"
+        >
+          <Icon name="chevron" size={13} />
           上一页
         </Button>
         <span className="pagination-info" aria-current="page">
           第 {page} / {pageCount} 页
         </span>
         <Button
+          className="pagination-btn"
           disabled={page >= pageCount}
           onClick={() => onPageChange(page + 1)}
           aria-label="下一页"
         >
           下一页
+          <Icon name="chevron" size={13} className="flip" />
         </Button>
       </div>
     </nav>

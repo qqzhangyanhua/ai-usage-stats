@@ -373,6 +373,7 @@ button {
 .icon-btn:disabled,
 .ghost-btn:disabled,
 .text-btn:disabled,
+.export-btn:disabled,
 .seg-btn:disabled,
 .select-trigger:disabled,
 .select-plain-trigger:disabled,
@@ -1078,14 +1079,46 @@ input[type="checkbox"] {
 }
 
 .pagination-controls {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--overlay-recessed);
+}
+
+.pagination-btn.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pagination-btn.ghost-btn:hover:not(:disabled) {
+  color: var(--purple-fg);
+  background: var(--tone-codex-bg);
+  filter: none;
+}
+
+.pagination-btn.ghost-btn:disabled {
+  opacity: 0.38;
 }
 
 .pagination-info {
-  color: var(--muted);
+  min-width: 88px;
+  padding: 0 10px;
+  color: var(--text-soft);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -1097,7 +1130,48 @@ input[type="checkbox"] {
 
 .export-group {
   display: inline-flex;
-  gap: 6px;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--overlay-recessed);
+}
+
+.export-group-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  margin-inline: 2px 1px;
+  color: var(--text-faint);
+}
+
+.export-btn {
+  min-width: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.export-btn:hover:not(:disabled) {
+  color: var(--text-soft);
+  background: var(--overlay-2);
+}
+
+.export-btn-csv:hover:not(:disabled),
+.export-btn-csv.is-busy {
+  color: var(--green-fg);
+  background: var(--tone-kimi-bg);
+}
+
+.export-btn-json:hover:not(:disabled),
+.export-btn-json.is-busy {
+  color: var(--cyan-fg);
+  background: var(--tone-pi-bg);
 }
 
 .chart-frame {
@@ -1915,6 +1989,7 @@ tr.selected {
 .icon-btn:focus-visible,
 .ghost-btn:focus-visible,
 .text-btn:focus-visible,
+.export-btn:focus-visible,
 .seg-btn:focus-visible,
 .select-plain-trigger:focus-visible,
 .date-nav-btn:focus-visible,

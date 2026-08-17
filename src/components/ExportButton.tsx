@@ -1,9 +1,15 @@
 import { useState } from "react";
+import { Icon } from "../icons";
 import { exportCsv, exportJson } from "../lib/exportFile";
-import { Button } from "./ui/Button";
+import { Spinner } from "./Spinner";
 
 type ExportFormat = "csv" | "json";
 type ExportRows = (string | number)[][];
+
+const FORMATS: { format: ExportFormat; label: string }[] = [
+  { format: "csv", label: "CSV" },
+  { format: "json", label: "JSON" },
+];
 
 export function ExportButton({
   label = "导出",
@@ -53,16 +59,22 @@ export function ExportButton({
   return (
     <span className="export-action">
       <span className="export-group" role="group" aria-label={`${label}选项`}>
-        <Button disabled={disabled} onClick={() => handleExport("csv")} aria-label={`${label} CSV`}>
-          {busyFormat === "csv" ? "导出中…" : `${label} CSV`}
-        </Button>
-        <Button
-          disabled={disabled}
-          onClick={() => handleExport("json")}
-          aria-label={`${label} JSON`}
-        >
-          {busyFormat === "json" ? "导出中…" : `${label} JSON`}
-        </Button>
+        <span className="export-group-icon" aria-hidden>
+          {busyFormat ? <Spinner size={12} /> : <Icon name="download" size={13} />}
+        </span>
+        {FORMATS.map(({ format, label: formatLabel }) => (
+          <button
+            key={format}
+            type="button"
+            className={`export-btn export-btn-${format}${busyFormat === format ? " is-busy" : ""}`}
+            disabled={disabled}
+            aria-label={`${label} ${formatLabel}`}
+            aria-busy={busyFormat === format}
+            onClick={() => handleExport(format)}
+          >
+            {formatLabel}
+          </button>
+        ))}
       </span>
       {status ? <span className="export-status">{status}</span> : null}
     </span>

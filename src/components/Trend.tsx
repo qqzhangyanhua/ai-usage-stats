@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { barTrendOption, formatBucket } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { deltaPct, formatCompact, formatDelta, formatUsd } from "../lib/format";
@@ -7,7 +7,10 @@ import { EmptyState } from "./EmptyState";
 import { ExportableChart } from "./ExportableChart";
 import { ExportButton } from "./ExportButton";
 import { KpiCard } from "./Kpi";
+import { Pagination } from "./Pagination";
 import { GrainSwitch, grainUnit } from "./ui/GrainSwitch";
+
+const PAGE_SIZE = 20;
 
 export const Trend = memo(function Trend({
   grain,
@@ -20,7 +23,25 @@ export const Trend = memo(function Trend({
   points: SeriesPoint[];
   theme: ResolvedTheme;
 }) {
+  const [page, setPage] = useState(1);
   const option = useMemo(() => barTrendOption(points, theme), [points, theme]);
+
+  const pageCount = Math.max(1, Math.ceil(points.length / PAGE_SIZE));
+  const pagedPoints = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return points.slice(start, start + PAGE_SIZE);
+  }, [page, points]);
+
+  const rangeStart = points[0]?.bucket ?? "";
+  const rangeEnd = points[points.length - 1]?.bucket ?? "";
+
+  useEffect(() => {
+    setPage(1);
+  }, [grain, rangeStart, rangeEnd]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
 
   const stats = useMemo(() => {
     const totalTokens = points.reduce((sum, p) => sum + p.total_tokens, 0);
@@ -112,8 +133,9 @@ export const Trend = memo(function Trend({
               </tr>
             </thead>
             <tbody>
-              {points.map((point, index) => {
-                const prev = points[index - 1];
+              {pagedPoints.map((point, index) => {
+                const globalIndex = (page - 1) * PAGE_SIZE + index;
+                const prev = points[globalIndex - 1];
                 const delta = prev
                   ? formatDelta(deltaPct(point.total_tokens, prev.total_tokens))
                   : null;
@@ -151,6 +173,12 @@ export const Trend = memo(function Trend({
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          totalCount={points.length}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   );
