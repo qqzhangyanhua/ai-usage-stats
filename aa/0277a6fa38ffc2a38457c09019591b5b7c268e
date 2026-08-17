@@ -1,0 +1,35 @@
+src/types.ts
+  s_9b494ab314bb5a::t_2eba0beed70e08 208
+src/components/CursorAccountUsagePanel.tsx
+  s_9b494ab314bb5a::t_bbbdba4c5daca2 98
+  s_9b494ab314bb5a::t_908ae2da5d24b4 2-4,8,22,26
+  s_9b494ab314bb5a::t_32f5b66d4a69c8 175-179
+  s_9b494ab314bb5a::t_318657a925718c 144-174,180-181
+src/App.tsx
+  s_9b494ab314bb5a::t_fc132a56a2d4a2 100
+src-tauri/src/domain.rs
+  s_9b494ab314bb5a::t_83b61bd86ffd3c 382,395
+src-tauri/src/adapters/cursor_account.rs
+  s_9b494ab314bb5a::t_1b1fa6fa927c9a 1-2,4
+  s_9b494ab314bb5a::t_3408fbf9763df0 104-112
+  s_9b494ab314bb5a::t_48fe3b9682cf99 89-100,102-103,113-123
+src-tauri/src/tests.rs
+  s_9b494ab314bb5a::t_ced4a23f5d3de9 3073-3112
+  s_9b494ab314bb5a::t_3f1214795680e6 3072
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "aa0277a6fa38ffc2a38457c09019591b5b7c268e",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
