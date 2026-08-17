@@ -1,0 +1,43 @@
+src/lib/chartTheme.ts
+  s_9b494ab314bb5a::t_175e7342f9e606 8-9
+  s_9b494ab314bb5a::t_40aa8a2e25c262 379-392,462,492-496,504-506
+  s_9b494ab314bb5a::t_3e9f91a5da5253 377-378,393-461,463-491,497-503,507-536
+src/components/Overview.tsx
+  s_9b494ab314bb5a::t_40aa8a2e25c262 87
+  s_9b494ab314bb5a::t_9abac8c4164605 190-191
+  s_9b494ab314bb5a::t_79cbf79f762a50 6
+  s_9b494ab314bb5a::t_410dbf24946a0c 57-58
+  s_9b494ab314bb5a::t_15c778f3e61555 41-42
+src/App.tsx
+  s_9b494ab314bb5a::t_fcdf92bd5bd7d2 53-54
+src/styles.css
+  s_9b494ab314bb5a::t_09f0719391be26 937-945
+src/lib/calendar.ts
+  s_9b494ab314bb5a::t_882687362daab3 1-2,4
+  s_9b494ab314bb5a::t_5ef017bd58b073 68-112
+src/components/ActivityHeatmap.tsx
+  s_9b494ab314bb5a::t_40aa8a2e25c262 16
+  s_9b494ab314bb5a::t_1b99072fe880d1 1-15,17-33
+src/hooks/useUsageData.ts
+  s_9b494ab314bb5a::t_ca459ad6311339 3
+  s_9b494ab314bb5a::t_bce1f6a5c450ec 171,182-186
+  s_9b494ab314bb5a::t_18f8e7d3989b87 453-454
+  s_9b494ab314bb5a::t_1a3cdbfe00b637 87-91
+  s_9b494ab314bb5a::t_fec4f0de070722 187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "1669e3b7f30aacfd06f66c5396d33576f77e085e",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
