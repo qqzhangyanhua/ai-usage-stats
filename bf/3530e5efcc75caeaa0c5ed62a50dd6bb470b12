@@ -1,0 +1,52 @@
+src/components/DonutChart.tsx
+  s_f71c3dc81c93e0::t_a5a4e7489d2116 1-27
+src/styles.css
+  s_f71c3dc81c93e0::t_57f7d7624e34d6 780-781,787-788,790
+  s_f71c3dc81c93e0::t_03513827f746ad 951,1381-1383
+  s_f71c3dc81c93e0::t_49f0c004e10cc6 2265-2269
+  s_f71c3dc81c93e0::t_34b6e75e240209 1171
+  s_f71c3dc81c93e0::t_c14d05b05ea021 952,1697-1702
+  s_f71c3dc81c93e0::t_0499a0b9e7118c 2311-2316
+  s_f71c3dc81c93e0::t_6007ecd125893c 1261-1306
+  s_f71c3dc81c93e0::t_f9bbfa270a7f75 1349,1351
+  s_f71c3dc81c93e0::t_a31466021d3aa1 1363-1371
+  s_f71c3dc81c93e0::t_89350c124fccb3 1665,1668-1669
+  s_f71c3dc81c93e0::t_77ff1c681086da 1252-1253,1256,1310
+  s_f71c3dc81c93e0::t_251a62445c68cd 928-929,948-950
+  s_f71c3dc81c93e0::t_ad710b763210b6 1207
+  s_f71c3dc81c93e0::t_916262e3556f50 953
+src/lib/format.ts
+  s_f71c3dc81c93e0::t_0f2ceccbfcd415 9-11
+src/lib/chartTheme.ts
+  s_f71c3dc81c93e0::t_2f6cfb6f31abfc 86,91
+  s_f71c3dc81c93e0::t_d00fe1c07f53b6 339
+src/components/Overview.tsx
+  s_f71c3dc81c93e0::t_8ccbbde4f63689 83-84,86,92-93
+  s_f71c3dc81c93e0::t_be5807c54f4925 6
+  s_f71c3dc81c93e0::t_c86180740f9768 170
+  s_f71c3dc81c93e0::t_b45f1d2aed6e36 73
+  s_f71c3dc81c93e0::t_c237a3ed694290 260
+  s_f71c3dc81c93e0::t_52820eed80c460 194
+  s_f71c3dc81c93e0::t_191216281da257 199,205
+  s_f71c3dc81c93e0::t_7f73c0383e1ab4 158,161
+src/components/CursorPanel.tsx
+  s_f71c3dc81c93e0::t_8c3cea3a145910 6
+  s_f71c3dc81c93e0::t_e947a1e3e3ad36 75
+  s_f71c3dc81c93e0::t_d1538d568966e4 30-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "bf3530e5efcc75caeaa0c5ed62a50dd6bb470b12",
+  "prompts": {},
+  "sessions": {
+    "s_f71c3dc81c93e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f569826c-d693-464b-8b5c-0310af284942",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
