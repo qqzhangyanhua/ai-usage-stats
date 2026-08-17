@@ -3,6 +3,7 @@ import { Icon, sourceTone } from "../icons";
 import { ModelLabel, VendorIcon } from "./VendorIcon";
 import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
+import { ActivityHeatmap } from "./ActivityHeatmap";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { EmptyState } from "./EmptyState";
@@ -37,6 +38,8 @@ export const Overview = memo(function Overview({
   overview,
   previous,
   trend,
+  heatmap,
+  heatmapRange,
   models,
   projects,
   sessions,
@@ -51,6 +54,8 @@ export const Overview = memo(function Overview({
   overview: OverviewDto | null;
   previous: OverviewDto | null;
   trend: SeriesPoint[];
+  heatmap: SeriesPoint[];
+  heatmapRange: { from: string; to: string };
   models: NamedAmount[];
   projects: NamedAmount[];
   sessions: SessionRow[];
@@ -79,10 +84,7 @@ export const Overview = memo(function Overview({
   const inputShare = data.total_tokens === 0 ? 0 : (data.input_tokens / data.total_tokens) * 100;
   const outputShare = data.total_tokens === 0 ? 0 : (data.output_tokens / data.total_tokens) * 100;
   const trendOption = useMemo(() => areaTrendOption(trend, theme), [trend, theme]);
-  const modelOption = useMemo(
-    () => donutOption(modelItems, theme),
-    [modelItems, theme],
-  );
+  const modelOption = useMemo(() => donutOption(modelItems, theme), [modelItems, theme]);
   const tokenTotal = formatCompact(data.total_tokens);
   const tokenOption = useMemo(() => {
     const tokenItems = [
@@ -184,6 +186,8 @@ export const Overview = memo(function Overview({
           </article>
         </div>
       </section>
+
+      <ActivityHeatmap points={heatmap} range={heatmapRange} theme={theme} />
 
       <section className="dash-bottom">
         <article className="panel">
@@ -316,4 +320,3 @@ function periodDays(preset: string, grain: Grain, bucketCount: number): number {
   }
   return Math.max(bucketCount, 1);
 }
-

@@ -50,6 +50,8 @@ export default function App() {
                   overview={data.overview}
                   previous={data.previous}
                   trend={data.trend}
+                  heatmap={data.heatmap}
+                  heatmapRange={data.heatmapRange}
                   models={data.models}
                   projects={data.projects}
                   sessions={data.sessions}

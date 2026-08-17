@@ -934,6 +934,15 @@ input[type="checkbox"] {
   min-height: 0;
 }
 
+.heatmap-panel {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.heatmap-chart {
+  height: 148px;
+}
+
 .dash-side {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { heatmapFilter } from "../lib/calendar";
 import { previousFilter, rangeFromPreset } from "../lib/format";
 import type {
   ApplicationAnalyticsDto,
@@ -83,6 +84,11 @@ export function useUsageData() {
   const [overview, setOverview] = useState<OverviewDto | null>(null);
   const [previous, setPrevious] = useState<OverviewDto | null>(null);
   const [trend, setTrend] = useState<SeriesPoint[]>([]);
+  const [heatmap, setHeatmap] = useState<SeriesPoint[]>([]);
+  const [heatmapRange, setHeatmapRange] = useState(() => {
+    const window = heatmapFilter(emptyFilter);
+    return { from: window.fromDate, to: window.toDate };
+  });
   const [grain, setGrain] = useState<Grain>("day");
   const [breakdown, setBreakdown] = useState<NamedAmount[]>([]);
   const [applicationAnalytics, setApplicationAnalytics] = useState<ApplicationAnalyticsDto | null>(
@@ -162,6 +168,7 @@ export function useUsageData() {
       }
       if (view === "overview") {
         const prev = previousFilter(nextFilter, nextPreset);
+        const heat = heatmapFilter(nextFilter);
         tasks.push(
           invoke<NamedAmount[]>("get_breakdown", {
             query: { filter: nextFilter, dimension: "model" },
@@ -171,6 +178,12 @@ export function useUsageData() {
           }).then(commit(setProjects)),
           invoke<SessionRow[]>("get_top_sessions", { filter: nextFilter, limit: 8 }).then(
             commit(setSessions),
+          ),
+          invoke<SeriesPoint[]>("get_trend", { filter: heat.filter, grain: "day" }).then(
+            (points) => {
+              commit(setHeatmap)(points);
+              commit(setHeatmapRange)({ from: heat.fromDate, to: heat.toDate });
+            },
           ),
         );
         if (prev) {
@@ -437,6 +450,8 @@ export function useUsageData() {
     overview,
     previous,
     trend,
+    heatmap,
+    heatmapRange,
     grain,
     setGrain,
     breakdown,

@@ -1,4 +1,7 @@
+import type { Filter } from "../types";
+
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"] as const;
+const HEATMAP_WEEKS = 53;
 
 export function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -61,4 +64,49 @@ export function shiftMonth(
 ): { year: number; month: number } {
   const next = new Date(year, month + delta, 1);
   return { year: next.getFullYear(), month: next.getMonth() };
+}
+
+export type HeatmapWindow = {
+  from: string;
+  to: string;
+  fromDate: string;
+  toDate: string;
+};
+
+/** 以 end 所在周为最后一列，往前取 53 周（周一起始），返回查询用 ISO 与日历用日期。 */
+export function heatmapWindow(end: Date): HeatmapWindow {
+  const safeEnd = Number.isNaN(end.getTime()) ? new Date() : end;
+  const endDay = new Date(safeEnd.getFullYear(), safeEnd.getMonth(), safeEnd.getDate());
+  const mondayOffset = (endDay.getDay() + 6) % 7;
+  const thisMonday = new Date(endDay);
+  thisMonday.setDate(endDay.getDate() - mondayOffset);
+  const startMonday = new Date(thisMonday);
+  startMonday.setDate(thisMonday.getDate() - (HEATMAP_WEEKS - 1) * 7);
+  const fromDate = toDateValue(startMonday);
+  const toDate = toDateValue(endDay);
+  return {
+    from: new Date(`${fromDate}T00:00:00`).toISOString(),
+    to: new Date(`${toDate}T23:59:59.999`).toISOString(),
+    fromDate,
+    toDate,
+  };
+}
+
+/** 保留来源/模型/项目筛选，日期窗口固定为近 53 周。 */
+export function heatmapFilter(filter: Filter): {
+  filter: Filter;
+  fromDate: string;
+  toDate: string;
+} {
+  const parsed = filter.to ? new Date(filter.to) : new Date();
+  const window = heatmapWindow(parsed);
+  return {
+    filter: {
+      ...filter,
+      from: window.from,
+      to: window.to,
+    },
+    fromDate: window.fromDate,
+    toDate: window.toDate,
+  };
 }
