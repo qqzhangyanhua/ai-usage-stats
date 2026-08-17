@@ -1,0 +1,19 @@
+src/hooks/useAnchoredPanel.ts
+  s_f71c3dc81c93e0::t_5bea4e58b4c942 5-11,19,23,31-33,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "597acc4410009472ac6edba22bd3d534f680e931",
+  "prompts": {},
+  "sessions": {
+    "s_f71c3dc81c93e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f569826c-d693-464b-8b5c-0310af284942",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
