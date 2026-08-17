@@ -51,13 +51,31 @@ pub fn incremental_start_ms(conn: &Connection) -> Result<i64, String> {
     Ok(store::max_cursor_account_occurred_ms(conn)?.unwrap_or(0))
 }
 
+pub fn auth_expired_error() -> String {
+    "Cursor 会话已过期，请重新粘贴 WorkosCursorSessionToken".to_string()
+}
+
+pub fn network_failure_error() -> String {
+    "无法连接 Cursor 用量接口，请检查网络后重试".to_string()
+}
+
 pub fn ingest_raw_pages(conn: &Connection, pages: &[&str]) -> Result<u64, String> {
-    let mut written = 0u64;
+    let mut events = Vec::new();
     for raw in pages {
-        let events = parse_cursor_usage_events(raw)?;
-        written += store::upsert_cursor_account_events(conn, &events)?;
+        events.extend(parse_cursor_usage_events(raw)?);
     }
-    Ok(written)
+    store::upsert_cursor_account_events(conn, &events)
+}
+
+pub fn apply_fetched_pages(
+    conn: &Connection,
+    fetched: Result<Vec<String>, String>,
+) -> Result<CursorAccountUsageDto, String> {
+    let pages = fetched?;
+    let refs: Vec<&str> = pages.iter().map(String::as_str).collect();
+    ingest_raw_pages(conn, &refs)?;
+    store::set_cursor_account_as_of(conn, &chrono::Utc::now().to_rfc3339())?;
+    load_summary(conn)
 }
 
 pub fn fetch_usage_events_page(
@@ -81,18 +99,16 @@ pub fn fetch_usage_events_page(
         Ok(response) => response
             .into_string()
             .map_err(|e| format!("读取 Cursor 账号用量响应失败：{e}")),
-        Err(ureq::Error::Status(401 | 403, _)) => {
-            Err("Cursor 会话已过期，请重新粘贴 WorkosCursorSessionToken".to_string())
-        }
+        Err(ureq::Error::Status(401 | 403, _)) => Err(auth_expired_error()),
         Err(ureq::Error::Status(code, response)) => {
             let _ = response.into_string();
             Err(format!("拉取 Cursor 账号用量失败：HTTP {code}"))
         }
-        Err(error) => Err(format!("拉取 Cursor 账号用量失败：{error}")),
+        Err(_) => Err(network_failure_error()),
     }
 }
 
-fn fetch_all_pages(token: &str, start_date_ms: i64) -> Result<Vec<String>, String> {
+pub fn fetch_refresh_pages(token: &str, start_date_ms: i64) -> Result<Vec<String>, String> {
     let mut page = 1u32;
     let mut pages = Vec::new();
     loop {
@@ -111,34 +127,20 @@ fn fetch_all_pages(token: &str, start_date_ms: i64) -> Result<Vec<String>, Strin
     Ok(pages)
 }
 
-pub fn refresh(conn: &Connection, token: &str) -> Result<CursorAccountUsageDto, String> {
-    let start_date_ms = incremental_start_ms(conn)?;
-    let pages = fetch_all_pages(token, start_date_ms)?;
-    let refs: Vec<&str> = pages.iter().map(String::as_str).collect();
-    ingest_raw_pages(conn, &refs)?;
-    let as_of = chrono::Utc::now().to_rfc3339();
-    store::set_cursor_account_as_of(conn, &as_of)?;
-    load_summary(conn)
-}
-
-pub fn refresh_from_optional_token(
-    conn: &Connection,
-    token: Option<String>,
-) -> Result<CursorAccountUsageDto, String> {
-    let resolved = match token
+pub fn resolve_session_token(token: Option<String>) -> Result<String, String> {
+    match token
         .as_deref()
         .map(normalize_token)
         .filter(|value| !value.is_empty())
     {
         Some(value) => {
             save_token(&value)?;
-            value
+            Ok(value)
         }
         None => load_token()?.ok_or_else(|| {
             "尚未配置 Cursor 会话 token，请先粘贴 WorkosCursorSessionToken".to_string()
-        })?,
-    };
-    refresh(conn, &resolved)
+        }),
+    }
 }
 
 pub fn load_summary(conn: &Connection) -> Result<CursorAccountUsageDto, String> {

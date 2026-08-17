@@ -9,7 +9,7 @@ pub struct CursorUsagePage {
 }
 
 /// 把 Cursor 仪表盘 `get-filtered-usage-events` 的原始 JSON 归一成账号级事件。
-/// 坏 JSON 返回可读错误；缺 `usageEventsDisplay` 或空列表返回空，不 panic。
+/// 坏 JSON 或缺少 `usageEventsDisplay` 返回可读错误；空列表返回空，不 panic。
 pub fn parse_cursor_usage_events(raw: &str) -> Result<Vec<CursorUsageEvent>, String> {
     Ok(parse_cursor_usage_page(raw)?.events)
 }
@@ -22,10 +22,9 @@ pub fn parse_cursor_usage_page(raw: &str) -> Result<CursorUsagePage, String> {
         .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|n| n.max(0) as u64)))
         .unwrap_or(0);
     let Some(items) = value.get("usageEventsDisplay").and_then(|v| v.as_array()) else {
-        return Ok(CursorUsagePage {
-            events: Vec::new(),
-            total_count,
-        });
+        return Err(
+            "Cursor 用量接口结构已变更，请稍后再试或检查应用更新".to_string(),
+        );
     };
 
     let mut events = Vec::new();

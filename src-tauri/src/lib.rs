@@ -363,9 +363,15 @@ async fn refresh_cursor_account_usage(
     token: Option<String>,
 ) -> Result<CursorAccountUsageDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let resolved = cursor_account::resolve_session_token(token)?;
         let state = app.state::<AppState>();
+        let start_date_ms = {
+            let conn = state.conn.lock().map_err(|e| e.to_string())?;
+            cursor_account::incremental_start_ms(&conn)?
+        };
+        let pages = cursor_account::fetch_refresh_pages(&resolved, start_date_ms);
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        cursor_account::refresh_from_optional_token(&conn, token)
+        cursor_account::apply_fetched_pages(&conn, pages)
     })
     .await
     .map_err(|e| e.to_string())?

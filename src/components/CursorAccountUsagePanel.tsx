@@ -156,11 +156,19 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
 
       {showEmpty ? (
         <div className="panel partition">
-          <EmptyState
-            icon="cursor"
-            title="暂无 Cursor 账号用量"
-            hint="粘贴 WorkosCursorSessionToken 后点刷新。该数据是账号级云端用量，不会并入本机 token 总量。"
-          />
+          {hasToken ? (
+            <EmptyState
+              icon="cursor"
+              title="尚未拉取 Cursor 账号用量"
+              hint="已保存会话 token。点刷新从云端拉取；离线时会继续展示上次成功结果。该数据是账号级用量，不会并入本机 token 总量。"
+            />
+          ) : (
+            <EmptyState
+              icon="cursor"
+              title="先粘贴 Cursor 会话 token"
+              hint="打开 cursor.com/dashboard/usage → 开发者工具 Application → Cookies → 复制 WorkosCursorSessionToken，粘贴后点刷新。不会并入本机 token 总量。"
+            />
+          )}
         </div>
       ) : (
         <>

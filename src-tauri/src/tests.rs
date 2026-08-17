@@ -3048,8 +3048,8 @@ fn cursor_account_parser_rejects_bad_json_and_skips_empty_payload() {
     assert!(empty.is_empty());
 
     let missing = cursor_account::parse_cursor_usage_events(r#"{"totalUsageEventsCount":0}"#)
-        .expect("missing list is empty, not panic");
-    assert!(missing.is_empty());
+        .expect_err("missing list is a structure change");
+    assert!(missing.contains("结构已变更"), "{missing}");
 }
 
 #[test]
@@ -3289,4 +3289,88 @@ fn cursor_account_incremental_ingest_only_adds_new_events() {
     let dto = crate::cursor_account::load_summary(&conn).unwrap();
     assert_eq!(dto.event_count, 3);
     assert_eq!(dto.total_tokens, 505);
+}
+
+#[test]
+fn cursor_account_failed_refresh_keeps_last_good_cache() {
+    let conn = store::open_memory().unwrap();
+    crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE]).unwrap();
+    store::set_cursor_account_as_of(&conn, "2026-08-17T12:00:00+00:00").unwrap();
+    let before = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(before.event_count, 2);
+    assert_eq!(before.total_tokens, 465);
+
+    let auth = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Err(crate::cursor_account::auth_expired_error()),
+    );
+    assert!(
+        auth.as_ref().unwrap_err().contains("过期"),
+        "{}",
+        auth.unwrap_err()
+    );
+    let after_auth = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(after_auth.event_count, 2);
+    assert_eq!(after_auth.total_tokens, 465);
+    assert_eq!(
+        after_auth.as_of.as_deref(),
+        Some("2026-08-17T12:00:00+00:00")
+    );
+
+    let structure = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Ok(vec![r#"{"totalUsageEventsCount":9}"#.to_string()]),
+    );
+    assert!(
+        structure.as_ref().unwrap_err().contains("结构已变更"),
+        "{}",
+        structure.unwrap_err()
+    );
+    assert_eq!(
+        crate::cursor_account::load_summary(&conn)
+            .unwrap()
+            .event_count,
+        2
+    );
+
+    let parse = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Ok(vec![CURSOR_PAGE_TWO.to_string(), "{not-json".to_string()]),
+    );
+    assert!(
+        parse.as_ref().unwrap_err().contains("解析失败"),
+        "{}",
+        parse.unwrap_err()
+    );
+    let after_parse = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(after_parse.event_count, 2);
+    assert_eq!(after_parse.total_tokens, 465);
+    assert_eq!(
+        after_parse.as_of.as_deref(),
+        Some("2026-08-17T12:00:00+00:00")
+    );
+
+    let network = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Err(crate::cursor_account::network_failure_error()),
+    );
+    assert!(
+        network.as_ref().unwrap_err().contains("网络"),
+        "{}",
+        network.unwrap_err()
+    );
+    assert_eq!(
+        crate::cursor_account::load_summary(&conn)
+            .unwrap()
+            .event_count,
+        2
+    );
+
+    let empty = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Ok(vec![r#"{"usageEventsDisplay":[]}"#.to_string()]),
+    )
+    .unwrap();
+    assert_eq!(empty.event_count, 2);
+    assert_eq!(empty.total_tokens, 465);
 }
