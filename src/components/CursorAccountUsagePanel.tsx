@@ -166,7 +166,7 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
             <EmptyState
               icon="cursor"
               title="先粘贴 Cursor 会话 token"
-              hint="打开 cursor.com/dashboard/usage → 开发者工具 Application → Cookies → 复制 WorkosCursorSessionToken，粘贴后点刷新。不会并入本机 token 总量。"
+              hint="打开 cursor.com/dashboard/usage → 开发者工具 Application → Cookies → 复制 WorkosCursorSessionToken，在本页或设置页粘贴后点刷新。不会并入本机 token 总量。"
             />
           )}
         </div>

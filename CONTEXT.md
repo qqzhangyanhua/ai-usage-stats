@@ -25,7 +25,7 @@ Cursor 一类工具本地只记录的「AI 生成代码行数、AI 占比」，�
 _Avoid_: 用量、消耗（避免与 token 混淆）
 
 **Cursor 账号用量 (Cursor Account Usage)**：
-从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量。
+从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量。会话 token 在设置页或 Cursor 页粘贴进钥匙串；缓存可在设置页独立清空，不参与本机文件对账。
 _Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
 
 ## 采集源现状

@@ -3188,6 +3188,42 @@ fn cursor_account_store_dedups_by_fingerprint() {
     assert_eq!(store::cursor_account_as_of(&conn).unwrap(), None);
 }
 
+#[test]
+fn cursor_account_clear_resets_watermark_without_touching_usage_records() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-01-01T00:00:00+00:00",
+            Source::Codex,
+            "gpt-5",
+            "openai",
+            "/tmp/demo",
+            "sess-keep",
+            42,
+        )],
+    )
+    .unwrap();
+    crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE]).unwrap();
+    store::set_cursor_account_as_of(&conn, "2026-08-17T12:00:00+00:00").unwrap();
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        1_704_153_600_000
+    );
+
+    let cleared = crate::cursor_account::clear_cache(&conn).unwrap();
+    assert_eq!(cleared.event_count, 0);
+    assert_eq!(cleared.total_tokens, 0);
+    assert_eq!(cleared.as_of, None);
+    assert_eq!(crate::cursor_account::incremental_start_ms(&conn).unwrap(), 0);
+    assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
+
+    let kept = store::load_all(&conn).unwrap();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].session_id, "sess-keep");
+    assert_eq!(kept[0].total_tokens, 42);
+}
+
 const CURSOR_PAGE_ONE: &str = r#"{
     "totalUsageEventsCount": 3,
     "usageEventsDisplay": [

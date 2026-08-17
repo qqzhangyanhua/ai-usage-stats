@@ -149,3 +149,8 @@ pub fn load_summary(conn: &Connection) -> Result<CursorAccountUsageDto, String> 
     dto.as_of = store::cursor_account_as_of(conn)?;
     Ok(dto)
 }
+
+pub fn clear_cache(conn: &Connection) -> Result<CursorAccountUsageDto, String> {
+    store::clear_cursor_account_usage(conn)?;
+    load_summary(conn)
+}

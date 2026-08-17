@@ -402,6 +402,17 @@ async fn has_cursor_session_token() -> Result<bool, String> {
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn clear_cursor_account_usage(app: tauri::AppHandle) -> Result<CursorAccountUsageDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_account::clear_cache(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// 弹出原生保存对话框并写入 CSV 内容；返回 `false` 表示用户取消。
 #[tauri::command]
 async fn export_csv(default_name: String, content: String) -> Result<bool, String> {
@@ -527,6 +538,7 @@ pub fn run() {
             get_cursor_account_usage,
             save_cursor_session_token,
             has_cursor_session_token,
+            clear_cursor_account_usage,
             export_csv,
             export_json,
             export_image,
