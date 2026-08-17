@@ -1,0 +1,87 @@
+src-tauri/src/store.rs
+  s_7f91528e02d7b0::t_7710cd6aae2ef9 259-263,266,271
+  s_6f38a292ea9021::t_48a7e499a568e7 7
+src-tauri/tests/fixtures/codex-total-only.jsonl
+  s_6f38a292ea9021::t_c0b346ba418178 1-5
+docs/probe/latest-run.md
+  s_6f38a292ea9021::t_8142f5baa298bf 57-66,69
+src-tauri/src/adapters/claude.rs
+  s_6f38a292ea9021::t_c704ac439e22bf 1-2,4,7-11,30-33,44,59-86,89-93,97-98,100-104
+  s_6f38a292ea9021::t_7a7c6b87d551fe 99
+  s_6f38a292ea9021::t_53d5a0c5508c82 105
+.cursor/rules/ingestion-cache.mdc
+  s_7f91528e02d7b0::t_5026c534e7a86f 27
+docs/probe/token-fields.md
+  s_6f38a292ea9021::t_59aea6b2c8cbea 64-65
+  s_6f38a292ea9021::t_ff87dc931615f9 67
+  s_6f38a292ea9021::t_1a7163eeb0aca8 70
+  s_6f38a292ea9021::t_4c81c10ab7d728 71
+src-tauri/src/adapters/gemini.rs
+  s_6f38a292ea9021::t_821d066bcede48 3,21,24-27,42-43
+src-tauri/src/adapters/opencode.rs
+  s_6f38a292ea9021::t_d4bbdffff9ef1e 3,22-25,44-53,68-69
+  s_6f38a292ea9021::t_7a7c6b87d551fe 26-31
+src-tauri/tests/fixtures/grok-turn-completed.jsonl
+  s_6f38a292ea9021::t_600338d59197d9 1-5
+src-tauri/src/lib.rs
+  s_6f38a292ea9021::t_213cb620904897 153-156,294-296
+CONTEXT.md
+  s_6f38a292ea9021::t_f83e26518ee607 38
+src-tauri/tests/fixtures/opencode-messages.json
+  s_6f38a292ea9021::t_d0358ffc4ecfa2 21-42
+src-tauri/tests/fixtures/claude-dedup.jsonl
+  s_6f38a292ea9021::t_a9b17e6a28f8a2 1-5
+src-tauri/src/adapters/codex.rs
+  s_6f38a292ea9021::t_7a7c6b87d551fe 17-23
+  s_6f38a292ea9021::t_bc2f300e365e4d 3,6-16,24-57,64,93-112,114-119,121-125,130,138-140,142-143,145-149,157-181
+src-tauri/src/ingest.rs
+  s_6f38a292ea9021::t_55215f39f90068 125
+src-tauri/src/tests.rs
+  s_6f38a292ea9021::t_935bc8d59acee7 338-364
+  s_6f38a292ea9021::t_54f694af8d2ebb 77-92
+  s_6f38a292ea9021::t_c7d29de0b5ae4b 121-134
+  s_6f38a292ea9021::t_3964fa074bdd8d 201-219
+  s_7f91528e02d7b0::t_abec5fd02b27dc 2181-2209,2216-2219
+  s_6f38a292ea9021::t_b23eb03fdee3e7 912-913
+  s_6f38a292ea9021::t_70402eb6ce47ea 896-911,914-915
+  s_6f38a292ea9021::t_213cb620904897 405-408,2210-2215,2570-2573
+  s_6f38a292ea9021::t_75782fb0a5b561 76,120,200,337,895,2180
+src-tauri/src/adapters/grok.rs
+  s_6f38a292ea9021::t_213cb620904897 175,198-203
+  s_6f38a292ea9021::t_9f7900ed0af6bb 3-4,6,9-11,17-104,106-113,149-150,169-174,176-197,204-237
+  s_6f38a292ea9021::t_f998a0bedf5592 238
+src-tauri/src/bin/probe.rs
+  s_6f38a292ea9021::t_213cb620904897 248-251,261-268
+  s_6f38a292ea9021::t_ff173f67f90e19 195-197,201,208-226,235-247,252-260,269-286
+  s_6f38a292ea9021::t_856e42e7c1f8fb 287
+src-tauri/src/query.rs
+  s_6f38a292ea9021::t_213cb620904897 90-93,99-102,108-111,120,229-230,431-433,437,468-470,474,812-813,822-823,826-829
+src-tauri/src/adapters/mod.rs
+  s_6f38a292ea9021::t_d7ada40d1f701d 57-64
+src-tauri/tests/fixtures/gemini-session.json
+  s_6f38a292ea9021::t_a45e2844945167 12-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "2c486cc2883b9330d55ffe02f07789695ce9547a",
+  "prompts": {},
+  "sessions": {
+    "s_6f38a292ea9021": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "43c9fd64-4c23-461f-9c7a-76a7e8223e34",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_7f91528e02d7b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f1161f00-c7e4-449a-8a01-98cb44650538",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
