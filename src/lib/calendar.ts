@@ -110,3 +110,122 @@ export function heatmapFilter(filter: Filter): {
     toDate: window.toDate,
   };
 }
+
+export type HeatmapCell = {
+  date: string;
+  future: boolean;
+};
+
+export type HeatmapWeek = {
+  days: HeatmapCell[];
+};
+
+export type HeatmapMonthLabel = {
+  label: string;
+  weekIndex: number;
+};
+
+/** 从 from 所在周一起到 to 所在周日，按列（一周）排出 7 行；to 之后标 future。 */
+export function heatmapGrid(fromDate: string, toDate: string): HeatmapWeek[] {
+  const start = parseDateValue(fromDate);
+  const end = parseDateValue(toDate);
+  if (!start || !end || start.getTime() > end.getTime()) {
+    return [];
+  }
+  const mondayOffset = (start.getDay() + 6) % 7;
+  const cursor = new Date(start);
+  cursor.setDate(start.getDate() - mondayOffset);
+  const endMondayOffset = (end.getDay() + 6) % 7;
+  const lastSunday = new Date(end);
+  lastSunday.setDate(end.getDate() + (6 - endMondayOffset));
+
+  const weeks: HeatmapWeek[] = [];
+  while (cursor.getTime() <= lastSunday.getTime()) {
+    const days: HeatmapCell[] = [];
+    for (let index = 0; index < 7; index += 1) {
+      days.push({
+        date: toDateValue(cursor),
+        future: cursor.getTime() > end.getTime(),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push({ days });
+  }
+  return weeks;
+}
+
+/** 含该月 1 号的周才标月份；首列补起始月；相邻列距小于 2 则跳过。 */
+export function heatmapMonthLabels(weeks: HeatmapWeek[]): HeatmapMonthLabel[] {
+  const candidates: HeatmapMonthLabel[] = [];
+  for (let weekIndex = 0; weekIndex < weeks.length; weekIndex += 1) {
+    const week = weeks[weekIndex];
+    if (!week) {
+      continue;
+    }
+    const firstOfMonth = week.days.find((cell) => {
+      if (cell.future) {
+        return false;
+      }
+      const date = parseDateValue(cell.date);
+      return date !== null && date.getDate() === 1;
+    });
+    if (!firstOfMonth) {
+      continue;
+    }
+    const date = parseDateValue(firstOfMonth.date);
+    if (!date) {
+      continue;
+    }
+    candidates.push({ label: `${date.getMonth() + 1}月`, weekIndex });
+  }
+
+  const firstDay = weeks[0]?.days.find((cell) => !cell.future);
+  if (firstDay && candidates[0]?.weekIndex !== 0) {
+    const date = parseDateValue(firstDay.date);
+    if (date) {
+      candidates.unshift({ label: `${date.getMonth() + 1}月`, weekIndex: 0 });
+    }
+  }
+
+  const labels: HeatmapMonthLabel[] = [];
+  for (const item of candidates) {
+    const prev = labels[labels.length - 1];
+    if (prev && item.weekIndex - prev.weekIndex < 2) {
+      continue;
+    }
+    labels.push(item);
+  }
+  return labels;
+}
+
+export function quantileCuts(values: number[]): number[] {
+  if (values.length === 0) {
+    return [];
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (p: number) =>
+    sorted[Math.min(sorted.length - 1, Math.round(p * (sorted.length - 1)))];
+  return [...new Set([at(0.25), at(0.5), at(0.75), sorted[sorted.length - 1]])].sort(
+    (a, b) => a - b,
+  );
+}
+
+/** 0 为空档，1–4 为非零分位（与旧 visualMap 分档一致）。 */
+export function tokenHeatmapLevel(value: number, cuts: number[]): number {
+  if (value <= 0) {
+    return 0;
+  }
+  let prev = 0;
+  let level = 0;
+  for (const upper of cuts) {
+    if (upper <= prev) {
+      continue;
+    }
+    level += 1;
+    if (value <= upper) {
+      return Math.min(level, 4);
+    }
+    prev = upper;
+  }
+  return Math.min(Math.max(level, 1), 4);
+}

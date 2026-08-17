@@ -187,7 +187,7 @@ export const Overview = memo(function Overview({
         </div>
       </section>
 
-      <ActivityHeatmap points={heatmap} range={heatmapRange} theme={theme} />
+      <ActivityHeatmap points={heatmap} range={heatmapRange} />
 
       <section className="dash-bottom">
         <article className="panel">
