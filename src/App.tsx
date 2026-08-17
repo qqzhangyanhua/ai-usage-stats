@@ -114,6 +114,7 @@ export default function App() {
                 <ErrorBoundary fullscreen={false}>
                   <Sessions
                     filter={data.filter}
+                    options={data.options}
                     revision={data.sessionsRevision}
                     turns={data.turns}
                     turnsLoading={data.turnsLoading}
