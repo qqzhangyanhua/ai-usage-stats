@@ -2,6 +2,13 @@ import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "r
 
 type Align = "left" | "right";
 
+const HIDDEN: CSSProperties = {
+  position: "fixed",
+  visibility: "hidden",
+  pointerEvents: "none",
+  zIndex: 40,
+};
+
 /** 按触发器位置用 fixed 定位浮层，避免被 overflow:hidden 裁切。 */
 export function useAnchoredPanel(
   open: boolean,
@@ -9,10 +16,11 @@ export function useAnchoredPanel(
   align: Align = "right",
   estimatedHeight = 240,
 ): CSSProperties {
-  const [style, setStyle] = useState<CSSProperties>({});
+  const [style, setStyle] = useState<CSSProperties>(HIDDEN);
 
   useLayoutEffect(() => {
     if (!open || !rootRef.current) {
+      setStyle(HIDDEN);
       return;
     }
     function place() {
@@ -20,11 +28,14 @@ export function useAnchoredPanel(
       if (!root) {
         return;
       }
-      const rect = root.getBoundingClientRect();
+      // 只量触发器。首次打开时若量整个 root，未脱离文档流的浮层会把 rect 撑高，定位会偏一截。
+      const trigger = root.querySelector<HTMLElement>(":scope > button") ?? root;
+      const rect = trigger.getBoundingClientRect();
       const openUp =
         window.innerHeight - rect.bottom < estimatedHeight && rect.top > estimatedHeight;
       const next: CSSProperties = {
         position: "fixed",
+        visibility: "visible",
         zIndex: 40,
         minWidth: Math.max(rect.width, 168),
         maxHeight: Math.min(320, window.innerHeight - 24),
