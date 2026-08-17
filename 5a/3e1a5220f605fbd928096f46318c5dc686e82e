@@ -1,0 +1,42 @@
+src-tauri/src/query.rs
+  s_7f91528e02d7b0::t_47b5e0512bd700 567-605,611-616,627,653-654,656-678,680-697,703-741
+  s_7f91528e02d7b0::t_24dd58336a81cf 742
+src/types.ts
+  s_7f91528e02d7b0::t_de02fa6070d7fb 106
+src/components/Sessions.tsx
+  s_7f91528e02d7b0::t_7b5dc064f28527 159
+src/hooks/useUsageData.ts
+  s_7f91528e02d7b0::t_efd22178d9c4c1 371,377
+  s_7f91528e02d7b0::t_ecfb8a692c30ea 96,98
+  s_7f91528e02d7b0::t_0437f8593db00e 374,376
+  s_7f91528e02d7b0::t_4b4f3b49f640ef 72
+  s_7f91528e02d7b0::t_4be23030d9e2ba 373,390,396-398,405-411
+  s_7f91528e02d7b0::t_7d7f9cf0f76cbd 448,450
+  s_7f91528e02d7b0::t_500424f1ddf1d0 452
+  s_7f91528e02d7b0::t_dee3f12b8da7ce 111-132,139-142,153-157,201,223
+  s_7f91528e02d7b0::t_85396a7f6b1f57 372
+  s_7f91528e02d7b0::t_582f887247d4de 412
+src-tauri/src/domain.rs
+  s_7f91528e02d7b0::t_787ccc8e678f43 208,222-224
+src/App.tsx
+  s_7f91528e02d7b0::t_9b5d4fd9b78cc6 46-47,111-126
+src-tauri/src/tests.rs
+  s_7f91528e02d7b0::t_fe3b8f49256709 1385,1395-1396,1404,1412-1427,1437,1456,1471,1480-1521
+  s_7f91528e02d7b0::t_2803b7519314fe 1522-1523
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "5a3e1a5220f605fbd928096f46318c5dc686e82e",
+  "prompts": {},
+  "sessions": {
+    "s_7f91528e02d7b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f1161f00-c7e4-449a-8a01-98cb44650538",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
