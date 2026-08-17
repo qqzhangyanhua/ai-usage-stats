@@ -439,6 +439,23 @@ pub fn cursor_account_as_of(conn: &Connection) -> Result<Option<String>, String>
     .map_err(|e| e.to_string())
 }
 
+pub fn max_cursor_account_occurred_ms(conn: &Connection) -> Result<Option<i64>, String> {
+    let occurred_at: Option<String> = conn
+        .query_row(
+            "SELECT MAX(occurred_at) FROM cursor_account_usage",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let Some(occurred_at) = occurred_at else {
+        return Ok(None);
+    };
+    let millis = chrono::DateTime::parse_from_rfc3339(&occurred_at)
+        .map_err(|e| format!("Cursor 账号用量时间戳无法解析：{e}"))?
+        .timestamp_millis();
+    Ok(Some(millis))
+}
+
 pub fn clear_cursor_account_usage(conn: &Connection) -> Result<(), String> {
     conn.execute("DELETE FROM cursor_account_usage", [])
         .map_err(|e| e.to_string())?;

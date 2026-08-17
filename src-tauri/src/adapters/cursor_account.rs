@@ -1,13 +1,29 @@
 use crate::adapters::i64_field;
 use crate::domain::{CursorAccountUsageDto, CursorUsageEvent};
 
+pub struct CursorUsagePage {
+    pub events: Vec<CursorUsageEvent>,
+    pub total_count: u64,
+}
+
 /// 把 Cursor 仪表盘 `get-filtered-usage-events` 的原始 JSON 归一成账号级事件。
 /// 坏 JSON 返回可读错误；缺 `usageEventsDisplay` 或空列表返回空，不 panic。
 pub fn parse_cursor_usage_events(raw: &str) -> Result<Vec<CursorUsageEvent>, String> {
+    Ok(parse_cursor_usage_page(raw)?.events)
+}
+
+pub fn parse_cursor_usage_page(raw: &str) -> Result<CursorUsagePage, String> {
     let value: serde_json::Value =
         serde_json::from_str(raw).map_err(|e| format!("Cursor 账号用量 JSON 解析失败：{e}"))?;
+    let total_count = value
+        .get("totalUsageEventsCount")
+        .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|n| n.max(0) as u64)))
+        .unwrap_or(0);
     let Some(items) = value.get("usageEventsDisplay").and_then(|v| v.as_array()) else {
-        return Ok(Vec::new());
+        return Ok(CursorUsagePage {
+            events: Vec::new(),
+            total_count,
+        });
     };
 
     let mut events = Vec::new();
@@ -17,7 +33,10 @@ pub fn parse_cursor_usage_events(raw: &str) -> Result<Vec<CursorUsageEvent>, Str
         };
         events.push(event);
     }
-    Ok(events)
+    Ok(CursorUsagePage {
+        events,
+        total_count,
+    })
 }
 
 fn parse_one(item: &serde_json::Value) -> Option<CursorUsageEvent> {

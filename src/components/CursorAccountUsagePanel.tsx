@@ -99,7 +99,8 @@ export function CursorAccountUsagePanel() {
           <div>
             <h2>Cursor 账号用量</h2>
             <p className="note">
-              云端账号 / 含全部设备 / 全时段 / 仅 token 无费用 · 最后刷新于 {asOf}
+              云端账号 / 含全部设备 / 全时段 / 仅 token 无费用 · 最后刷新于 {asOf} / 已缓存{" "}
+              {formatTokens(data.event_count)} 条
             </p>
           </div>
           <Button variant="accent" disabled={busy} onClick={() => void handleRefresh()}>

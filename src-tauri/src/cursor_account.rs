@@ -1,12 +1,15 @@
 use rusqlite::Connection;
 
-use crate::adapters::cursor_account::{parse_cursor_usage_events, summarize_cursor_usage};
+use crate::adapters::cursor_account::{
+    parse_cursor_usage_events, parse_cursor_usage_page, summarize_cursor_usage,
+};
 use crate::domain::CursorAccountUsageDto;
 use crate::store;
 
 const KEYRING_SERVICE: &str = "ai-usage-stats";
 const KEYRING_ACCOUNT: &str = "cursor-session-token";
 const USAGE_EVENTS_URL: &str = "https://cursor.com/api/dashboard/get-filtered-usage-events";
+const PAGE_SIZE: u32 = 100;
 
 pub fn normalize_token(raw: &str) -> String {
     let trimmed = raw.trim();
@@ -44,10 +47,28 @@ pub fn has_token() -> Result<bool, String> {
     Ok(load_token()?.is_some())
 }
 
-pub fn fetch_usage_events_page(token: &str) -> Result<String, String> {
+pub fn incremental_start_ms(conn: &Connection) -> Result<i64, String> {
+    Ok(store::max_cursor_account_occurred_ms(conn)?.unwrap_or(0))
+}
+
+pub fn ingest_raw_pages(conn: &Connection, pages: &[&str]) -> Result<u64, String> {
+    let mut written = 0u64;
+    for raw in pages {
+        let events = parse_cursor_usage_events(raw)?;
+        written += store::upsert_cursor_account_events(conn, &events)?;
+    }
+    Ok(written)
+}
+
+pub fn fetch_usage_events_page(
+    token: &str,
+    page: u32,
+    start_date_ms: i64,
+) -> Result<String, String> {
     let body = serde_json::json!({
-        "page": 1,
-        "pageSize": 100
+        "page": page,
+        "pageSize": PAGE_SIZE,
+        "startDate": start_date_ms
     });
     let request = ureq::post(USAGE_EVENTS_URL)
         .set(
@@ -71,10 +92,30 @@ pub fn fetch_usage_events_page(token: &str) -> Result<String, String> {
     }
 }
 
+fn fetch_all_pages(token: &str, start_date_ms: i64) -> Result<Vec<String>, String> {
+    let mut page = 1u32;
+    let mut pages = Vec::new();
+    loop {
+        let raw = fetch_usage_events_page(token, page, start_date_ms)?;
+        let parsed = parse_cursor_usage_page(&raw)?;
+        let page_len = parsed.events.len();
+        let total = parsed.total_count;
+        pages.push(raw);
+        let last_page = page_len == 0 || page_len < PAGE_SIZE as usize;
+        let reached_total = total > 0 && u64::from(page) * u64::from(PAGE_SIZE) >= total;
+        if last_page || reached_total {
+            break;
+        }
+        page += 1;
+    }
+    Ok(pages)
+}
+
 pub fn refresh(conn: &Connection, token: &str) -> Result<CursorAccountUsageDto, String> {
-    let raw = fetch_usage_events_page(token)?;
-    let events = parse_cursor_usage_events(&raw)?;
-    store::upsert_cursor_account_events(conn, &events)?;
+    let start_date_ms = incremental_start_ms(conn)?;
+    let pages = fetch_all_pages(token, start_date_ms)?;
+    let refs: Vec<&str> = pages.iter().map(String::as_str).collect();
+    ingest_raw_pages(conn, &refs)?;
     let as_of = chrono::Utc::now().to_rfc3339();
     store::set_cursor_account_as_of(conn, &as_of)?;
     load_summary(conn)

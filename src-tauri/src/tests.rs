@@ -3012,8 +3012,10 @@ fn bundled_litellm_snapshot_is_valid_and_covers_common_models() {
 
 #[test]
 fn cursor_account_parser_maps_token_dimensions_and_keeps_duplicates() {
-    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+    let page = cursor_account::parse_cursor_usage_page(&fixture("cursor_account_usage.json"))
         .expect("parse cursor account fixture");
+    assert_eq!(page.total_count, 3);
+    let events = page.events;
     assert_eq!(events.len(), 3);
 
     assert_eq!(events[0].occurred_at, "2024-01-01T00:00:00+00:00");
@@ -3098,4 +3100,107 @@ fn cursor_account_store_dedups_by_fingerprint() {
     store::clear_cursor_account_usage(&conn).unwrap();
     assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
     assert_eq!(store::cursor_account_as_of(&conn).unwrap(), None);
+}
+
+const CURSOR_PAGE_ONE: &str = r#"{
+    "totalUsageEventsCount": 3,
+    "usageEventsDisplay": [
+        {
+            "timestamp": "1704067200000",
+            "model": "claude-4.5-sonnet",
+            "isHeadless": false,
+            "tokenUsage": {
+                "inputTokens": 100,
+                "outputTokens": 50,
+                "cacheReadTokens": 20,
+                "cacheWriteTokens": 10
+            }
+        },
+        {
+            "timestamp": "1704153600000",
+            "model": "composer-2",
+            "isHeadless": true,
+            "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 80,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 5
+            }
+        }
+    ]
+}"#;
+
+const CURSOR_PAGE_TWO: &str = r#"{
+    "totalUsageEventsCount": 3,
+    "usageEventsDisplay": [
+        {
+            "timestamp": "1704153600000",
+            "model": "composer-2",
+            "isHeadless": true,
+            "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 80,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 5
+            }
+        },
+        {
+            "timestamp": "1704240000000",
+            "model": "gpt-5",
+            "isHeadless": false,
+            "tokenUsage": {
+                "inputTokens": 30,
+                "outputTokens": 10,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0
+            }
+        }
+    ]
+}"#;
+
+#[test]
+fn cursor_account_ingest_dedups_overlapping_pages() {
+    let conn = store::open_memory().unwrap();
+    let written =
+        crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE, CURSOR_PAGE_TWO])
+            .unwrap();
+    assert_eq!(written, 3);
+
+    let dto = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(dto.event_count, 3);
+    assert_eq!(dto.input_tokens, 330);
+    assert_eq!(dto.output_tokens, 140);
+    assert_eq!(dto.cache_read_tokens, 20);
+    assert_eq!(dto.cache_creation_tokens, 15);
+    assert_eq!(dto.total_tokens, 505);
+}
+
+#[test]
+fn cursor_account_incremental_ingest_only_adds_new_events() {
+    let conn = store::open_memory().unwrap();
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        0
+    );
+
+    let first = crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE]).unwrap();
+    assert_eq!(first, 2);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        1_704_153_600_000
+    );
+
+    let second = crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_TWO]).unwrap();
+    assert_eq!(second, 1);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        1_704_240_000_000
+    );
+
+    let again = crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_TWO]).unwrap();
+    assert_eq!(again, 0);
+
+    let dto = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(dto.event_count, 3);
+    assert_eq!(dto.total_tokens, 505);
 }
