@@ -6,6 +6,7 @@ pub mod domain;
 pub mod ingest;
 pub mod query;
 pub mod store;
+pub mod tray;
 
 use std::fs;
 use std::path::PathBuf;
@@ -36,7 +37,7 @@ fn cache_dir() -> PathBuf {
     dir
 }
 
-fn load_prices(path: &PathBuf) -> PriceTable {
+pub(crate) fn load_prices(path: &PathBuf) -> PriceTable {
     fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
@@ -297,6 +298,13 @@ async fn export_json(default_name: String, content: String) -> Result<bool, Stri
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn refresh_tray(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || tray::refresh(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// 弹出原生保存对话框并写入图表 PNG（base64 编码）；返回 `false` 表示用户取消。
 #[tauri::command]
 async fn export_image(default_name: String, base64: String) -> Result<bool, String> {
@@ -334,7 +342,14 @@ pub fn run() {
                 prices_path,
                 conn: Mutex::new(conn),
             });
+            tray::setup(app.handle()).map_err(std::io::Error::other)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             ping,
@@ -355,10 +370,17 @@ pub fn run() {
             get_code_volume,
             export_csv,
             export_json,
-            export_image
+            export_image,
+            refresh_tray
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::show_main(app);
+            }
+        });
 }
 
 #[cfg(test)]

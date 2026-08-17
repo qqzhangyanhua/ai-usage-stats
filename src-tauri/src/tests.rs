@@ -8,7 +8,7 @@ use crate::domain::{Filter, PriceEntry, PriceTable, SessionQuery, Source, UsageR
 use crate::ingest;
 use crate::query;
 use crate::store;
-use chrono::{TimeZone, Utc};
+use chrono::{Local, NaiveTime, TimeZone, Utc};
 
 fn fixture(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2448,12 +2448,7 @@ fn billing_window_opens_after_five_hour_gap() {
 #[test]
 fn billing_window_floors_start_to_utc_hour() {
     let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
-    let records = vec![window_rec(
-        "2026-08-17T08:37:12Z",
-        Source::Claude,
-        "s1",
-        10,
-    )];
+    let records = vec![window_rec("2026-08-17T08:37:12Z", Source::Claude, "s1", 10)];
     let dto = billing_window::summarize(&records, &PriceTable::default(), now);
     assert_eq!(dto.current[0].start, "2026-08-17T08:00:00Z");
     assert_eq!(dto.current[0].end, "2026-08-17T13:00:00Z");
@@ -2464,12 +2459,7 @@ fn billing_window_floors_start_to_utc_hour() {
 #[test]
 fn billing_window_expires_after_end_or_idle() {
     let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
-    let expired = vec![window_rec(
-        "2026-08-17T06:00:00Z",
-        Source::Claude,
-        "s1",
-        20,
-    )];
+    let expired = vec![window_rec("2026-08-17T06:00:00Z", Source::Claude, "s1", 20)];
     let dto = billing_window::summarize(&expired, &PriceTable::default(), now);
     assert!(dto.current.is_empty());
     assert_eq!(dto.recent.len(), 1);
@@ -2710,8 +2700,7 @@ fn sql_queries_match_in_memory_aggregates() {
 
     // billing_windows（忽略日期筛选，按来源切 5h 窗）
     let window_now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
-    let sql_bw =
-        query::billing_windows(&conn, &Filter::default(), &prices, window_now).unwrap();
+    let sql_bw = query::billing_windows(&conn, &Filter::default(), &prices, window_now).unwrap();
     let mem_bw = aggregate::billing_windows(&records, &Filter::default(), &prices, window_now);
     assert_eq!(sql_bw, mem_bw);
     let dated = Filter {
@@ -2759,4 +2748,92 @@ fn sql_queries_match_in_memory_aggregates() {
         assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
         assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
     }
+}
+
+fn local_noon_iso(date: chrono::NaiveDate) -> String {
+    let noon = date.and_hms_opt(12, 0, 0).expect("noon");
+    noon.and_local_timezone(Local)
+        .earliest()
+        .or_else(|| noon.and_local_timezone(Local).latest())
+        .expect("local noon")
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+#[test]
+fn local_day_filter_uses_local_midnight_and_end_as_utc_z() {
+    let now = Local
+        .with_ymd_and_hms(2026, 8, 17, 19, 22, 30)
+        .single()
+        .expect("fixed local time");
+    let filter = crate::tray::local_day_filter(now);
+    let from = filter.from.expect("from");
+    let to = filter.to.expect("to");
+    assert!(from.ends_with('Z'), "{from}");
+    assert!(to.ends_with('Z'), "{to}");
+
+    let from_local = chrono::DateTime::parse_from_rfc3339(&from)
+        .unwrap()
+        .with_timezone(&Local);
+    let to_local = chrono::DateTime::parse_from_rfc3339(&to)
+        .unwrap()
+        .with_timezone(&Local);
+    assert_eq!(from_local.date_naive(), now.date_naive());
+    assert_eq!(
+        from_local.time(),
+        NaiveTime::from_hms_milli_opt(0, 0, 0, 0).unwrap()
+    );
+    assert_eq!(to_local.date_naive(), now.date_naive());
+    assert_eq!(
+        to_local.time(),
+        NaiveTime::from_hms_milli_opt(23, 59, 59, 999).unwrap()
+    );
+}
+
+#[test]
+fn tray_format_title_marks_unpriced() {
+    assert_eq!(crate::tray::format_title(Some(1.23), false), "$1.23");
+    assert_eq!(crate::tray::format_title(Some(1.23), true), "$1.23*");
+    assert_eq!(crate::tray::format_title(None, false), "$0.00");
+    assert_eq!(crate::tray::format_title(None, true), "—");
+}
+
+#[test]
+fn today_filter_overview_matches_in_memory_and_excludes_other_days() {
+    let now = Local::now();
+    let filter = crate::tray::local_day_filter(now);
+    let mut today = rec(
+        &local_noon_iso(now.date_naive()),
+        Source::Claude,
+        "claude",
+        "anthropic",
+        "/p",
+        "s-today",
+        100,
+    );
+    today.native_cost = Some(1.5);
+    let mut yesterday = rec(
+        &local_noon_iso(now.date_naive() - chrono::Days::new(1)),
+        Source::Codex,
+        "gpt",
+        "official",
+        "/p",
+        "s-yday",
+        200,
+    );
+    yesterday.native_cost = Some(9.0);
+
+    let records = vec![today, yesterday];
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let prices = PriceTable::default();
+
+    let sql = query::overview(&conn, &filter, &prices).unwrap();
+    let mem = aggregate::overview(&records, &filter, &prices);
+    assert_eq!(sql.total_tokens, 100);
+    assert_eq!(mem.total_tokens, 100);
+    assert_eq!(sql.cost, Some(1.5));
+    assert_eq!(mem.cost, Some(1.5));
+    assert!(!sql.unpriced);
+    assert!(!mem.unpriced);
 }

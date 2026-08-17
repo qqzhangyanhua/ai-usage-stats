@@ -149,12 +149,9 @@ fn build_window(
     let burn = burn_rate(first.at, last_activity, total_tokens, cost);
     let projection = if is_active {
         match (burn.as_ref(), remaining_minutes) {
-            (Some(rate), Some(remaining)) => Some(project_usage(
-                total_tokens,
-                cost,
-                rate,
-                remaining as f64,
-            )),
+            (Some(rate), Some(remaining)) => {
+                Some(project_usage(total_tokens, cost, rate, remaining as f64))
+            }
             _ => None,
         }
     } else {

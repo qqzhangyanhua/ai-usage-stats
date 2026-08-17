@@ -308,6 +308,11 @@ export function useUsageData() {
           `${label}${report.partial_success ? "部分完成" : "完成"}：解析 ${report.files_parsed}，跳过 ${report.files_skipped}，写入 ${report.records_written}${removed}${issue}`,
         );
         await refreshViews();
+        try {
+          await invoke("refresh_tray");
+        } catch {
+          // 菜单栏刷新失败不阻断主界面
+        }
       } catch (error) {
         setStatus(`${label}失败：${humanStatus(error)}`);
         setLoading(false);
@@ -337,6 +342,11 @@ export function useUsageData() {
           `缓存重建${report.partial_success ? "部分完成" : "完成"}：写入 ${report.records_written}，清理 ${report.records_removed}，失败 ${report.files_failed}`,
         );
         await refreshViews();
+        try {
+          await invoke("refresh_tray");
+        } catch {
+          // 菜单栏刷新失败不阻断主界面
+        }
       } catch (error) {
         setStatus(`缓存重建失败：${humanStatus(error)}`);
         setLoading(false);

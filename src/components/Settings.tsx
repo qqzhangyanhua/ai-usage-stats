@@ -43,7 +43,9 @@ export function Settings({
         <div className="panel-head">
           <div>
             <h2>数据源健康</h2>
-            <p className="panel-note">只展示扫描状态和用量元数据，不读取或保存会话正文。</p>
+            <p className="panel-note">
+              只展示扫描状态和用量元数据，不读取或保存会话正文。关闭窗口后应用会留在菜单栏，显示今日花费。
+            </p>
           </div>
           <Button disabled={operationBusy || rebuilding !== null} onClick={() => onRebuild(null)}>
             {rebuilding === "all" ? "正在重建…" : "重建全部缓存"}
