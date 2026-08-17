@@ -1,0 +1,31 @@
+src/lib/calendar.ts
+  s_9b494ab314bb5a::t_49821cd21c3086 113-231
+src/styles.css
+  s_9b494ab314bb5a::t_2f88b2d3c42558 93-97
+  s_9b494ab314bb5a::t_90de93add7706b 21-25
+  s_9b494ab314bb5a::t_d87217cbf4c2c9 950,953-1062
+src/components/Overview.tsx
+  s_9b494ab314bb5a::t_0be898b05b493b 190
+src/components/ActivityHeatmap.tsx
+  s_9b494ab314bb5a::t_7bcc8d5988f49c 1
+  s_9b494ab314bb5a::t_ff9c257a5165ba 2-8,10-20,29-61,67,70-129
+  s_9b494ab314bb5a::t_f70d479a85378f 69
+src/lib/chartTheme.ts
+  s_9b494ab314bb5a::t_c046a19b7a9389 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "6670208f75919623fb32d98fda38f14e4dfef53b",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
