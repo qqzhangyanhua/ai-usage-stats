@@ -76,6 +76,7 @@ const applicationNames: Record<string, string> = {
   gemini: "Gemini CLI",
   grok: "Grok CLI",
   qwen: "Qwen Code",
+  cursor_agent: "Cursor Agent",
 };
 
 export function applicationLabel(source: string): string {

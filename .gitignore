@@ -10,3 +10,4 @@ dist/
 src-tauri/gen/
 .scratch/
 .playwright-cli/
+docs/probe/.captures/

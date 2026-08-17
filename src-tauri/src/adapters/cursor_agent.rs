@@ -1,0 +1,75 @@
+use crate::adapters::{finish, i64_field, parse_jsonl_values, text_field};
+use crate::domain::{Source, UsageRecord};
+
+/// 解析 cursor-agent 无头 stream-json 的落盘 jsonl（由 scripts/cursor-agent-usage.py 采集）。
+///
+/// token 只出现在 `type=result` 事件的 `usage` 子对象里；model/cwd 来自开头的 `type=system` 事件。
+/// 每条 result 归一为一条 Usage Record。详见 docs/probe/cursor-agent.md。
+pub fn parse_cursor_agent_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
+    let values = parse_jsonl_values(content);
+
+    let mut model = String::new();
+    let mut project = String::new();
+    for value in &values {
+        if value.get("type").and_then(|v| v.as_str()) == Some("system") {
+            let candidate_model = text_field(value, &["model"]);
+            if !candidate_model.is_empty() {
+                model = candidate_model;
+            }
+            let candidate_cwd = text_field(value, &["cwd"]);
+            if !candidate_cwd.is_empty() {
+                project = candidate_cwd;
+            }
+        }
+    }
+
+    let file_session = std::path::Path::new(source_file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    let mut records = Vec::new();
+    for value in &values {
+        if value.get("type").and_then(|v| v.as_str()) != Some("result") {
+            continue;
+        }
+        let usage = match value.get("usage") {
+            Some(usage) if !usage.is_null() => usage,
+            _ => continue,
+        };
+        let session_id = {
+            let value = text_field(value, &["session_id"]);
+            if value.is_empty() {
+                file_session.clone()
+            } else {
+                value
+            }
+        };
+        let record_model = {
+            let value = text_field(value, &["model"]);
+            if value.is_empty() {
+                model.clone()
+            } else {
+                value
+            }
+        };
+        records.push(finish(UsageRecord {
+            occurred_at: text_field(value, &["captured_at"]),
+            source: Source::CursorAgent,
+            model: record_model,
+            provider: String::new(),
+            project: project.clone(),
+            session_id,
+            source_file: source_file.to_string(),
+            input_tokens: i64_field(usage, &["inputTokens"]),
+            output_tokens: i64_field(usage, &["outputTokens"]),
+            cache_read_tokens: i64_field(usage, &["cacheReadTokens"]),
+            cache_creation_tokens: i64_field(usage, &["cacheWriteTokens"]),
+            reasoning_tokens: 0,
+            total_tokens: 0,
+            native_cost: None,
+        }));
+    }
+    records
+}

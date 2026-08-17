@@ -7,7 +7,7 @@ use rusqlite::Connection;
 
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
-use crate::adapters::{claude, codex, dsh, factory, gemini, grok, kimi, pi, qwen};
+use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
 use crate::domain::{
     CodeVolumeSummary, IngestIssue, IngestReport, Source, SourceDiagnostic, SourceIngestReport,
     UsageRecord,
@@ -115,6 +115,7 @@ fn source_root(home: &Path, source: Source) -> PathBuf {
         Source::Grok => home.join(".grok/sessions"),
         Source::Qwen => home.join(".qwen/tmp"),
         Source::Factory => home.join(".factory/sessions"),
+        Source::CursorAgent => home.join(".cursor-agent-usage"),
     }
 }
 
@@ -123,6 +124,7 @@ fn source_coverage(source: Source) -> &'static str {
         Source::Qwen => "本地无 Token",
         Source::Grok => "仅上下文总量",
         Source::Factory => "会话累计 Token",
+        Source::CursorAgent => "仅无头调用",
         _ => "轮级 Token",
     }
 }
@@ -164,6 +166,14 @@ fn ingest_source(
         Source::Grok => ingest_grok(conn, &home.join(".grok/sessions"), report),
         Source::Qwen => ingest_qwen(conn, &home.join(".qwen/tmp"), report),
         Source::Factory => ingest_factory(conn, &home.join(".factory/sessions"), report),
+        Source::CursorAgent => ingest_jsonl_tree(
+            conn,
+            source,
+            &home.join(".cursor-agent-usage"),
+            "jsonl",
+            report,
+            |content, path| Ok(cursor_agent::parse_cursor_agent_jsonl(content, path)),
+        ),
         Source::Opencode => ingest_opencode(
             conn,
             &home.join(".local/share/opencode/opencode.db"),
@@ -267,7 +277,13 @@ fn ingest_one(
 fn is_append_log_source(source: Source) -> bool {
     matches!(
         source,
-        Source::Codex | Source::Claude | Source::Pi | Source::Kimi | Source::Dsh | Source::Grok
+        Source::Codex
+            | Source::Claude
+            | Source::Pi
+            | Source::Kimi
+            | Source::Dsh
+            | Source::Grok
+            | Source::CursorAgent
     )
 }
 

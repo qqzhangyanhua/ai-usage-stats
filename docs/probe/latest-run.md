@@ -1,7 +1,30 @@
 # 探测程序最近一次实测
 
-命令：`cargo run --bin probe --manifest-path src-tauri/Cargo.toml`  
-时间：2026-08-16。只记录字段位置，不含会话正文。
+时间：2026-08-17。只记录字段位置，不含会话正文。
+
+## cursor-agent
+
+命令：`python3 scripts/probe_cursor_agent.py`（CLI `2026.08.11-e8db854`，`--mode ask`）
+
+- 有 token：是（仅无头 stdout）
+- 口径：`result.usage`
+  - input ← `inputTokens`
+  - output ← `outputTokens`
+  - cache_read ← `cacheReadTokens`
+  - cache_creation ← `cacheWriteTokens`
+  - reasoning：无
+  - total：各口径之和
+  - native_cost：无
+- 模型：`system.model`（`result` 上没有）
+- 项目 / 会话：`system.cwd` / `session_id`
+- 去重：只取 `type=result`，可用 `request_id`
+- hook：`sessionEnd` 无数字；这次无头运行未触发 `stop`
+- 本机 `store.db` / `agent-transcripts`：无 token
+- 详见 `docs/probe/cursor-agent.md`
+
+---
+
+以下为 2026-08-16 的 `cargo run --bin probe` 结果。
 
 ## dsh
 

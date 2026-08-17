@@ -39,4 +39,5 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 | qwen | `~/.qwen` | 待确认 | ❌ |
 | Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
 | Cursor | sqlite（仅代码量） | ❌（云端） | ❌ |
+| cursor-agent | 无头 `stream-json`（本机会话无 token） | ✅（仅 stdout，需前瞻落盘） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |

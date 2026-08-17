@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod codex;
 pub mod cursor;
+pub mod cursor_agent;
 pub mod dsh;
 pub mod factory;
 pub mod gemini;

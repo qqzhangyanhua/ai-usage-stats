@@ -1463,6 +1463,7 @@ input[type="checkbox"] {
 }
 .tone-factory,
 .tone-dsh,
+.tone-cursor,
 .tone-other {
   background: var(--tone-other-bg);
   color: var(--tone-other-fg);

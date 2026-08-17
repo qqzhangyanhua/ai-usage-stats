@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 | qwen | `~/.qwen/tmp/*/logs.json` | 否 | 本机仅有 user 文本，无 token 字段。适配器输出空列表 | 会话：`sessionId`；模型 / provider / 项目：文件中不存在 | 无可计用量 |
 | factory | `~/.factory/sessions/**/<id>.settings.json` 的 `tokenUsage` | 是（会话累计） | jsonl 正文无 per-turn usage。`tokenUsage`：inputTokens / outputTokens / cacheCreationTokens / cacheReadTokens / thinkingTokens | provider：`providerLock`；项目：dashed 目录名解码；会话：文件名前缀 uuid | 每会话一条累计记录（本机无轮级口径） |
 | Cursor | `~/.cursor/ai-tracking/ai-code-tracking.db` 的 `scored_commits` | 否（代码量） | `linesAdded` / `composerLinesAdded` / `v2AiPercentage` 等。**不进入 Usage Record** | — | 独立代码量面板 |
+| cursor-agent | 无头 stdout `stream-json`；本机 `store.db` / transcript 无 token | 是（仅 stdout） | `result.usage`：inputTokens / outputTokens / cacheReadTokens / cacheWriteTokens。reasoning / 费用：无 | 模型：`system.model`；项目：`system.cwd`；会话：`session_id` | 只取 `type=result`；`request_id` 去重。hook / 本机文件不可用 |
 | amp | 本机仅配置 | 否 | 不纳入 | — | — |
 
 ## dsh 解压后结构

@@ -1,6 +1,6 @@
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
-use crate::adapters::{claude, codex, dsh, factory, gemini, grok, kimi, pi, qwen};
+use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
 use crate::aggregate;
 use crate::cost::derive_cost;
 use crate::domain::{Filter, PriceEntry, PriceTable, SessionQuery, Source, UsageRecord};
@@ -312,12 +312,38 @@ fn factory_adapter_maps_session_token_usage() {
 }
 
 #[test]
+fn cursor_agent_adapter_maps_result_usage_per_turn() {
+    let records = cursor_agent::parse_cursor_agent_jsonl(
+        &fixture("cursor-agent-stream.jsonl"),
+        "/Users/dev/.cursor-agent-usage/3ce011d4-33d1-41d0-a16c-f6dc206c47f1.jsonl",
+    );
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].source, Source::CursorAgent);
+    assert_eq!(records[0].model, "Cursor Grok 4.6 High Fast");
+    assert_eq!(records[0].provider, "");
+    assert_eq!(records[0].project, "/Users/dev/project");
+    assert_eq!(records[0].session_id, "3ce011d4-33d1-41d0-a16c-f6dc206c47f1");
+    assert_eq!(records[0].occurred_at, "2026-08-17T05:31:13.226190+00:00");
+    assert_eq!(records[0].input_tokens, 18851);
+    assert_eq!(records[0].output_tokens, 35);
+    assert_eq!(records[0].cache_read_tokens, 0);
+    assert_eq!(records[0].cache_creation_tokens, 0);
+    assert_eq!(records[0].reasoning_tokens, 0);
+    assert_eq!(records[0].total_tokens, 18886);
+    assert!(records[0].native_cost.is_none());
+    // 第二轮：cacheWriteTokens 映射到 cache_creation，total 为各口径之和。
+    assert_eq!(records[1].cache_creation_tokens, 400);
+    assert_eq!(records[1].total_tokens, 1000);
+}
+
+#[test]
 fn source_maps_to_user_facing_application_names() {
     assert_eq!(Source::Claude.application_name(), "Claude Code");
     assert_eq!(Source::Codex.application_name(), "Codex");
     assert_eq!(Source::Factory.application_name(), "Droid");
     assert_eq!(Source::Opencode.application_name(), "OpenCode");
     assert_eq!(Source::Dsh.application_name(), "DeepSeek Harness");
+    assert_eq!(Source::CursorAgent.application_name(), "Cursor Agent");
 }
 
 #[test]

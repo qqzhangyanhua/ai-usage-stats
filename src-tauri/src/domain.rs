@@ -13,10 +13,11 @@ pub enum Source {
     Grok,
     Qwen,
     Factory,
+    CursorAgent,
 }
 
 impl Source {
-    pub const ALL: [Source; 10] = [
+    pub const ALL: [Source; 11] = [
         Source::Codex,
         Source::Claude,
         Source::Pi,
@@ -27,6 +28,7 @@ impl Source {
         Source::Grok,
         Source::Qwen,
         Source::Factory,
+        Source::CursorAgent,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -41,6 +43,7 @@ impl Source {
             Source::Grok => "grok",
             Source::Qwen => "qwen",
             Source::Factory => "factory",
+            Source::CursorAgent => "cursor_agent",
         }
     }
 
@@ -56,6 +59,7 @@ impl Source {
             Source::Grok => "Grok CLI",
             Source::Qwen => "Qwen Code",
             Source::Factory => "Droid",
+            Source::CursorAgent => "Cursor Agent",
         }
     }
 
@@ -71,6 +75,7 @@ impl Source {
             "grok" => Some(Source::Grok),
             "qwen" => Some(Source::Qwen),
             "factory" => Some(Source::Factory),
+            "cursor_agent" => Some(Source::CursorAgent),
             _ => None,
         }
     }

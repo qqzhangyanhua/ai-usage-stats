@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::domain::{Source, UsageRecord};
 
-pub const ADAPTER_VERSION: i64 = 2;
+pub const ADAPTER_VERSION: i64 = 3;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
