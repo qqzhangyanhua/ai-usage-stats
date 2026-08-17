@@ -1,0 +1,78 @@
+src-tauri/src/tests.rs
+  s_9b494ab314bb5a::t_4ea809d24043e6 3097-3100
+  s_9b494ab314bb5a::t_10987e80a51e45 3010-3051
+  s_9b494ab314bb5a::t_0a045dba40092f 3061,3063
+  s_9b494ab314bb5a::t_44d1fd2ce49a9c 3052-3060,3062,3064-3068
+  s_9b494ab314bb5a::t_dc9a82b24fd235 2
+  s_9b494ab314bb5a::t_6eb0a91926926e 3069-3096,3101
+  s_9b494ab314bb5a::t_7ac227164e7471 2886-2890,2935-2939
+src-tauri/src/adapters/cursor_account.rs
+  s_9b494ab314bb5a::t_7d6ffae64aa0b5 67
+  s_9b494ab314bb5a::t_0c96cc7fc31dc0 1-66,68-69
+src-tauri/src/cursor_account.rs
+  s_9b494ab314bb5a::t_733cecd9c1c685 1-82,103-108
+  s_9b494ab314bb5a::t_e1b728dd2ad11a 83-102
+src/components/Sidebar.tsx
+  s_9b494ab314bb5a::t_feb5d6f796400c 25
+src-tauri/src/adapters/mod.rs
+  s_9b494ab314bb5a::t_0d740b9b9c0eea 4
+src-tauri/Cargo.toml
+  s_9b494ab314bb5a::t_4941ddf9433001 35
+  s_9b494ab314bb5a::t_880b90fc2a7138 36
+src/App.tsx
+  s_9b494ab314bb5a::t_c950107fa48893 4
+  s_9b494ab314bb5a::t_d23205589545af 98-103
+src-tauri/src/lib.rs
+  s_9b494ab314bb5a::t_63ce3f2f786286 520-523
+  s_9b494ab314bb5a::t_ec3f727ab2b339 23-26
+  s_9b494ab314bb5a::t_f91c882f0832c4 368
+  s_9b494ab314bb5a::t_2181450a2d155e 360-367,369-374,376-398
+  s_9b494ab314bb5a::t_cd33c750bf2b52 5
+  s_9b494ab314bb5a::t_6e89eb6617e5a6 375
+src-tauri/src/domain.rs
+  s_9b494ab314bb5a::t_35570a25e0db70 340-397
+src/types.ts
+  s_9b494ab314bb5a::t_b09450f08fe481 200-209
+src/components/CursorAccountUsagePanel.tsx
+  s_9b494ab314bb5a::t_c04ceab7e51885 44
+  s_9b494ab314bb5a::t_02138ca452e14e 3
+  s_9b494ab314bb5a::t_92c8ade0ac33af 102
+  s_9b494ab314bb5a::t_94d5cf8161c322 1-2,4-43,45-64,66-75,79-84,86-101,103-108,110-157
+  s_9b494ab314bb5a::t_88f4ee75ca29d2 65,76-78,85
+  s_9b494ab314bb5a::t_d54578a10f51a4 109
+src/styles.css
+  s_9b494ab314bb5a::t_0b015558fcf3f1 2294-2301
+docs/adr/0004-cursor-account-usage-network-ingest.md
+  s_9b494ab314bb5a::t_16e66f21e581fb 1-21
+CONTEXT.md
+  s_9b494ab314bb5a::t_70aa3ec50e4046 45
+  s_9b494ab314bb5a::t_71de426b77f976 27-30
+src/lib/format.ts
+  s_9b494ab314bb5a::t_b5e8991856a880 3-10
+src-tauri/src/store.rs
+  s_9b494ab314bb5a::t_f17dd176367d16 5
+  s_9b494ab314bb5a::t_235ba97ac4424c 57-74
+  s_9b494ab314bb5a::t_314530f0af0287 356-448
+src/hooks/useUsageData.ts
+  s_9b494ab314bb5a::t_088df1608f977d 4
+src-tauri/tests/fixtures/cursor_account_usage.json
+  s_9b494ab314bb5a::t_3994414b304376 1-39
+src-tauri/Cargo.lock
+  s_9b494ab314bb5a::t_fdc67079589dd4 39,47,371-380,404,417,1706-1717,2610-2623,2666-2700,2785-2820,3142-3147,3221,3883-3905,4264-4281,4512-4520,4935-4940
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "d477e441e3f833b7939dadc2d49cda0c2b1f61fb",
+  "prompts": {},
+  "sessions": {
+    "s_9b494ab314bb5a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dbcb72ef-debd-4a46-9281-6124baa13643",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
