@@ -24,6 +24,10 @@ _Avoid_: token 类型
 Cursor 一类工具本地只记录的「AI 生成代码行数、AI 占比」，与 token 无关，是独立维度，界面上与 token 严格分区。
 _Avoid_: 用量、消耗（避免与 token 混淆）
 
+**Cursor 账号用量 (Cursor Account Usage)**：
+从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量。
+_Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
+
 ## 采集源现状
 
 | Source | 存储 | 本机 token | 本机费用 |
@@ -38,6 +42,6 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 | grok | `~/.grok/sessions` | ✅（`turn_completed.usage`） | ✅ 自带 `costUsdTicks` |
 | qwen | `~/.qwen` | 待确认 | ❌ |
 | Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
-| Cursor | sqlite（仅代码量） | ❌（云端） | ❌ |
+| Cursor | sqlite（仅代码量）+ 账号级 token（联网，self-serve 无费用） | ⚠️ 账号级（手动刷新） | ❌ |
 | cursor-agent | 无头 `stream-json`（本机会话无 token） | ✅（仅 stdout，需前瞻落盘） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |

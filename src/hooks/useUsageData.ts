@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heatmapFilter } from "../lib/calendar";
-import { previousFilter, rangeFromPreset } from "../lib/format";
+import { humanStatus, previousFilter, rangeFromPreset } from "../lib/format";
 import type {
   ApplicationAnalyticsDto,
   BillingWindowsDto,
@@ -57,14 +57,6 @@ export function viewFromHash(): View {
     return "application";
   }
   return views.find((item) => item === raw) ?? "overview";
-}
-
-function humanStatus(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  if (/ipc|webview|transformCallback|not allowed|unavailable|Cannot read/i.test(text)) {
-    return "IPC 未连通";
-  }
-  return text;
 }
 
 type SelectedSession = { id: string; source: string };

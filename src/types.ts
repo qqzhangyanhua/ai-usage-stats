@@ -197,6 +197,16 @@ export type CodeVolumeSummary = {
   ai_percentage: number | null;
 };
 
+export type CursorAccountUsageDto = {
+  as_of: string | null;
+  event_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  total_tokens: number;
+};
+
 export type FilterOptions = {
   sources: string[];
   models: string[];

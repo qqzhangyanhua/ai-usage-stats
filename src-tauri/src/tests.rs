@@ -1,4 +1,5 @@
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
+use crate::adapters::cursor_account;
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
 use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
 use crate::aggregate;
@@ -2882,8 +2883,11 @@ fn litellm_snapshot_normalizes_upstream_and_skips_noise() {
     assert_eq!(snapshot.as_of, "2026-08-17");
     assert_eq!(snapshot.source, "litellm");
 
-    let by_model: std::collections::HashMap<&str, &PriceEntry> =
-        snapshot.entries.iter().map(|e| (e.model.as_str(), e)).collect();
+    let by_model: std::collections::HashMap<&str, &PriceEntry> = snapshot
+        .entries
+        .iter()
+        .map(|e| (e.model.as_str(), e))
+        .collect();
 
     // sample_spec、embedding 模式、纯零价条目都应被跳过。
     assert!(!by_model.contains_key("sample_spec"));
@@ -2928,7 +2932,11 @@ fn litellm_merge_lets_user_prices_win_and_fills_the_rest() {
     let merged = crate::litellm::merge(&user, &snapshot);
 
     // 用户配置过的 gpt-4o 不被快照覆盖，只保留用户那条。
-    let gpt: Vec<&PriceEntry> = merged.prices.iter().filter(|e| e.model == "gpt-4o").collect();
+    let gpt: Vec<&PriceEntry> = merged
+        .prices
+        .iter()
+        .filter(|e| e.model == "gpt-4o")
+        .collect();
     assert_eq!(gpt.len(), 1);
     assert_eq!(gpt[0].input, 9.9);
     // 用户没配的模型由快照补齐。
@@ -2998,4 +3006,96 @@ fn bundled_litellm_snapshot_is_valid_and_covers_common_models() {
         .entries
         .iter()
         .all(|e| e.input > 0.0 || e.output > 0.0));
+}
+
+// ---------- Cursor 账号用量 ----------
+
+#[test]
+fn cursor_account_parser_maps_token_dimensions_and_keeps_duplicates() {
+    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+        .expect("parse cursor account fixture");
+    assert_eq!(events.len(), 3);
+
+    assert_eq!(events[0].occurred_at, "2024-01-01T00:00:00+00:00");
+    assert_eq!(events[0].model, "claude-4.5-sonnet");
+    assert_eq!(events[0].input_tokens, 100);
+    assert_eq!(events[0].output_tokens, 50);
+    assert_eq!(events[0].cache_read_tokens, 20);
+    assert_eq!(events[0].cache_creation_tokens, 10);
+    assert!(!events[0].is_headless);
+
+    assert_eq!(events[1].occurred_at, "2024-01-02T00:00:00+00:00");
+    assert_eq!(events[1].model, "composer-2");
+    assert_eq!(events[1].input_tokens, 200);
+    assert_eq!(events[1].output_tokens, 80);
+    assert_eq!(events[1].cache_read_tokens, 0);
+    assert_eq!(events[1].cache_creation_tokens, 5);
+    assert!(events[1].is_headless);
+
+    assert_eq!(events[2], events[0]);
+}
+
+#[test]
+fn cursor_account_parser_rejects_bad_json_and_skips_empty_payload() {
+    let err =
+        cursor_account::parse_cursor_usage_events("{not-json").expect_err("bad json should fail");
+    assert!(err.contains("解析失败"), "错误应可读：{err}");
+
+    let empty = cursor_account::parse_cursor_usage_events(r#"{"usageEventsDisplay":[]}"#)
+        .expect("empty list is valid");
+    assert!(empty.is_empty());
+
+    let missing = cursor_account::parse_cursor_usage_events(r#"{"totalUsageEventsCount":0}"#)
+        .expect("missing list is empty, not panic");
+    assert!(missing.is_empty());
+}
+
+#[test]
+fn cursor_account_summary_adds_token_dimensions_without_dedup() {
+    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+        .expect("parse");
+    let dto = cursor_account::summarize_cursor_usage(&events);
+    assert_eq!(dto.event_count, 3);
+    assert_eq!(dto.input_tokens, 400);
+    assert_eq!(dto.output_tokens, 180);
+    assert_eq!(dto.cache_read_tokens, 40);
+    assert_eq!(dto.cache_creation_tokens, 25);
+    assert_eq!(dto.total_tokens, 645);
+    assert_eq!(dto.as_of, None);
+
+    let empty = cursor_account::summarize_cursor_usage(&[]);
+    assert_eq!(empty, crate::domain::CursorAccountUsageDto::empty());
+}
+
+#[test]
+fn cursor_account_store_dedups_by_fingerprint() {
+    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+        .expect("parse");
+    assert_eq!(events.len(), 3);
+
+    let conn = store::open_memory().unwrap();
+    let first = store::upsert_cursor_account_events(&conn, &events).unwrap();
+    let second = store::upsert_cursor_account_events(&conn, &events).unwrap();
+    assert_eq!(first, 2);
+    assert_eq!(second, 0);
+
+    let stored = store::load_cursor_account_events(&conn).unwrap();
+    assert_eq!(stored.len(), 2);
+    let dto = cursor_account::summarize_cursor_usage(&stored);
+    assert_eq!(dto.event_count, 2);
+    assert_eq!(dto.input_tokens, 300);
+    assert_eq!(dto.output_tokens, 130);
+    assert_eq!(dto.cache_read_tokens, 20);
+    assert_eq!(dto.cache_creation_tokens, 15);
+    assert_eq!(dto.total_tokens, 465);
+
+    store::set_cursor_account_as_of(&conn, "2026-08-17T12:00:00+00:00").unwrap();
+    assert_eq!(
+        store::cursor_account_as_of(&conn).unwrap().as_deref(),
+        Some("2026-08-17T12:00:00+00:00")
+    );
+
+    store::clear_cursor_account_usage(&conn).unwrap();
+    assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
+    assert_eq!(store::cursor_account_as_of(&conn).unwrap(), None);
 }

@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::domain::{Source, UsageRecord};
+use crate::domain::{CursorUsageEvent, Source, UsageRecord};
 
 pub const ADAPTER_VERSION: i64 = 6;
 
@@ -53,6 +53,24 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source TEXT NOT NULL DEFAULT '',
             fingerprint TEXT NOT NULL DEFAULT '',
             adapter_version INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS cursor_account_usage (
+            fingerprint TEXT PRIMARY KEY,
+            occurred_at TEXT NOT NULL,
+            model TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            cache_read_tokens INTEGER NOT NULL,
+            cache_creation_tokens INTEGER NOT NULL,
+            is_headless INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cursor_account_occurred
+            ON cursor_account_usage(occurred_at);
+
+        CREATE TABLE IF NOT EXISTS cursor_account_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
         "#,
     )
@@ -334,4 +352,97 @@ pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+/// 按指纹去重写入 Cursor 账号用量事件，返回新插入的行数。
+pub fn upsert_cursor_account_events(
+    conn: &Connection,
+    events: &[CursorUsageEvent],
+) -> Result<u64, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            INSERT OR IGNORE INTO cursor_account_usage (
+                fingerprint, occurred_at, model,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                is_headless
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+    let mut written = 0u64;
+    for event in events {
+        let changed = stmt
+            .execute(params![
+                event.fingerprint(),
+                event.occurred_at,
+                event.model,
+                event.input_tokens,
+                event.output_tokens,
+                event.cache_read_tokens,
+                event.cache_creation_tokens,
+                i64::from(event.is_headless),
+            ])
+            .map_err(|e| e.to_string())?;
+        written += changed as u64;
+    }
+    Ok(written)
+}
+
+pub fn load_cursor_account_events(conn: &Connection) -> Result<Vec<CursorUsageEvent>, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT occurred_at, model, input_tokens, output_tokens,
+                   cache_read_tokens, cache_creation_tokens, is_headless
+            FROM cursor_account_usage
+            ORDER BY occurred_at ASC
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CursorUsageEvent {
+                occurred_at: row.get(0)?,
+                model: row.get(1)?,
+                input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                cache_read_tokens: row.get(4)?,
+                cache_creation_tokens: row.get(5)?,
+                is_headless: row.get::<_, i64>(6)? != 0,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn set_cursor_account_as_of(conn: &Connection, as_of: &str) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_account_meta(key, value) VALUES('as_of', ?1)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![as_of],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn cursor_account_as_of(conn: &Connection) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM cursor_account_meta WHERE key = 'as_of'",
+        [],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn clear_cursor_account_usage(conn: &Connection) -> Result<(), String> {
+    conn.execute("DELETE FROM cursor_account_usage", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM cursor_account_meta", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

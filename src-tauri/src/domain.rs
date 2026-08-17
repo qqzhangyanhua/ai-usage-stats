@@ -337,6 +337,64 @@ pub struct DerivedCost {
     pub source_native: bool,
 }
 
+/// Cursor 账号级用量事件：来自云端仪表盘，不是本机会话文件。
+/// 独立于 `UsageRecord`，不含 session_id / source_file。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorUsageEvent {
+    pub occurred_at: String,
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub is_headless: bool,
+}
+
+impl CursorUsageEvent {
+    pub fn total_tokens(&self) -> i64 {
+        self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_creation_tokens
+    }
+
+    pub fn fingerprint(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            self.occurred_at,
+            self.model,
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_read_tokens,
+            self.cache_creation_tokens,
+            self.is_headless
+        )
+    }
+}
+
+/// Cursor 账号用量聚合：独立维度，不并入本机 token 总量。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorAccountUsageDto {
+    pub as_of: Option<String>,
+    pub event_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub total_tokens: i64,
+}
+
+impl CursorAccountUsageDto {
+    pub fn empty() -> Self {
+        Self {
+            as_of: None,
+            event_count: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            total_tokens: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CodeVolumeCommit {
     pub commit_hash: String,

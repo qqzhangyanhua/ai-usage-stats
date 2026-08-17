@@ -22,7 +22,7 @@ const nav: { id: View; label: string; icon: IconName }[] = [
   { id: "project", label: "项目统计", icon: "project" },
   { id: "application", label: "应用统计", icon: "source" },
   { id: "provider", label: "Provider", icon: "provider" },
-  { id: "cursor", label: "Cursor 代码量", icon: "cursor" },
+  { id: "cursor", label: "Cursor", icon: "cursor" },
   { id: "settings", label: "设置", icon: "settings" },
 ];
 

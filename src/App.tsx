@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ApplicationAnalytics } from "./components/ApplicationAnalytics";
 import { Breakdown } from "./components/Breakdown";
+import { CursorAccountUsagePanel } from "./components/CursorAccountUsagePanel";
 import { CursorPanel } from "./components/CursorPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingOverlay } from "./components/LoadingOverlay";
@@ -94,7 +95,12 @@ export default function App() {
                   theme={theme}
                 />
               ) : null}
-              {view === "cursor" ? <CursorPanel summary={data.codeVolume} theme={theme} /> : null}
+              {view === "cursor" ? (
+                <div className="stack">
+                  <CursorAccountUsagePanel />
+                  <CursorPanel summary={data.codeVolume} theme={theme} />
+                </div>
+              ) : null}
               {view === "settings" ? (
                 <Settings
                   prices={data.prices}

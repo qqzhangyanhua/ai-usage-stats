@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod aggregate;
 pub mod billing_window;
 pub mod cost;
+pub mod cursor_account;
 pub mod domain;
 pub mod ingest;
 pub mod litellm;
@@ -19,9 +20,10 @@ use serde::Deserialize;
 use tauri::Manager;
 
 use crate::domain::{
-    ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, Filter, FilterOptions,
-    IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable,
-    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
+    ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, CursorAccountUsageDto, Filter,
+    FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
+    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
+    TurnRow,
 };
 
 pub struct AppState {
@@ -355,6 +357,45 @@ async fn get_code_volume() -> Result<CodeVolumeSummary, String> {
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn refresh_cursor_account_usage(
+    app: tauri::AppHandle,
+    token: Option<String>,
+) -> Result<CursorAccountUsageDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_account::refresh_from_optional_token(&conn, token)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_cursor_account_usage(app: tauri::AppHandle) -> Result<CursorAccountUsageDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_account::load_summary(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn save_cursor_session_token(token: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cursor_account::save_token(&token))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn has_cursor_session_token() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(cursor_account::has_token)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// 弹出原生保存对话框并写入 CSV 内容；返回 `false` 表示用户取消。
 #[tauri::command]
 async fn export_csv(default_name: String, content: String) -> Result<bool, String> {
@@ -476,6 +517,10 @@ pub fn run() {
             get_source_diagnostics,
             rebuild_cache,
             get_code_volume,
+            refresh_cursor_account_usage,
+            get_cursor_account_usage,
+            save_cursor_session_token,
+            has_cursor_session_token,
             export_csv,
             export_json,
             export_image,

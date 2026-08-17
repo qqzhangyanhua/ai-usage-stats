@@ -2291,6 +2291,14 @@ tr.selected {
   gap: 8px;
 }
 
+.token-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .preset-message {
   color: var(--green-fg);
 }
