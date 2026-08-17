@@ -97,7 +97,7 @@ export default function App() {
               ) : null}
               {view === "cursor" ? (
                 <div className="stack">
-                  <CursorAccountUsagePanel />
+                  <CursorAccountUsagePanel theme={theme} />
                   <CursorPanel summary={data.codeVolume} theme={theme} />
                 </div>
               ) : null}

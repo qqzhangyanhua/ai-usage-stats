@@ -379,6 +379,7 @@ pub struct CursorAccountUsageDto {
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
     pub total_tokens: i64,
+    pub daily: Vec<SeriesPoint>,
 }
 
 impl CursorAccountUsageDto {
@@ -391,6 +392,7 @@ impl CursorAccountUsageDto {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             total_tokens: 0,
+            daily: Vec::new(),
         }
     }
 }

@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
+
 use crate::adapters::i64_field;
-use crate::domain::{CursorAccountUsageDto, CursorUsageEvent};
+use crate::domain::{CursorAccountUsageDto, CursorUsageEvent, SeriesPoint};
 
 pub struct CursorUsagePage {
     pub events: Vec<CursorUsageEvent>,
@@ -84,5 +86,39 @@ pub fn summarize_cursor_usage(events: &[CursorUsageEvent]) -> CursorAccountUsage
         cache_read_tokens,
         cache_creation_tokens,
         total_tokens: events.iter().map(CursorUsageEvent::total_tokens).sum(),
+        daily: bucket_daily(events),
     }
+}
+
+fn bucket_daily(events: &[CursorUsageEvent]) -> Vec<SeriesPoint> {
+    let mut buckets: BTreeMap<String, (i64, i64, i64)> = BTreeMap::new();
+    for event in events {
+        let key = local_day(&event.occurred_at);
+        let entry = buckets.entry(key).or_insert((0, 0, 0));
+        entry.0 += event.input_tokens;
+        entry.1 += event.output_tokens;
+        entry.2 += event.total_tokens();
+    }
+    buckets
+        .into_iter()
+        .map(
+            |(bucket, (input_tokens, output_tokens, total_tokens))| SeriesPoint {
+                bucket,
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                cost: None,
+            },
+        )
+        .collect()
+}
+
+fn local_day(occurred_at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(occurred_at)
+        .map(|dt| {
+            dt.with_timezone(&chrono::Local)
+                .format("%Y-%m-%d")
+                .to_string()
+        })
+        .unwrap_or_else(|_| occurred_at.get(..10).unwrap_or(occurred_at).to_string())
 }

@@ -1,8 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ResolvedTheme } from "../hooks/useTheme";
+import { areaTrendOption } from "../lib/chartTheme";
 import { formatClock, formatTokens, humanStatus } from "../lib/format";
 import type { CursorAccountUsageDto } from "../types";
 import { EmptyState } from "./EmptyState";
+import { ExportableChart } from "./ExportableChart";
 import { KpiCard } from "./Kpi";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
@@ -16,10 +19,11 @@ function emptyUsage(): CursorAccountUsageDto {
     cache_read_tokens: 0,
     cache_creation_tokens: 0,
     total_tokens: 0,
+    daily: [],
   };
 }
 
-export function CursorAccountUsagePanel() {
+export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
   const [usage, setUsage] = useState<CursorAccountUsageDto | null>(null);
   const [hasToken, setHasToken] = useState(false);
   const [tokenDraft, setTokenDraft] = useState("");
@@ -91,6 +95,7 @@ export function CursorAccountUsagePanel() {
   const data = usage ?? emptyUsage();
   const asOf = formatClock(data.as_of);
   const showEmpty = data.event_count === 0 && data.total_tokens === 0;
+  const trendOption = useMemo(() => areaTrendOption(data.daily, theme), [data.daily, theme]);
 
   return (
     <div className="stack">
@@ -136,22 +141,44 @@ export function CursorAccountUsagePanel() {
           />
         </div>
       ) : (
-        <section className="kpi-row">
-          <KpiCard icon="trend" tone="purple" label="总量" value={formatTokens(data.total_tokens)} />
-          <KpiCard icon="sessions" tone="cyan" label="输入" value={formatTokens(data.input_tokens)} />
-          <KpiCard
-            icon="model"
-            tone="orange"
-            label="输出"
-            value={formatTokens(data.output_tokens)}
-          />
-          <KpiCard
-            icon="daily"
-            tone="blue"
-            label="缓存读 / 写"
-            value={`${formatTokens(data.cache_read_tokens)} / ${formatTokens(data.cache_creation_tokens)}`}
-          />
-        </section>
+        <>
+          <section className="kpi-row">
+            <KpiCard
+              icon="trend"
+              tone="purple"
+              label="总量"
+              value={formatTokens(data.total_tokens)}
+            />
+            <KpiCard
+              icon="sessions"
+              tone="cyan"
+              label="输入"
+              value={formatTokens(data.input_tokens)}
+            />
+            <KpiCard
+              icon="model"
+              tone="orange"
+              label="输出"
+              value={formatTokens(data.output_tokens)}
+            />
+            <KpiCard
+              icon="daily"
+              tone="blue"
+              label="缓存读 / 写"
+              value={`${formatTokens(data.cache_read_tokens)} / ${formatTokens(data.cache_creation_tokens)}`}
+            />
+          </section>
+          <section className="panel partition">
+            <div className="panel-head">
+              <h2>按天趋势</h2>
+            </div>
+            <ExportableChart
+              option={trendOption}
+              filename="cursor-account-daily"
+              style={{ height: 280 }}
+            />
+          </section>
+        </>
       )}
     </div>
   );

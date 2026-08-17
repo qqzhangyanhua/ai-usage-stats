@@ -3070,6 +3070,47 @@ fn cursor_account_summary_adds_token_dimensions_without_dedup() {
 }
 
 #[test]
+fn cursor_account_summary_buckets_tokens_by_local_day() {
+    use crate::domain::CursorUsageEvent;
+
+    fn ev(occurred_at: &str, input: i64, output: i64) -> CursorUsageEvent {
+        CursorUsageEvent {
+            occurred_at: occurred_at.to_string(),
+            model: "m".into(),
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        }
+    }
+
+    let day_a = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    let day_b = chrono::NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
+    let dto = cursor_account::summarize_cursor_usage(&[
+        ev(&local_noon_iso(day_a), 100, 10),
+        ev(&local_noon_iso(day_a), 50, 5),
+        ev(&local_noon_iso(day_b), 20, 2),
+    ]);
+    assert_eq!(dto.daily.len(), 2);
+    assert_eq!(dto.daily[0].bucket, "2024-01-15");
+    assert_eq!(dto.daily[0].input_tokens, 150);
+    assert_eq!(dto.daily[0].output_tokens, 15);
+    assert_eq!(dto.daily[0].total_tokens, 165);
+    assert_eq!(dto.daily[0].cost, None);
+    assert_eq!(dto.daily[1].bucket, "2024-01-16");
+    assert_eq!(dto.daily[1].total_tokens, 22);
+
+    let single = cursor_account::summarize_cursor_usage(&[ev(&local_noon_iso(day_a), 7, 3)]);
+    assert_eq!(single.daily.len(), 1);
+    assert_eq!(single.daily[0].bucket, "2024-01-15");
+    assert_eq!(single.daily[0].total_tokens, 10);
+
+    let empty = cursor_account::summarize_cursor_usage(&[]);
+    assert!(empty.daily.is_empty());
+}
+
+#[test]
 fn cursor_account_store_dedups_by_fingerprint() {
     let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
         .expect("parse");
