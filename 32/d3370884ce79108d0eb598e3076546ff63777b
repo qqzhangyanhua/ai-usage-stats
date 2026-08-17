@@ -1,0 +1,21 @@
+src-tauri/icons/android/values/ic_launcher_background.xml
+  s_8a0644de45f27a::t_e1a77e0247ee98 1-4
+src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml
+  s_8a0644de45f27a::t_e1a77e0247ee98 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "32d3370884ce79108d0eb598e3076546ff63777b",
+  "prompts": {},
+  "sessions": {
+    "s_8a0644de45f27a": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a00a1a-9819-7bf3-9761-ce425528afb0",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
