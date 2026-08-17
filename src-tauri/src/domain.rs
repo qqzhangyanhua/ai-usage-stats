@@ -310,6 +310,26 @@ pub struct PriceTable {
     pub prices: Vec<PriceEntry>,
 }
 
+/// 内置/可刷新的价目快照（当前来自 LiteLLM 社区维护的 `model_prices_and_context_window.json`）。
+/// 作为「用户单价 + 来源自带费用」之外的兜底：只在某模型既无 native_cost、用户也未配置单价时启用，
+/// 让费用从「用户手填才能算」变成「开箱大体准」。快照里的 `provider` 一律为空，充当按模型的兜底单价。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PriceSnapshot {
+    pub as_of: String,
+    pub source: String,
+    pub entries: Vec<PriceEntry>,
+}
+
+/// 给界面展示的快照元信息（不含逐条单价）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceSnapshotMeta {
+    pub as_of: String,
+    pub source: String,
+    pub count: usize,
+    /// 是否为内置默认快照（`true`）还是用户联网刷新后的本地缓存（`false`）。
+    pub bundled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DerivedCost {
     pub amount: Option<f64>,

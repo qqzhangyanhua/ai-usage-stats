@@ -8,7 +8,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::domain::{Filter, OverviewDto};
-use crate::{ingest, load_prices, query, AppState};
+use crate::{ingest, query, AppState};
 
 const TRAY_ID: &str = "today-cost";
 const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
@@ -176,8 +176,8 @@ pub fn refresh_with_ingest(app: &AppHandle) -> Result<(), String> {
 
 fn query_today(app: &AppHandle) -> Result<OverviewDto, String> {
     let state = app.state::<AppState>();
+    let prices = state.effective_prices();
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    let prices = load_prices(&state.prices_path);
     query::overview(&conn, &local_day_filter(Local::now()), &prices)
 }
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { applicationLabel, formatTokens } from "../lib/format";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
 import {
   groupPresetsByProvider,
   matchObservedModel,
@@ -21,6 +22,7 @@ export function Settings({
   onChange,
   onSave,
   onRebuild,
+  onSnapshotRefreshed,
 }: {
   prices: PriceTable;
   diagnostics: SourceDiagnostic[];
@@ -31,6 +33,7 @@ export function Settings({
   onChange: (prices: PriceTable) => void;
   onSave: () => void;
   onRebuild: (source: string | null) => void;
+  onSnapshotRefreshed: () => void;
 }) {
   function update(index: number, patch: Partial<PriceEntry>) {
     const next = prices.prices.map((row, i) => (i === index ? { ...row, ...patch } : row));
@@ -118,6 +121,8 @@ export function Settings({
           </div>
         ) : null}
       </section>
+
+      <LiteLlmSnapshotPanel onRefreshed={onSnapshotRefreshed} />
 
       <PricePresetPanel prices={prices} observedModels={observedModels} onChange={onChange} />
 
