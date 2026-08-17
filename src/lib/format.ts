@@ -1,0 +1,193 @@
+import type { Filter } from "../types";
+
+export function formatTokens(n: number): string {
+  return n.toLocaleString("zh-CN");
+}
+
+export function formatCompact(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) {
+    return `${trimNum(n / 1_000_000)}M`;
+  }
+  if (abs >= 10_000) {
+    return `${trimNum(n / 1_000)}K`;
+  }
+  return n.toLocaleString("zh-CN");
+}
+
+function trimNum(n: number): string {
+  return n
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
+}
+
+export function formatUsd(n: number | null, unpriced: boolean): string {
+  if (n == null) {
+    return unpriced ? "—" : "$0.00";
+  }
+  return `$${n.toFixed(2)}`;
+}
+
+export function formatCost(n: number | null, unpriced: boolean): string {
+  if (unpriced && n == null) {
+    return "—";
+  }
+  if (n == null) {
+    return "0";
+  }
+  return n.toFixed(4);
+}
+
+export function deltaPct(current: number, previous: number | null): number | null {
+  if (previous == null) {
+    return null;
+  }
+  if (previous === 0) {
+    return current === 0 ? 0 : null;
+  }
+  return ((current - previous) / previous) * 100;
+}
+
+export function formatDelta(
+  pct: number | null,
+): { text: string; tone: "up" | "down" | "flat" } | null {
+  if (pct == null) {
+    return null;
+  }
+  if (Math.abs(pct) < 0.05) {
+    return { text: "持平 vs 上期", tone: "flat" };
+  }
+  const arrow = pct > 0 ? "↑" : "↓";
+  return {
+    text: `${arrow} ${Math.abs(pct).toFixed(1)}% vs 上期`,
+    tone: pct > 0 ? "up" : "down",
+  };
+}
+
+const applicationNames: Record<string, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  factory: "Droid",
+  pi: "Pi",
+  opencode: "OpenCode",
+  kimi: "Kimi CLI",
+  dsh: "DeepSeek Harness",
+  gemini: "Gemini CLI",
+  grok: "Grok CLI",
+  qwen: "Qwen Code",
+};
+
+export function applicationLabel(source: string): string {
+  return applicationNames[source] ?? source;
+}
+
+export function projectLabel(path: string): string {
+  if (!path) {
+    return "未标注";
+  }
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+export function shortId(id: string): string {
+  return id.length > 12 ? `${id.slice(0, 8)}…` : id;
+}
+
+export function relativeTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) {
+    return iso;
+  }
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  if (mins < 1) {
+    return "刚刚";
+  }
+  if (mins < 60) {
+    return `${mins} 分钟前`;
+  }
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) {
+    return `${hours} 小时前`;
+  }
+  return `${Math.floor(hours / 24)} 天前`;
+}
+
+export function formatClock(iso: string | null): string {
+  if (!iso) {
+    return "—";
+  }
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return iso;
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+export function formatRangeLabel(filter: Filter, preset: string): string {
+  if (preset === "all" || !filter.from || !filter.to) {
+    return "全部历史";
+  }
+  return `${filter.from.slice(0, 10)} ~ ${filter.to.slice(0, 10)}`;
+}
+
+export function providerChannel(name: string): string {
+  const official = [
+    "official",
+    "anthropic",
+    "openai",
+    "google",
+    "gemini",
+    "xai",
+    "grok",
+    "codex_local_access",
+    "deepseek-official",
+  ];
+  if (!name || name === "（未标注）") {
+    return "未标注";
+  }
+  return official.includes(name) ? "官方" : "中转";
+}
+
+export function rangeFromPreset(preset: string): { from: string | null; to: string | null } {
+  if (preset === "7" || preset === "30") {
+    const days = Number(preset);
+    const to = new Date();
+    const from = new Date(to.getTime() - days * 24 * 3600 * 1000);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  return { from: null, to: null };
+}
+
+/** 把两个 `yyyy-mm-dd` 日期输入换算成覆盖全天的 ISO 起止时间。 */
+export function customRangeFilter(
+  from: string,
+  to: string,
+): { from: string | null; to: string | null } {
+  const fromDate = new Date(`${from}T00:00:00`);
+  const toDate = new Date(`${to}T23:59:59.999`);
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+    return { from: null, to: null };
+  }
+  return { from: fromDate.toISOString(), to: toDate.toISOString() };
+}
+
+export function previousFilter(filter: Filter, preset: string): Filter | null {
+  if (preset !== "7" && preset !== "30" && preset !== "custom") {
+    return null;
+  }
+  if (!filter.from || !filter.to) {
+    return null;
+  }
+  const from = Date.parse(filter.from);
+  const to = Date.parse(filter.to);
+  if (Number.isNaN(from) || Number.isNaN(to) || to <= from) {
+    return null;
+  }
+  return {
+    ...filter,
+    from: new Date(from - (to - from)).toISOString(),
+    to: filter.from,
+  };
+}

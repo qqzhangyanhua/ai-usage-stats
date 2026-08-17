@@ -18,9 +18,24 @@ export type OverviewDto = {
   unpriced: boolean;
 };
 
+export type Grain = "day" | "week" | "month";
+
+export type View =
+  | "overview"
+  | "trend"
+  | "application"
+  | "model"
+  | "provider"
+  | "project"
+  | "sessions"
+  | "cursor"
+  | "settings";
+
 export type SeriesPoint = {
   bucket: string;
   total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
   cost: number | null;
 };
 
@@ -30,6 +45,39 @@ export type NamedAmount = {
   share: number;
   cost: number | null;
   unpriced: boolean;
+};
+
+export type EfficiencyMetrics = {
+  total_tokens: number;
+  session_count: number;
+  cache_hit_rate: number | null;
+  average_session_tokens: number | null;
+  reasoning_share: number | null;
+};
+
+export type ApplicationEfficiency = {
+  source: string;
+  application: string;
+  metrics: EfficiencyMetrics;
+};
+
+export type ApplicationTrendPoint = {
+  bucket: string;
+  total_tokens: number;
+  values: Record<string, number>;
+};
+
+export type ProjectApplicationRow = {
+  project: string;
+  total_tokens: number;
+  values: Record<string, number>;
+};
+
+export type ApplicationAnalyticsDto = {
+  summary: EfficiencyMetrics;
+  by_application: ApplicationEfficiency[];
+  trend: ApplicationTrendPoint[];
+  projects: ProjectApplicationRow[];
 };
 
 export type SessionRow = {
@@ -43,6 +91,25 @@ export type SessionRow = {
   source_file: string;
   cost: number | null;
   unpriced: boolean;
+};
+
+export type SessionSortKey = "tokens" | "session" | "application" | "project" | "time";
+export type SortDir = "asc" | "desc";
+
+export type SessionQuery = {
+  filter: Filter;
+  search?: string | null;
+  sortBy?: SessionSortKey | null;
+  sortDir?: SortDir | null;
+  page?: number;
+  pageSize?: number;
+};
+
+export type SessionPage = {
+  rows: SessionRow[];
+  total: number;
+  totalTokens: number;
+  lastEnded: string | null;
 };
 
 export type TurnRow = {
@@ -88,9 +155,42 @@ export type FilterOptions = {
   projects: string[];
 };
 
+export type IngestIssue = {
+  source: string;
+  path: string;
+  message: string;
+};
+
+export type SourceIngestReport = {
+  source: string;
+  detected: boolean;
+  files_seen: number;
+  files_parsed: number;
+  files_skipped: number;
+  files_failed: number;
+  records_written: number;
+  records_removed: number;
+};
+
 export type IngestReport = {
   files_seen: number;
   files_parsed: number;
   files_skipped: number;
+  files_failed: number;
   records_written: number;
+  records_removed: number;
+  partial_success: boolean;
+  issues: IngestIssue[];
+  sources: SourceIngestReport[];
+};
+
+export type SourceDiagnostic = {
+  source: string;
+  application: string;
+  detected: boolean;
+  root_path: string;
+  cached_files: number;
+  record_count: number;
+  total_tokens: number;
+  coverage: string;
 };

@@ -1,0 +1,431 @@
+import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { previousFilter, rangeFromPreset } from "../lib/format";
+import type {
+  ApplicationAnalyticsDto,
+  CodeVolumeSummary,
+  Filter,
+  FilterOptions,
+  Grain,
+  IngestReport,
+  NamedAmount,
+  OverviewDto,
+  PriceTable,
+  SeriesPoint,
+  SessionRow,
+  SourceDiagnostic,
+  TurnRow,
+  View,
+} from "../types";
+
+const AUTO_REFRESH_STORAGE_KEY = "ai-usage-stats:auto-refresh";
+
+function loadAutoRefresh(): string {
+  try {
+    return window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY) ?? "off";
+  } catch {
+    return "off";
+  }
+}
+
+const emptyFilter: Filter = {
+  from: null,
+  to: null,
+  sources: [],
+  models: [],
+  projects: [],
+};
+
+export const views: View[] = [
+  "overview",
+  "trend",
+  "application",
+  "model",
+  "provider",
+  "project",
+  "sessions",
+  "cursor",
+  "settings",
+];
+
+export function viewFromHash(): View {
+  const raw = window.location.hash.replace(/^#/, "");
+  if (raw === "source") {
+    return "application";
+  }
+  return views.find((item) => item === raw) ?? "overview";
+}
+
+function humanStatus(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/ipc|webview|transformCallback|not allowed|unavailable|Cannot read/i.test(text)) {
+    return "IPC 未连通";
+  }
+  return text;
+}
+
+type SelectedSession = { id: string; source: string };
+
+export function useUsageData() {
+  const didMount = useRef(false);
+  const requestGeneration = useRef(0);
+  const ingestOperation = useRef(false);
+
+  const [view, setView] = useState<View>(viewFromHash);
+  const [filter, setFilter] = useState<Filter>(emptyFilter);
+  const [preset, setPreset] = useState("all");
+  const [options, setOptions] = useState<FilterOptions>({
+    sources: [],
+    models: [],
+    projects: [],
+  });
+  const [overview, setOverview] = useState<OverviewDto | null>(null);
+  const [previous, setPrevious] = useState<OverviewDto | null>(null);
+  const [trend, setTrend] = useState<SeriesPoint[]>([]);
+  const [grain, setGrain] = useState<Grain>("day");
+  const [breakdown, setBreakdown] = useState<NamedAmount[]>([]);
+  const [applicationAnalytics, setApplicationAnalytics] = useState<ApplicationAnalyticsDto | null>(
+    null,
+  );
+  const [models, setModels] = useState<NamedAmount[]>([]);
+  const [projects, setProjects] = useState<NamedAmount[]>([]);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [sessionsRevision, setSessionsRevision] = useState(0);
+  const [turns, setTurns] = useState<TurnRow[]>([]);
+  const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null);
+  const [prices, setPrices] = useState<PriceTable>({ prices: [] });
+  const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([]);
+  const [lastIngestReport, setLastIngestReport] = useState<IngestReport | null>(null);
+  const [rebuilding, setRebuilding] = useState<string | null>(null);
+  const [codeVolume, setCodeVolume] = useState<CodeVolumeSummary | null>(null);
+  const [status, setStatus] = useState("正在连接…");
+  const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState<string>(loadAutoRefresh);
+
+  const refreshViews = useCallback(
+    async (nextFilter = filter, nextPreset = preset) => {
+      const generation = ++requestGeneration.current;
+      setLoading(true);
+      // 会话列表自行分页拉取数据，这里只需要一个信号让它知道该重新查询了
+      // （比如摄取完成后底层数据变了，但 filter 引用未必变化）。
+      setSessionsRevision((n) => n + 1);
+      const commit =
+        <T>(setter: (value: T) => void) =>
+        (value: T) => {
+          if (generation === requestGeneration.current) {
+            setter(value);
+          }
+        };
+      const tasks: Array<Promise<void>> = [
+        invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
+        invoke<FilterOptions>("get_filter_options").then(commit(setOptions)),
+      ];
+      if (view === "overview" || view === "trend") {
+        tasks.push(
+          invoke<SeriesPoint[]>("get_trend", { filter: nextFilter, grain }).then(commit(setTrend)),
+        );
+      }
+      if (view === "overview") {
+        const prev = previousFilter(nextFilter, nextPreset);
+        tasks.push(
+          invoke<NamedAmount[]>("get_breakdown", {
+            query: { filter: nextFilter, dimension: "model" },
+          }).then(commit(setModels)),
+          invoke<NamedAmount[]>("get_breakdown", {
+            query: { filter: nextFilter, dimension: "project" },
+          }).then(commit(setProjects)),
+          invoke<SessionRow[]>("get_top_sessions", { filter: nextFilter, limit: 8 }).then(
+            commit(setSessions),
+          ),
+        );
+        if (prev) {
+          tasks.push(
+            invoke<OverviewDto>("get_overview", { filter: prev }).then(commit(setPrevious)),
+          );
+        } else if (generation === requestGeneration.current) {
+          setPrevious(null);
+        }
+      }
+      if (view === "application") {
+        tasks.push(
+          invoke<ApplicationAnalyticsDto>("get_application_analytics", {
+            filter: nextFilter,
+            grain,
+          }).then(commit(setApplicationAnalytics)),
+        );
+      }
+      if (["model", "provider", "project"].includes(view)) {
+        const dimension = view;
+        tasks.push(
+          invoke<NamedAmount[]>("get_breakdown", {
+            query: { filter: nextFilter, dimension },
+          }).then(commit(setBreakdown)),
+        );
+      }
+      if (view === "sessions" && selectedSession) {
+        tasks.push(
+          invoke<TurnRow[]>("get_session_turns", {
+            sessionId: selectedSession.id,
+            source: selectedSession.source,
+            filter: nextFilter,
+          }).then(commit(setTurns)),
+        );
+      }
+      if (view === "cursor") {
+        tasks.push(invoke<CodeVolumeSummary>("get_code_volume").then(commit(setCodeVolume)));
+      }
+      if (view === "settings") {
+        tasks.push(
+          invoke<PriceTable>("get_prices").then(commit(setPrices)),
+          invoke<SourceDiagnostic[]>("get_source_diagnostics").then(commit(setDiagnostics)),
+        );
+      }
+      try {
+        await Promise.all(tasks);
+      } finally {
+        if (generation === requestGeneration.current) {
+          setLoading(false);
+        }
+      }
+      if (generation === requestGeneration.current) {
+        setUpdatedAt(new Date().toISOString());
+      }
+    },
+    [filter, preset, view, grain, selectedSession],
+  );
+
+  // 切换粒度（按日/按周/按月）时只重新拉取趋势相关数据，避免刷新整页导致的卡顿。
+  const refreshTrend = useCallback(
+    async (nextFilter = filter) => {
+      const generation = ++requestGeneration.current;
+      const commit =
+        <T>(setter: (value: T) => void) =>
+        (value: T) => {
+          if (generation === requestGeneration.current) {
+            setter(value);
+          }
+        };
+      const tasks: Array<Promise<void>> = [];
+      if (view === "overview" || view === "trend") {
+        tasks.push(
+          invoke<SeriesPoint[]>("get_trend", { filter: nextFilter, grain }).then(commit(setTrend)),
+        );
+      }
+      if (view === "application") {
+        tasks.push(
+          invoke<ApplicationAnalyticsDto>("get_application_analytics", {
+            filter: nextFilter,
+            grain,
+          }).then(commit(setApplicationAnalytics)),
+        );
+      }
+      if (tasks.length === 0) {
+        return;
+      }
+      setLoading(true);
+      try {
+        await Promise.all(tasks);
+      } finally {
+        if (generation === requestGeneration.current) {
+          setLoading(false);
+        }
+      }
+      if (generation === requestGeneration.current) {
+        setUpdatedAt(new Date().toISOString());
+      }
+    },
+    [filter, view, grain],
+  );
+
+  const reportError = useCallback((error: unknown) => {
+    setStatus(humanStatus(error));
+  }, []);
+
+  const runIngest = useCallback(
+    async (label: string) => {
+      if (ingestOperation.current) {
+        return;
+      }
+      ingestOperation.current = true;
+      requestGeneration.current += 1;
+      setBusy(true);
+      setStatus(`${label}中…`);
+      try {
+        const report = await invoke<IngestReport>("ingest");
+        setLastIngestReport(report);
+        const issue = report.files_failed > 0 ? `，失败 ${report.files_failed}` : "";
+        const removed = report.records_removed > 0 ? `，清理 ${report.records_removed}` : "";
+        setStatus(
+          `${label}${report.partial_success ? "部分完成" : "完成"}：解析 ${report.files_parsed}，跳过 ${report.files_skipped}，写入 ${report.records_written}${removed}${issue}`,
+        );
+        await refreshViews();
+      } catch (error) {
+        setStatus(`${label}失败：${humanStatus(error)}`);
+        setLoading(false);
+      } finally {
+        ingestOperation.current = false;
+        setBusy(false);
+      }
+    },
+    [refreshViews],
+  );
+
+  const runRebuild = useCallback(
+    async (source: string | null) => {
+      if (ingestOperation.current) {
+        return;
+      }
+      ingestOperation.current = true;
+      requestGeneration.current += 1;
+      const target = source ?? "all";
+      setRebuilding(target);
+      setBusy(true);
+      setStatus(`${source ? `${source} ` : "全部"}缓存重建中…`);
+      try {
+        const report = await invoke<IngestReport>("rebuild_cache", { source });
+        setLastIngestReport(report);
+        setStatus(
+          `缓存重建${report.partial_success ? "部分完成" : "完成"}：写入 ${report.records_written}，清理 ${report.records_removed}，失败 ${report.files_failed}`,
+        );
+        await refreshViews();
+      } catch (error) {
+        setStatus(`缓存重建失败：${humanStatus(error)}`);
+        setLoading(false);
+      } finally {
+        ingestOperation.current = false;
+        setRebuilding(null);
+        setBusy(false);
+      }
+    },
+    [refreshViews],
+  );
+
+  const runIngestRef = useRef(runIngest);
+  useEffect(() => {
+    runIngestRef.current = runIngest;
+  }, [runIngest]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, autoRefresh);
+    } catch {
+      // localStorage 不可用时忽略，仅影响下次启动是否记住选择
+    }
+    const minutes = Number(autoRefresh);
+    if (autoRefresh === "off" || !Number.isFinite(minutes) || minutes <= 0) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      runIngestRef.current("定时刷新").catch(reportError);
+    }, minutes * 60_000);
+    return () => window.clearInterval(id);
+  }, [autoRefresh, reportError]);
+
+  useEffect(() => {
+    invoke<string>("ping")
+      .then(() => {
+        setConnected(true);
+        return runIngestRef.current("启动摄取");
+      })
+      .catch((error: unknown) => {
+        setConnected(false);
+        setStatus(humanStatus(error));
+        setLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    refreshViews().catch(reportError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只需在 view/selectedSession 变化时触发
+  }, [view, selectedSession]);
+
+  const didMountGrain = useRef(false);
+  useEffect(() => {
+    if (!didMountGrain.current) {
+      didMountGrain.current = true;
+      return;
+    }
+    refreshTrend().catch(reportError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只需在 grain 变化时触发
+  }, [grain]);
+
+  const openSessions = useCallback(() => {
+    setView("sessions");
+    window.history.replaceState(null, "", "#sessions");
+  }, []);
+
+  const navigate = useCallback((next: View) => {
+    setView(next);
+    if (window.location.hash.replace(/^#/, "") !== next) {
+      window.history.replaceState(null, "", `#${next}`);
+    }
+  }, []);
+
+  const applyPreset = useCallback(
+    (next: string, explicitRange?: { from: string | null; to: string | null }) => {
+      setPreset(next);
+      const range = explicitRange ?? rangeFromPreset(next);
+      const nextFilter = { ...filter, ...range };
+      setFilter(nextFilter);
+      refreshViews(nextFilter, next).catch(reportError);
+    },
+    [filter, refreshViews, reportError],
+  );
+
+  const applyFilter = useCallback(
+    (next: Filter) => {
+      setFilter(next);
+      refreshViews(next).catch(reportError);
+    },
+    [refreshViews, reportError],
+  );
+
+  return {
+    view,
+    filter,
+    preset,
+    options,
+    overview,
+    previous,
+    trend,
+    grain,
+    setGrain,
+    breakdown,
+    applicationAnalytics,
+    models,
+    projects,
+    sessions,
+    sessionsRevision,
+    turns,
+    selectedSession,
+    setSelectedSession,
+    prices,
+    setPrices,
+    diagnostics,
+    lastIngestReport,
+    rebuilding,
+    codeVolume,
+    status,
+    setStatus,
+    connected,
+    busy,
+    loading,
+    updatedAt,
+    autoRefresh,
+    setAutoRefresh,
+    navigate,
+    applyPreset,
+    applyFilter,
+    openSessions,
+    runIngest,
+    runRebuild,
+    reportError,
+  };
+}

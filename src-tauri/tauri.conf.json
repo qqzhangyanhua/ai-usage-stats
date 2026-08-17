@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "本机 AI 用量统计",
-        "width": 1280,
-        "height": 840,
-        "minWidth": 960,
-        "minHeight": 640
+        "width": 1480,
+        "height": 920,
+        "minWidth": 1100,
+        "minHeight": 720
       }
     ],
     "security": {

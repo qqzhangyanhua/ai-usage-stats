@@ -1,0 +1,30 @@
+---
+description: React/TypeScript frontend conventions for the ai-usage-stats webview UI
+globs: src/**/*.ts,src/**/*.tsx
+alwaysApply: false
+---
+
+# 前端约定（React + TypeScript + ECharts）
+
+## 类型安全
+
+- `tsconfig.json` 已开启 `strict`、`noUnusedLocals`、`noUnusedParameters`；禁止使用 `any`，禁止用 `as any` 逃逸类型检查
+- `src/types.ts` 里的类型手动对应 Rust `domain.rs` 的 DTO（字段名保持 `snake_case`，和后端序列化一致，不要转成 camelCase）；改了 Rust DTO 字段必须同步改这里
+- 组件 props 用内联对象类型或就近的 `type`，不需要为每个组件单独建 `.types.ts` 文件
+
+## 组件规范
+
+- 单个组件文件不超过 400 行；超出时按职责拆分子组件（放进 `src/components/`）或把纯逻辑抽到 `src/lib/`
+- 组件是函数组件 + hooks，不使用 class component；跨组件复用的状态提升到 `App.tsx`，通过 props 下发，没有引入全局状态库（Redux/Zustand），不要新增
+- 纯格式化/计算函数放 `src/lib/format.ts`，图表配色/主题放 `src/lib/chartTheme.ts`，价格预设放 `src/lib/pricePresets.ts`；新增同类工具函数放进对应文件而不是散落在组件里
+
+## 样式
+
+- 项目样式集中在单个 `src/styles.css`，用 CSS 自定义属性（`--bg`、`--purple`、`--cyan` 等）做主题色，**没有引入 Tailwind CSS**；新样式沿用「CSS 变量 + BEM 风格 class 名」的既有写法，不要引入新的样式方案（CSS-in-JS、Tailwind、CSS Modules）
+- 深色主题是唯一主题（`color-scheme: dark`），不需要考虑浅色模式适配
+
+## 与 Tauri 后端通信
+
+- 统一通过 `@tauri-apps/api/core` 的 `invoke("command_name", { ... })` 调用 Rust command，参数字段名与 Rust `#[tauri::command]` 签名的参数名一致
+- IPC 失败要按 `App.tsx::humanStatus` 的既有模式转成可读中文提示，不要把原始 error 对象直接展示给用户
+- 图表统一用 `echarts-for-react`，配色/tooltip 格式通过 `lib/chartTheme.ts` 复用，不要在组件里内联一套新的配色逻辑
