@@ -1,0 +1,23 @@
+src/components/BillingWindows.tsx
+  s_bb4c90e4c974d4::t_664f52ad05f452 31-33,35,37-39,45,52-57,61-64
+src/styles.css
+  s_bb4c90e4c974d4::t_c852fec2c272b7 949,968,981-983,987,990
+  s_bb4c90e4c974d4::t_20a381f8b89ee7 950-954,957-961,964,969,972-976,979-980,986,992,996-998,1011-1012
+  s_bb4c90e4c974d4::t_2ddcf8275531a3 984-985
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "2ba7608aff65ed48c2259d21b48c2dbb8b5eff0d",
+  "prompts": {},
+  "sessions": {
+    "s_bb4c90e4c974d4": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0106d-f47c-72a0-bb82-95137bf0fb8c",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
