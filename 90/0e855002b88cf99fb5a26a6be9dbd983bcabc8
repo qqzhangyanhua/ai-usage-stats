@@ -1,0 +1,229 @@
+docs/adr/0003-trusted-ingestion-cache.md
+  s_be82d65c768e4c::t_1c8955540d3d56 20-22
+  s_be82d65c768e4c::t_32e9d20934c39e 18
+  s_be82d65c768e4c::t_549d4da6ba90dd 1-12,14-17,19,23-24
+  s_be82d65c768e4c::t_8838365a99733a 13
+src-tauri/src/adapters/grok.rs
+  s_be82d65c768e4c::t_e782c4da2619c3 7-11
+src-tauri/src/ingest.rs
+  s_be82d65c768e4c::t_3aa646d646ed4e 524
+  s_be82d65c768e4c::t_ceaa9770bbf6b3 700
+  s_be82d65c768e4c::t_f09ef1f19b43c7 219,241,257,270,688-689,711-713
+  s_be82d65c768e4c::t_e4d89275c7bf1d 12-13
+  s_be82d65c768e4c::t_4b3b4f6470ee61 292-303
+  s_be82d65c768e4c::t_7ef8741fc4e160 1,10-11,24,26,52-57,59,61,63,65-68,73-81,83-84,88-93,102-105,130-174,177,183-189,193,198,200,209-217,220-222,226-239,253-254,256,258,260-266,274-282,287,289-290,304-306,309,312-313,318-319,322-324,328-330,334,347-350,363-368,370,374-377,380,386-389,393,397-401,404-405,407-408,433-434,437-439,443,447-451,454-457,461,465-472,476,479-523,527-575,588-597,610,624-625,640,648,666-670,672,675-679,681-683,685-687,690-691,697-699,701-705,708-710,714-718,721
+  s_be82d65c768e4c::t_9d33fbe3297bd9 32-51
+  s_be82d65c768e4c::t_f4fe6d60b411ff 243-246,251
+  s_be82d65c768e4c::t_2c4c9dbe5d2d13 409
+  s_be82d65c768e4c::t_4459ae1d70bf21 267-269,271-273
+  s_be82d65c768e4c::t_509d16dcaf7185 58,62
+  s_be82d65c768e4c::t_92e2b06355c0cb 695
+  s_be82d65c768e4c::t_12fd2e5cc4bfa4 218
+  s_be82d65c768e4c::t_a45585929e3cc0 70-71
+  s_be82d65c768e4c::t_c3bcad5e6b0c3d 23,25
+  s_f5e3b1c76666ea::t_8601d6d0448c87 22,27-30,82
+  s_be82d65c768e4c::t_19146538ae700f 94-101
+  s_be82d65c768e4c::t_1783f7d08b58c5 601,607
+  s_be82d65c768e4c::t_d80402bd39f7ea 337,339-342,345,359
+  s_be82d65c768e4c::t_0696a273aeef1e 343-344
+  s_be82d65c768e4c::t_762f1e8a877247 291
+  s_be82d65c768e4c::t_303bc5a00984c9 410-430
+  s_be82d65c768e4c::t_c30f0329de4a7a 576-587
+  s_be82d65c768e4c::t_e782c4da2619c3 31,204-206,684,692-694,696
+  s_be82d65c768e4c::t_729f9c106a4541 60,64
+  s_be82d65c768e4c::t_d7e10c6991f01d 106-129
+  s_be82d65c768e4c::t_a8c1fa9d11993f 240,242,247-250
+  s_be82d65c768e4c::t_7c680cbfe188c4 706-707
+  s_be82d65c768e4c::t_2bfd7bf8d14d65 598-600,602-606,608-609
+  s_be82d65c768e4c::t_20961a9aaa3adf 252
+src-tauri/src/lib.rs
+  s_f71c3dc81c93e0::t_c63a292d135c48 334
+  s_be82d65c768e4c::t_e782c4da2619c3 49-53,124-125
+  s_24039c348047c7::t_f38669bd913dc1 19
+  s_f71c3dc81c93e0::t_f277eb89858f96 238-260
+  s_f71c3dc81c93e0::t_09cde23ee06609 326
+  s_f71c3dc81c93e0::t_cc7f6cf932a675 13
+  s_be82d65c768e4c::t_361f3b5ba37f11 211-224,226-231
+  s_028bb0b0b1d5ea::t_94e2a5458a4572 203-210,232-235
+  s_f71c3dc81c93e0::t_e927e5f5e3ce17 281-299
+  s_f71c3dc81c93e0::t_a9f4c041b34c33 20-21
+  s_f71c3dc81c93e0::t_fa457aa2fb26cf 335-336
+  s_028bb0b0b1d5ea::t_da85fcc12da742 6,66,76,78,92,94,108-109,128,130,144,146,173,175,185-186,225
+  s_f71c3dc81c93e0::t_341a567fac5b58 98,150,152,236,261-280
+  s_f5e3b1c76666ea::t_8601d6d0448c87 62-65,67-69
+  s_f71c3dc81c93e0::t_2d1d16a5879e4f 153-161
+  s_028bb0b0b1d5ea::t_14d5493cd6a278 73-75,77,79-81,85-86,90-91,93,95-97,101-102,106-107,110-112,122-123,126-127,129,131-133,137-138,142-143,145,147-149,165-166,171-172,174,176-178,182-184,187-189
+  s_24039c348047c7::t_129e43e89480ab 100,103-105
+  s_f71c3dc81c93e0::t_415fe08a1a45ea 333
+  s_24039c348047c7::t_2437f053109bf4 323
+  s_be82d65c768e4c::t_4d4128702c3318 310
+  s_be82d65c768e4c::t_3c5f38b651e406 331-332
+  s_f71c3dc81c93e0::t_e1d73dd74369ac 151
+  s_f71c3dc81c93e0::t_7090f713a56ded 237
+  s_f71c3dc81c93e0::t_ecf2c0a09ccab9 99
+.cursor/rules/adapters.mdc
+  s_36cf0aa11ba687::t_615a86008f9d47 1-25
+src-tauri/src/adapters/opencode.rs
+  s_be82d65c768e4c::t_a4003d217cd256 7
+src-tauri/src/cost.rs
+  s_028bb0b0b1d5ea::t_e026a542c9ce5f 51
+src-tauri/src/bin/probe.rs
+  s_be82d65c768e4c::t_e782c4da2619c3 39,41,147-150,205-208
+  s_be82d65c768e4c::t_a5e0b0b9e85561 40
+src-tauri/src/adapters/dsh.rs
+  s_be82d65c768e4c::t_a1d679e37c65cd 89-96
+  s_be82d65c768e4c::t_e782c4da2619c3 70-73
+src-tauri/src/query.rs
+  s_f71c3dc81c93e0::t_7d0ae67e84035b 567-684
+  s_f71c3dc81c93e0::t_6f7648ba7f4f4a 13
+  s_028bb0b0b1d5ea::t_2c6d876480cdd1 1-12,14-115,124-566,685-760
+  s_f71c3dc81c93e0::t_04335dcde6292a 116-123
+.cursor/rules/testing.mdc
+  s_36cf0aa11ba687::t_44e22fa6963359 1-29
+.cursor/rules/ingestion-cache.mdc
+  s_36cf0aa11ba687::t_70f964f4b862b3 1-27
+src-tauri/src/domain.rs
+  s_24039c348047c7::t_ac6b5fd4a9d3ea 47-58
+  s_f71c3dc81c93e0::t_0f2146cf083d31 202-225
+  s_be82d65c768e4c::t_aa3c2752a55f53 59-60,150,186,226,287,300-317,323,325-356
+  s_24039c348047c7::t_6fc5c045236137 151-185
+  s_5052f820524f4c::t_67c104d725f31b 136-137
+  s_be82d65c768e4c::t_d7faaec7bc72a3 19-31
+  s_be82d65c768e4c::t_504a9b078e9a52 288-299
+  s_be82d65c768e4c::t_81309f384311f7 61
+  s_be82d65c768e4c::t_e50bf339bd7820 187
+  s_be82d65c768e4c::t_668a6d24522871 227
+src-tauri/src/tests.rs
+  s_be82d65c768e4c::t_a3f518067fe0cb 1780-1797,1805-1807
+  s_be82d65c768e4c::t_23395c96173327 1798-1804
+  s_be82d65c768e4c::t_31fef3e334c510 1949-1974
+  s_be82d65c768e4c::t_4b12ead0cc9d17 1888
+  s_be82d65c768e4c::t_1458ff02eaf470 1897
+  s_be82d65c768e4c::t_a42cf2c2fb8015 1975-1999
+  s_daecbcde030268::t_53b344a709b6ea 1685,1697
+  s_be82d65c768e4c::t_93ab35b8371abf 1808-1848
+  s_028bb0b0b1d5ea::t_a1f415f0189e34 314,474,1336,1445,1621,1707,2026,2154-2390
+  s_be82d65c768e4c::t_f4386bff4d4ef2 1901-1927
+  s_028bb0b0b1d5ea::t_ea2879ff2dfd0b 8
+  s_f71c3dc81c93e0::t_9a55440fcdc7c2 1370-1371
+  s_be82d65c768e4c::t_3efad6ee8a1bee 1622-1683
+  s_f71c3dc81c93e0::t_14415a2c719239 1337-1369,1372-1386,1388-1444
+  s_5052f820524f4c::t_7c5f569e78953b 966-967,973-976
+  s_f71c3dc81c93e0::t_4d364ad82174fd 6
+  s_daecbcde030268::t_7ab5230386cd46 1684,1686-1696,1698-1706
+  s_24039c348047c7::t_6ab2b31b8ee5ca 342-410,422,427-473
+  s_be82d65c768e4c::t_b99f54ca40ae6e 1754-1779,1849-1887,1889-1896,1898-1900,1928-1947
+  s_be82d65c768e4c::t_e782c4da2619c3 55-62,86-87,89,113-120,154-157,177-184,212-215,250-253,302-305,411-421,423-426,484-487,1016-1019,1022-1025,1167,1224,1594-1595,1602-1604,2134
+  s_24039c348047c7::t_5e3a62419ca564 315-341
+  s_f71c3dc81c93e0::t_5c81c60cdf8808 1387
+  s_be82d65c768e4c::t_da393359eb3cb9 1948,2000-2025
+  s_028bb0b0b1d5ea::t_9146bea0685e06 475
+  s_5052f820524f4c::t_95ba44f610138d 977
+  s_028bb0b0b1d5ea::t_bf6dc91e2adb0a 1446
+  s_028bb0b0b1d5ea::t_9b940c505e9918 1708
+  s_028bb0b0b1d5ea::t_3588eccd9795dd 2027
+src-tauri/Cargo.toml
+  s_f71c3dc81c93e0::t_816025e9c6df55 29
+  s_f71c3dc81c93e0::t_373d5eb1a9012c 30
+src-tauri/src/store.rs
+  s_be82d65c768e4c::t_f6d71b4a376d69 155,160-161,164-172,174,176,180-188,191-198,201-208,210-248,250,252
+  s_be82d65c768e4c::t_4ee39abf79c8eb 82,107,153,258,261-274,291
+  s_be82d65c768e4c::t_6ddc5959f2eb6e 145-152
+  s_be82d65c768e4c::t_93132357eefdfe 1-2,5-7
+  s_be82d65c768e4c::t_f09ef1f19b43c7 259-260
+  s_daecbcde030268::t_73a51de5ece4aa 47
+  s_daecbcde030268::t_2900aaa8c8b3c4 46
+  s_be82d65c768e4c::t_09bfd981716e02 52-55,59-71,86-106
+  s_be82d65c768e4c::t_11f2e7de0f73ff 72-80
+  s_be82d65c768e4c::t_1be9820d9f7cc7 275-290
+  s_be82d65c768e4c::t_e782c4da2619c3 332-333
+  s_be82d65c768e4c::t_65471ae402ad1b 249,251
+  s_be82d65c768e4c::t_73da3bd4f7f8b1 306-313,316
+  s_be82d65c768e4c::t_1be35a3c72b50d 81
+  s_be82d65c768e4c::t_653734b0586fdb 108
+  s_be82d65c768e4c::t_57c45e34114783 154
+  s_be82d65c768e4c::t_cde803e683a6b1 292
+.cursor/rules/rust-backend.mdc
+  s_36cf0aa11ba687::t_879fbb9fe6da9c 1-33
+src-tauri/src/aggregate.rs
+  s_be82d65c768e4c::t_e782c4da2619c3 8-9,36-39,63-66,169-176,310-313
+  s_5052f820524f4c::t_411e0ae7e2f2fa 82,85-88,91,94,99,101-104,109-117,126-127
+  s_24039c348047c7::t_5776f9fe1e87b3 7
+  s_028bb0b0b1d5ea::t_09417e21d80145 56,69
+  s_24039c348047c7::t_e210bfe8fb9453 128,132-168,177-254
+  s_24039c348047c7::t_64506860c472e2 255
+src-tauri/Cargo.lock
+  s_f71c3dc81c93e0::t_4a6f15c2d32a35 36,39,621-629,668-673,2282,2313-2318,2420-2428,2559-2585,2700-2705,4000-4059
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "900e855002b88cf99fb5a26a6be9dbd983bcabc8",
+  "prompts": {},
+  "sessions": {
+    "s_028bb0b0b1d5ea": {
+      "agent_id": {
+        "tool": "deepseek",
+        "id": "session-1369df9a-a20b-4602-a989-c854c2db2bb1",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_24039c348047c7": {
+      "agent_id": {
+        "tool": "deepseek",
+        "id": "session-9bbf3052-9778-47b8-9f82-9848e9c0947b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_36cf0aa11ba687": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9c7e158b-acf5-4221-bdd6-9444ce5f3307",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_5052f820524f4c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a009c6-27c7-7ed3-bfad-8b10ea9b960d",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_be82d65c768e4c": {
+      "agent_id": {
+        "tool": "deepseek",
+        "id": "session-75acaeca-f349-4bc2-934f-545130f0e312",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_daecbcde030268": {
+      "agent_id": {
+        "tool": "deepseek",
+        "id": "session-1d7c3521-9dda-4680-abfa-681cf01a31cd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_f5e3b1c76666ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00992-aaf8-7a53-9d18-cffb4c259d46",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_f71c3dc81c93e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f569826c-d693-464b-8b5c-0310af284942",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
