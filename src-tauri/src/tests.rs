@@ -1380,12 +1380,9 @@ fn sessions_page_supports_search_sort_and_pagination() {
         &conn,
         &prices,
         &SessionQuery {
-            filter: Filter::default(),
-            search: None,
-            sort_by: None,
-            sort_dir: None,
             page: Some(1),
             page_size: Some(2),
+            ..Default::default()
         },
     )
     .unwrap();
@@ -1395,17 +1392,16 @@ fn sessions_page_supports_search_sort_and_pagination() {
     assert_eq!(page1.rows[0].total_tokens, 300);
     assert_eq!(page1.rows[1].session_id, "s1");
     assert_eq!(page1.total_tokens, 300 + 100 + 80 + 50);
+    assert!(page1.rows[0].cost.is_none());
+    assert!(!page1.rows[0].unpriced);
 
     let page2 = query::sessions_page(
         &conn,
         &prices,
         &SessionQuery {
-            filter: Filter::default(),
-            search: None,
-            sort_by: None,
-            sort_dir: None,
             page: Some(2),
             page_size: Some(2),
+            ..Default::default()
         },
     )
     .unwrap();
@@ -1413,17 +1409,32 @@ fn sessions_page_supports_search_sort_and_pagination() {
     assert_eq!(page2.rows[0].session_id, "s6");
     assert_eq!(page2.rows[1].session_id, "s3");
 
+    // 超出页码时仍返回汇总，避免 KPI 被清空。
+    let empty_page = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            page: Some(99),
+            page_size: Some(10),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(empty_page.total, 4);
+    assert_eq!(empty_page.total_tokens, 300 + 100 + 80 + 50);
+    assert!(empty_page.rows.is_empty());
+    assert!(empty_page.last_ended.is_some());
+
     // 升序排序按 session_id。
     let asc_by_session = query::sessions_page(
         &conn,
         &prices,
         &SessionQuery {
-            filter: Filter::default(),
-            search: None,
             sort_by: Some("session".into()),
             sort_dir: Some("asc".into()),
             page: Some(1),
             page_size: Some(10),
+            ..Default::default()
         },
     )
     .unwrap();
@@ -1439,12 +1450,10 @@ fn sessions_page_supports_search_sort_and_pagination() {
         &conn,
         &prices,
         &SessionQuery {
-            filter: Filter::default(),
             search: Some("proj/c".into()),
-            sort_by: None,
-            sort_dir: None,
             page: Some(1),
             page_size: Some(10),
+            ..Default::default()
         },
     )
     .unwrap();
@@ -1456,18 +1465,60 @@ fn sessions_page_supports_search_sort_and_pagination() {
         &conn,
         &prices,
         &SessionQuery {
-            filter: Filter::default(),
             search: Some("不存在的关键字".into()),
-            sort_by: None,
-            sort_dir: None,
             page: Some(1),
             page_size: Some(10),
+            ..Default::default()
         },
     )
     .unwrap();
     assert_eq!(no_match.total, 0);
     assert!(no_match.rows.is_empty());
     assert_eq!(no_match.last_ended, None);
+}
+
+#[test]
+fn sessions_page_computes_cost_only_when_requested() {
+    let mut priced = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    priced.input_tokens = 1000;
+    priced.total_tokens = 1000;
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &[priced]).unwrap();
+    let table = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-5.1-codex".into(),
+            provider: Some("official".into()),
+            input: 0.001,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+
+    let listed = query::sessions_page(&conn, &table, &SessionQuery::default()).unwrap();
+    assert_eq!(listed.rows.len(), 1);
+    assert_eq!(listed.rows[0].cost, None);
+    assert!(!listed.rows[0].unpriced);
+
+    let exported = query::sessions_page(
+        &conn,
+        &table,
+        &SessionQuery {
+            include_cost: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(exported.rows[0].cost, Some(1.0));
+    assert!(!exported.rows[0].unpriced);
 }
 
 #[test]

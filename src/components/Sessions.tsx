@@ -156,6 +156,7 @@ export function Sessions({
         sortDir,
         page: 1,
         pageSize: Math.min(Math.max(total, 1), EXPORT_ROW_LIMIT),
+        includeCost: true,
       },
     });
     return result.rows.map(sessionRowToExportCells);

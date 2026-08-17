@@ -103,6 +103,7 @@ export type SessionQuery = {
   sortDir?: SortDir | null;
   page?: number;
   pageSize?: number;
+  includeCost?: boolean;
 };
 
 export type SessionPage = {

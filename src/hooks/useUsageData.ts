@@ -69,6 +69,7 @@ type SelectedSession = { id: string; source: string };
 export function useUsageData() {
   const didMount = useRef(false);
   const requestGeneration = useRef(0);
+  const turnsGeneration = useRef(0);
   const ingestOperation = useRef(false);
 
   const [view, setView] = useState<View>(viewFromHash);
@@ -92,7 +93,9 @@ export function useUsageData() {
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsRevision, setSessionsRevision] = useState(0);
   const [turns, setTurns] = useState<TurnRow[]>([]);
+  const [turnsLoading, setTurnsLoading] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null);
+  const [sessionsVisited, setSessionsVisited] = useState(() => viewFromHash() === "sessions");
   const [prices, setPrices] = useState<PriceTable>({ prices: [] });
   const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([]);
   const [lastIngestReport, setLastIngestReport] = useState<IngestReport | null>(null);
@@ -105,13 +108,38 @@ export function useUsageData() {
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState<string>(loadAutoRefresh);
 
+  const loadSessionTurns = useCallback(
+    async (session: SelectedSession, nextFilter = filter) => {
+      const generation = ++turnsGeneration.current;
+      setTurnsLoading(true);
+      try {
+        const rows = await invoke<TurnRow[]>("get_session_turns", {
+          sessionId: session.id,
+          source: session.source,
+          filter: nextFilter,
+        });
+        if (generation === turnsGeneration.current) {
+          setTurns(rows);
+        }
+      } finally {
+        if (generation === turnsGeneration.current) {
+          setTurnsLoading(false);
+        }
+      }
+    },
+    [filter],
+  );
+
   const refreshViews = useCallback(
     async (nextFilter = filter, nextPreset = preset) => {
       const generation = ++requestGeneration.current;
-      setLoading(true);
       // 会话列表自行分页拉取数据，这里只需要一个信号让它知道该重新查询了
       // （比如摄取完成后底层数据变了，但 filter 引用未必变化）。
       setSessionsRevision((n) => n + 1);
+      // 会话页有自己的 loading，不要用全屏遮罩把已缓存的列表盖住。
+      if (view !== "sessions") {
+        setLoading(true);
+      }
       const commit =
         <T>(setter: (value: T) => void) =>
         (value: T) => {
@@ -120,9 +148,13 @@ export function useUsageData() {
           }
         };
       const tasks: Array<Promise<void>> = [
-        invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
         invoke<FilterOptions>("get_filter_options").then(commit(setOptions)),
       ];
+      if (view !== "sessions") {
+        tasks.push(
+          invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
+        );
+      }
       if (view === "overview" || view === "trend") {
         tasks.push(
           invoke<SeriesPoint[]>("get_trend", { filter: nextFilter, grain }).then(commit(setTrend)),
@@ -166,13 +198,7 @@ export function useUsageData() {
         );
       }
       if (view === "sessions" && selectedSession) {
-        tasks.push(
-          invoke<TurnRow[]>("get_session_turns", {
-            sessionId: selectedSession.id,
-            source: selectedSession.source,
-            filter: nextFilter,
-          }).then(commit(setTurns)),
-        );
+        tasks.push(loadSessionTurns(selectedSession, nextFilter));
       }
       if (view === "cursor") {
         tasks.push(invoke<CodeVolumeSummary>("get_code_volume").then(commit(setCodeVolume)));
@@ -194,7 +220,7 @@ export function useUsageData() {
         setUpdatedAt(new Date().toISOString());
       }
     },
-    [filter, preset, view, grain, selectedSession],
+    [filter, preset, view, grain, selectedSession, loadSessionTurns],
   );
 
   // 切换粒度（按日/按周/按月）时只重新拉取趋势相关数据，避免刷新整页导致的卡顿。
@@ -342,9 +368,13 @@ export function useUsageData() {
       didMount.current = true;
       return;
     }
+    if (view === "sessions") {
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切视图时按需拉该页数据
     refreshViews().catch(reportError);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只需在 view/selectedSession 变化时触发
-  }, [view, selectedSession]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 切到会话页不重拉；列表由 Sessions 自己缓存
+  }, [view]);
 
   const didMountGrain = useRef(false);
   useEffect(() => {
@@ -357,16 +387,28 @@ export function useUsageData() {
   }, [grain]);
 
   const openSessions = useCallback(() => {
+    setSessionsVisited(true);
     setView("sessions");
     window.history.replaceState(null, "", "#sessions");
   }, []);
 
   const navigate = useCallback((next: View) => {
+    if (next === "sessions") {
+      setSessionsVisited(true);
+    }
     setView(next);
     if (window.location.hash.replace(/^#/, "") !== next) {
       window.history.replaceState(null, "", `#${next}`);
     }
   }, []);
+
+  const selectSession = useCallback(
+    (session: SelectedSession) => {
+      setSelectedSession(session);
+      loadSessionTurns(session).catch(reportError);
+    },
+    [loadSessionTurns, reportError],
+  );
 
   const applyPreset = useCallback(
     (next: string, explicitRange?: { from: string | null; to: string | null }) => {
@@ -403,9 +445,11 @@ export function useUsageData() {
     projects,
     sessions,
     sessionsRevision,
+    sessionsVisited,
     turns,
+    turnsLoading,
     selectedSession,
-    setSelectedSession,
+    setSelectedSession: selectSession,
     prices,
     setPrices,
     diagnostics,

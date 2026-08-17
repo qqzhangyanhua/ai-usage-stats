@@ -43,8 +43,8 @@ export default function App() {
           onRefresh={() => data.runIngest("刷新")}
         />
         <main className="main">
-          <ErrorBoundary key={view} fullscreen={false}>
-            <LoadingOverlay active={data.loading || data.busy}>
+          <LoadingOverlay active={data.loading || data.busy}>
+            <ErrorBoundary key={view} fullscreen={false}>
               {view === "overview" ? (
                 <Overview
                   overview={data.overview}
@@ -91,16 +91,6 @@ export default function App() {
                   theme={theme}
                 />
               ) : null}
-              {view === "sessions" ? (
-                <Sessions
-                  filter={data.filter}
-                  revision={data.sessionsRevision}
-                  turns={data.turns}
-                  turnsLoading={data.loading}
-                  selected={data.selectedSession}
-                  onSelect={data.setSelectedSession}
-                />
-              ) : null}
               {view === "cursor" ? <CursorPanel summary={data.codeVolume} theme={theme} /> : null}
               {view === "settings" ? (
                 <Settings
@@ -118,8 +108,22 @@ export default function App() {
                   }}
                 />
               ) : null}
-            </LoadingOverlay>
-          </ErrorBoundary>
+            </ErrorBoundary>
+            {data.sessionsVisited ? (
+              <div hidden={view !== "sessions"}>
+                <ErrorBoundary fullscreen={false}>
+                  <Sessions
+                    filter={data.filter}
+                    revision={data.sessionsRevision}
+                    turns={data.turns}
+                    turnsLoading={data.turnsLoading}
+                    selected={data.selectedSession}
+                    onSelect={data.setSelectedSession}
+                  />
+                </ErrorBoundary>
+              </div>
+            ) : null}
+          </LoadingOverlay>
         </main>
       </div>
     </div>

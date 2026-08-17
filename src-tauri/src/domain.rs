@@ -205,7 +205,7 @@ pub struct SessionRow {
 }
 
 /// 会话列表分页查询参数：搜索/排序/分页均下沉到 SQL 层执行。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionQuery {
     pub filter: Filter,
@@ -219,6 +219,9 @@ pub struct SessionQuery {
     pub page: Option<u32>,
     #[serde(default)]
     pub page_size: Option<u32>,
+    /// 列表 UI 不展示费用；仅导出时打开，避免对全表做价目 JOIN。
+    #[serde(default)]
+    pub include_cost: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

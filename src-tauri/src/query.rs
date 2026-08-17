@@ -564,33 +564,57 @@ pub fn top_sessions(
     Ok(rows)
 }
 
-/// 会话列表的分页查询：搜索（session/项目/模型/应用/原始文件）、排序、分页均在 SQL 层完成，
-/// 避免把全部会话拉到前端再做客户端过滤，数据量增长时也能保持稳定的响应速度。
+fn session_rollup_sql(clauses: &[String], include_cost: bool) -> String {
+    if include_cost {
+        format!(
+            "SELECT r.source AS source, r.session_id AS session_id,
+                SUM(r.total_tokens) AS total_tokens,
+                MIN(r.occurred_at) AS started_at,
+                MAX(r.occurred_at) AS ended_at,
+                COALESCE(MAX(NULLIF(r.project, '')), '') AS project,
+                COALESCE(MAX(NULLIF(r.model, '')), '') AS model,
+                MAX(r.source_file) AS source_file,
+                SUM({COST_EXPR}) AS cost,
+                COALESCE(SUM({UNPRICED_EXPR}), 0) AS unpriced_count
+            FROM usage_records r
+            {PRICE_JOINS}
+            {}
+            GROUP BY r.source, r.session_id",
+            where_sql(clauses),
+        )
+    } else {
+        format!(
+            "SELECT r.source AS source, r.session_id AS session_id,
+                SUM(r.total_tokens) AS total_tokens,
+                MIN(r.occurred_at) AS started_at,
+                MAX(r.occurred_at) AS ended_at,
+                COALESCE(MAX(NULLIF(r.project, '')), '') AS project,
+                COALESCE(MAX(NULLIF(r.model, '')), '') AS model,
+                MAX(r.source_file) AS source_file,
+                CAST(NULL AS REAL) AS cost,
+                0 AS unpriced_count
+            FROM usage_records r
+            {}
+            GROUP BY r.source, r.session_id",
+            where_sql(clauses),
+        )
+    }
+}
+
+/// 会话列表的分页查询：搜索（session/项目/模型/应用/原始文件）、排序、分页均在 SQL 层完成。
+/// 汇总与当前页共用一次 MATERIALIZED 聚合，避免对消耗记录扫两遍。
 pub fn sessions_page(
     conn: &Connection,
     prices: &PriceTable,
     query: &SessionQuery,
 ) -> Result<SessionPage, String> {
-    install_prices(conn, prices)?;
-    let (clauses, base_params) = filter_clauses(&query.filter);
-    let sessions_cte = format!(
-        "SELECT r.source AS source, r.session_id AS session_id,
-            SUM(r.total_tokens) AS total_tokens,
-            MIN(r.occurred_at) AS started_at,
-            MAX(r.occurred_at) AS ended_at,
-            COALESCE(MAX(NULLIF(r.project, '')), '') AS project,
-            COALESCE(MAX(NULLIF(r.model, '')), '') AS model,
-            MAX(r.source_file) AS source_file,
-            SUM({COST_EXPR}) AS cost,
-            COALESCE(SUM({UNPRICED_EXPR}), 0) AS unpriced_count
-        FROM usage_records r
-        {PRICE_JOINS}
-        {}
-        GROUP BY r.source, r.session_id",
-        where_sql(&clauses),
-    );
+    let include_cost = query.include_cost.unwrap_or(false);
+    if include_cost {
+        install_prices(conn, prices)?;
+    }
+    let (clauses, mut params) = filter_clauses(&query.filter);
+    let sessions_cte = session_rollup_sql(&clauses, include_cost);
 
-    let mut search_params: Vec<Value> = Vec::new();
     let search_clause = match query
         .search
         .as_deref()
@@ -600,7 +624,7 @@ pub fn sessions_page(
         Some(search) => {
             let pattern = format!("%{}%", escape_like(search));
             for _ in 0..5 {
-                search_params.push(Value::Text(pattern.clone()));
+                params.push(Value::Text(pattern.clone()));
             }
             "WHERE (session_id LIKE ? ESCAPE '\\' OR project LIKE ? ESCAPE '\\'
                 OR model LIKE ? ESCAPE '\\' OR source LIKE ? ESCAPE '\\'
@@ -623,56 +647,98 @@ pub fn sessions_page(
         "DESC"
     };
 
-    let mut summary_params = base_params.clone();
-    summary_params.extend(search_params.iter().cloned());
-    let summary_sql = format!(
-        "WITH sessions AS ({sessions_cte})
-         SELECT COUNT(*), COALESCE(SUM(total_tokens), 0), MAX(ended_at)
-         FROM sessions {search_clause}"
-    );
-    let (total, total_tokens, last_ended): (u32, i64, Option<String>) = conn
-        .query_row(&summary_sql, params_from_iter(summary_params.iter()), |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
-        .map_err(|e| e.to_string())?;
-
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).clamp(1, 500);
     let offset = (page - 1) * page_size;
+    params.push(Value::Integer(page_size as i64));
+    params.push(Value::Integer(offset as i64));
 
-    let mut page_params = base_params;
-    page_params.extend(search_params);
-    page_params.push(Value::Integer(page_size as i64));
-    page_params.push(Value::Integer(offset as i64));
-
-    let page_sql = format!(
-        "WITH sessions AS ({sessions_cte})
-         SELECT session_id, source, project, model, total_tokens, started_at, ended_at,
-            source_file, cost, unpriced_count
-         FROM sessions {search_clause}
-         ORDER BY {sort_column} {sort_dir}, session_id ASC
-         LIMIT ? OFFSET ?"
+    let sql = format!(
+        "WITH sessions AS MATERIALIZED ({sessions_cte}),
+            filtered AS MATERIALIZED (
+                SELECT * FROM sessions {search_clause}
+            ),
+            summary AS (
+                SELECT COUNT(*) AS match_count,
+                    COALESCE(SUM(total_tokens), 0) AS match_tokens,
+                    MAX(ended_at) AS match_last_ended
+                FROM filtered
+            ),
+            page AS (
+                SELECT session_id, source, project, model, total_tokens, started_at, ended_at,
+                    source_file, cost, unpriced_count
+                FROM filtered
+                ORDER BY {sort_column} {sort_dir}, session_id ASC
+                LIMIT ? OFFSET ?
+            )
+         SELECT summary.match_count, summary.match_tokens, summary.match_last_ended,
+            page.session_id, page.source, page.project, page.model, page.total_tokens,
+            page.started_at, page.ended_at, page.source_file, page.cost, page.unpriced_count
+         FROM summary
+         LEFT JOIN page ON 1"
     );
-    let mut stmt = conn.prepare(&page_sql).map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(params_from_iter(page_params.iter()), |row| {
-            let unpriced_count: i64 = row.get(9)?;
-            Ok(SessionRow {
-                session_id: row.get(0)?,
-                source: row.get(1)?,
-                project: row.get(2)?,
-                model: row.get(3)?,
-                total_tokens: row.get(4)?,
-                started_at: row.get(5)?,
-                ended_at: row.get(6)?,
-                source_file: row.get(7)?,
-                cost: row.get(8)?,
-                unpriced: unpriced_count > 0,
-            })
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let raw = stmt
+        .query_map(params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, u32>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<f64>>(11)?,
+                row.get::<_, Option<i64>>(12)?,
+            ))
         })
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+
+    let mut total = 0;
+    let mut total_tokens = 0;
+    let mut last_ended = None;
+    let mut rows = Vec::new();
+    for (
+        match_count,
+        match_tokens,
+        match_last_ended,
+        session_id,
+        source,
+        project,
+        model,
+        row_tokens,
+        started_at,
+        ended_at,
+        source_file,
+        cost,
+        unpriced_count,
+    ) in raw
+    {
+        total = match_count;
+        total_tokens = match_tokens;
+        last_ended = match_last_ended;
+        let Some(session_id) = session_id else {
+            continue;
+        };
+        rows.push(SessionRow {
+            session_id,
+            source: source.unwrap_or_default(),
+            project: project.unwrap_or_default(),
+            model: model.unwrap_or_default(),
+            total_tokens: row_tokens.unwrap_or(0),
+            started_at: started_at.unwrap_or_default(),
+            ended_at: ended_at.unwrap_or_default(),
+            source_file: source_file.unwrap_or_default(),
+            cost,
+            unpriced: unpriced_count.unwrap_or(0) > 0,
+        });
+    }
 
     Ok(SessionPage {
         rows,
