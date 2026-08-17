@@ -48,6 +48,7 @@ export default function App() {
               {view === "overview" ? (
                 <Overview
                   overview={data.overview}
+                  billingWindows={data.billingWindows}
                   previous={data.previous}
                   trend={data.trend}
                   heatmap={data.heatmap}

@@ -5,12 +5,15 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
 use rusqlite::{params, params_from_iter, types::Value, Connection};
 
+use crate::billing_window;
 use crate::domain::{
-    ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, EfficiencyMetrics,
-    Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable, ProjectApplicationRow,
-    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, TurnRow,
+    ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, BillingWindowsDto,
+    EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
+    ProjectApplicationRow, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, TurnRow,
+    UsageRecord,
 };
 
 /// 费用表达式（每行）：native_cost 优先，否则加权价格，否则 NULL（未定价）。
@@ -199,6 +202,67 @@ pub fn overview(
         })
     })
     .map_err(|e| e.to_string())
+}
+
+pub fn billing_windows(
+    conn: &Connection,
+    filter: &Filter,
+    prices: &PriceTable,
+    now: DateTime<Utc>,
+) -> Result<BillingWindowsDto, String> {
+    let scoped = Filter {
+        from: None,
+        to: None,
+        sources: filter.sources.clone(),
+        models: filter.models.clone(),
+        projects: filter.projects.clone(),
+        providers: filter.providers.clone(),
+    };
+    let (mut clauses, mut params) = filter_clauses(&scoped);
+    clauses.push("substr(r.occurred_at, 1, 10) >= ?".to_string());
+    params.push(Value::Text(billing_window::lookback_date(now)));
+    let sql = format!(
+        "SELECT r.occurred_at, r.source, r.model, r.provider, r.project, r.session_id, r.source_file,
+            r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_creation_tokens,
+            r.reasoning_tokens, r.total_tokens, r.native_cost
+        FROM usage_records r
+        {}
+        ORDER BY r.occurred_at",
+        where_sql(&clauses),
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params_from_iter(params.iter()), |row| {
+            let source_value: String = row.get(1)?;
+            let source = Source::parse(&source_value).ok_or_else(|| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    1,
+                    rusqlite::types::Type::Text,
+                    format!("未知来源：{source_value}").into(),
+                )
+            })?;
+            Ok(UsageRecord {
+                occurred_at: row.get(0)?,
+                source,
+                model: row.get(2)?,
+                provider: row.get(3)?,
+                project: row.get(4)?,
+                session_id: row.get(5)?,
+                source_file: row.get(6)?,
+                input_tokens: row.get(7)?,
+                output_tokens: row.get(8)?,
+                cache_read_tokens: row.get(9)?,
+                cache_creation_tokens: row.get(10)?,
+                reasoning_tokens: row.get(11)?,
+                total_tokens: row.get(12)?,
+                native_cost: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let records = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(billing_window::summarize(&records, prices, now))
 }
 
 pub fn trend(

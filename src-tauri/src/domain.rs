@@ -137,6 +137,49 @@ pub struct OverviewDto {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BurnRateDto {
+    pub tokens_per_minute: f64,
+    pub cost_per_hour: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectionDto {
+    pub total_tokens: i64,
+    pub cost: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BillingWindowDto {
+    pub source: String,
+    pub application: String,
+    pub start: String,
+    pub end: String,
+    pub last_activity: String,
+    pub is_active: bool,
+    pub elapsed_minutes: i64,
+    pub remaining_minutes: Option<i64>,
+    pub total_tokens: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub reasoning_tokens: i64,
+    pub session_count: i64,
+    pub cost: Option<f64>,
+    pub unpriced: bool,
+    pub burn: Option<BurnRateDto>,
+    pub projection: Option<ProjectionDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BillingWindowsDto {
+    pub now: String,
+    pub window_hours: i64,
+    pub current: Vec<BillingWindowDto>,
+    pub recent: Vec<BillingWindowDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeriesPoint {
     pub bucket: String,
     pub total_tokens: i64,

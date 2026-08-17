@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod aggregate;
+pub mod billing_window;
 pub mod cost;
 pub mod domain;
 pub mod ingest;
@@ -16,9 +17,9 @@ use serde::Deserialize;
 use tauri::Manager;
 
 use crate::domain::{
-    ApplicationAnalyticsDto, CodeVolumeSummary, Filter, FilterOptions, IngestReport, NamedAmount,
-    OverviewDto, PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source,
-    SourceDiagnostic, TurnRow,
+    ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, Filter, FilterOptions,
+    IngestReport, NamedAmount, OverviewDto, PriceTable, SeriesPoint, SessionPage, SessionQuery,
+    SessionRow, Source, SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
@@ -76,6 +77,21 @@ async fn get_overview(app: tauri::AppHandle, filter: Filter) -> Result<OverviewD
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         let prices = load_prices(&state.prices_path);
         query::overview(&conn, &filter, &prices)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_billing_windows(
+    app: tauri::AppHandle,
+    filter: Filter,
+) -> Result<BillingWindowsDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let prices = load_prices(&state.prices_path);
+        query::billing_windows(&conn, &filter, &prices, chrono::Utc::now())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -324,6 +340,7 @@ pub fn run() {
             ping,
             ingest,
             get_overview,
+            get_billing_windows,
             get_trend,
             get_application_analytics,
             get_breakdown,

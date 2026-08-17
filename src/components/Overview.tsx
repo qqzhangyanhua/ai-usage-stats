@@ -4,6 +4,7 @@ import { ModelLabel, VendorIcon } from "./VendorIcon";
 import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { ActivityHeatmap } from "./ActivityHeatmap";
+import { BillingWindows } from "./BillingWindows";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { EmptyState } from "./EmptyState";
@@ -20,7 +21,14 @@ import {
   projectLabel,
   relativeTime,
 } from "../lib/format";
-import type { Grain, NamedAmount, OverviewDto, SeriesPoint, SessionRow } from "../types";
+import type {
+  BillingWindowsDto,
+  Grain,
+  NamedAmount,
+  OverviewDto,
+  SeriesPoint,
+  SessionRow,
+} from "../types";
 
 const emptyOverview: OverviewDto = {
   total_tokens: 0,
@@ -36,6 +44,7 @@ const emptyOverview: OverviewDto = {
 
 export const Overview = memo(function Overview({
   overview,
+  billingWindows,
   previous,
   trend,
   heatmap,
@@ -52,6 +61,7 @@ export const Overview = memo(function Overview({
   onOpenSessions,
 }: {
   overview: OverviewDto | null;
+  billingWindows: BillingWindowsDto | null;
   previous: OverviewDto | null;
   trend: SeriesPoint[];
   heatmap: SeriesPoint[];
@@ -134,6 +144,8 @@ export const Overview = memo(function Overview({
           radar
         />
       </section>
+
+      <BillingWindows data={billingWindows} />
 
       <section className="dash-mid">
         <article className="panel trend-panel">

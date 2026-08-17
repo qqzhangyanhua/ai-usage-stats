@@ -944,6 +944,109 @@ input[type="checkbox"] {
   min-height: 0;
 }
 
+.billing-panel {
+  flex: 0 0 auto;
+  padding: 12px 14px 10px;
+}
+
+.billing-current {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.billing-card {
+  padding: 10px 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--overlay-1);
+}
+
+.billing-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.billing-card-head strong {
+  font-size: 14px;
+}
+
+.billing-card-head em {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--green-fg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--overlay-recessed);
+  overflow: hidden;
+}
+
+.billing-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--purple), var(--cyan));
+}
+
+.billing-meta {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.billing-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 10px 0 0;
+}
+
+.billing-metrics dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.billing-metrics dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-recent {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.billing-recent li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.billing-recent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-recent-tokens,
+.billing-recent-cost {
+  font-variant-numeric: tabular-nums;
+}
+
 .heatmap-panel {
   flex: 0 0 auto;
   min-height: 0;
@@ -2585,6 +2688,14 @@ tr.selected {
 }
 
 @media (max-width: 720px) {
+  .billing-recent li {
+    grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  }
+
+  .billing-recent li .muted {
+    display: none;
+  }
+
   .efficiency-cards {
     grid-template-columns: 1fr;
   }

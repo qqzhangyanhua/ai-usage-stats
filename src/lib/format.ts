@@ -117,6 +117,25 @@ export function relativeTime(iso: string): string {
   return `${Math.floor(hours / 24)} 天前`;
 }
 
+export function formatWindowClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return iso;
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function formatHoursMinutes(totalMinutes: number): string {
+  const mins = Math.max(0, Math.round(totalMinutes));
+  const hours = Math.floor(mins / 60);
+  const minutes = mins % 60;
+  if (hours <= 0) {
+    return `${minutes}m`;
+  }
+  return `${hours}h ${minutes}m`;
+}
+
 export function formatClock(iso: string | null): string {
   if (!iso) {
     return "—";

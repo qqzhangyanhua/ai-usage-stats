@@ -19,6 +19,45 @@ export type OverviewDto = {
   unpriced: boolean;
 };
 
+export type BurnRateDto = {
+  tokens_per_minute: number;
+  cost_per_hour: number | null;
+};
+
+export type ProjectionDto = {
+  total_tokens: number;
+  cost: number | null;
+};
+
+export type BillingWindowDto = {
+  source: string;
+  application: string;
+  start: string;
+  end: string;
+  last_activity: string;
+  is_active: boolean;
+  elapsed_minutes: number;
+  remaining_minutes: number | null;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  reasoning_tokens: number;
+  session_count: number;
+  cost: number | null;
+  unpriced: boolean;
+  burn: BurnRateDto | null;
+  projection: ProjectionDto | null;
+};
+
+export type BillingWindowsDto = {
+  now: string;
+  window_hours: number;
+  current: BillingWindowDto[];
+  recent: BillingWindowDto[];
+};
+
 export type Grain = "day" | "week" | "month";
 
 export type View =

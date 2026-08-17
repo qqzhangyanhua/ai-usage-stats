@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
-use chrono::Datelike;
+use chrono::{DateTime, Datelike, Utc};
 
+use crate::billing_window;
 use crate::cost::{derive_cost, sum_costs};
 use crate::domain::{
-    ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, EfficiencyMetrics,
-    Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable, ProjectApplicationRow,
-    SeriesPoint, SessionRow, TurnRow, UsageRecord,
+    ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, BillingWindowsDto,
+    EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
+    ProjectApplicationRow, SeriesPoint, SessionRow, TurnRow, UsageRecord,
 };
 
 pub fn matches_filter(record: &UsageRecord, filter: &Filter) -> bool {
@@ -73,6 +74,23 @@ pub fn overview(records: &[UsageRecord], filter: &Filter, prices: &PriceTable) -
     dto.cost = cost;
     dto.unpriced = unpriced;
     dto
+}
+
+pub fn billing_windows(
+    records: &[UsageRecord],
+    filter: &Filter,
+    prices: &PriceTable,
+    now: DateTime<Utc>,
+) -> BillingWindowsDto {
+    let scoped = Filter {
+        from: None,
+        to: None,
+        sources: filter.sources.clone(),
+        models: filter.models.clone(),
+        projects: filter.projects.clone(),
+        providers: filter.providers.clone(),
+    };
+    billing_window::summarize(apply_filter(records, &scoped), prices, now)
 }
 
 pub fn trend(

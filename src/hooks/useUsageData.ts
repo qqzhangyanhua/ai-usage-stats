@@ -4,6 +4,7 @@ import { heatmapFilter } from "../lib/calendar";
 import { previousFilter, rangeFromPreset } from "../lib/format";
 import type {
   ApplicationAnalyticsDto,
+  BillingWindowsDto,
   CodeVolumeSummary,
   Filter,
   FilterOptions,
@@ -84,6 +85,7 @@ export function useUsageData() {
     providers: [],
   });
   const [overview, setOverview] = useState<OverviewDto | null>(null);
+  const [billingWindows, setBillingWindows] = useState<BillingWindowsDto | null>(null);
   const [previous, setPrevious] = useState<OverviewDto | null>(null);
   const [trend, setTrend] = useState<SeriesPoint[]>([]);
   const [heatmap, setHeatmap] = useState<SeriesPoint[]>([]);
@@ -180,6 +182,9 @@ export function useUsageData() {
           }).then(commit(setProjects)),
           invoke<SessionRow[]>("get_top_sessions", { filter: nextFilter, limit: 8 }).then(
             commit(setSessions),
+          ),
+          invoke<BillingWindowsDto>("get_billing_windows", { filter: nextFilter }).then(
+            commit(setBillingWindows),
           ),
           invoke<SeriesPoint[]>("get_trend", { filter: heat.filter, grain: "day" }).then(
             (points) => {
@@ -450,6 +455,7 @@ export function useUsageData() {
     preset,
     options,
     overview,
+    billingWindows,
     previous,
     trend,
     heatmap,
