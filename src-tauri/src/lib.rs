@@ -150,7 +150,10 @@ async fn get_top_sessions(
 }
 
 #[tauri::command]
-async fn get_sessions_page(app: tauri::AppHandle, query: SessionQuery) -> Result<SessionPage, String> {
+async fn get_sessions_page(
+    app: tauri::AppHandle,
+    query: SessionQuery,
+) -> Result<SessionPage, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -288,7 +291,9 @@ async fn export_image(default_name: String, base64: String) -> Result<bool, Stri
             .save_file();
         match path {
             Some(path) => {
-                let bytes = BASE64.decode(base64.as_bytes()).map_err(|e| e.to_string())?;
+                let bytes = BASE64
+                    .decode(base64.as_bytes())
+                    .map_err(|e| e.to_string())?;
                 fs::write(&path, bytes).map_err(|e| e.to_string())?;
                 Ok(true)
             }

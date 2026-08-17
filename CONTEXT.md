@@ -35,7 +35,7 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 | opencode | sqlite+json `~/.local/share/opencode` | ✅ | ✅ 自带 |
 | kimi | jsonl `~/.kimi/sessions/*/wire.jsonl` | ✅ | ❌ |
 | gemini | json `~/.gemini/tmp/*/logs.json` | 待确认 | ❌ |
-| grok | `~/.grok/sessions` | 待确认 | ❌ |
+| grok | `~/.grok/sessions` | ✅（`turn_completed.usage`） | ✅ 自带 `costUsdTicks` |
 | qwen | `~/.qwen` | 待确认 | ❌ |
 | Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
 | Cursor | sqlite（仅代码量） | ❌（云端） | ❌ |

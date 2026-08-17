@@ -122,7 +122,7 @@ fn source_root(home: &Path, source: Source) -> PathBuf {
 fn source_coverage(source: Source) -> &'static str {
     match source {
         Source::Qwen => "本地无 Token",
-        Source::Grok => "仅上下文总量",
+        Source::Grok => "轮级 Token",
         Source::Factory => "会话累计 Token",
         Source::CursorAgent => "仅无头调用",
         _ => "轮级 Token",

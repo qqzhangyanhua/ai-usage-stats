@@ -1,6 +1,13 @@
+use std::collections::HashMap;
+
 use crate::adapters::project::decode_dashed_dir;
-use crate::adapters::{finish, i64_field, parse_jsonl_values, text_field};
+use crate::adapters::{finish, has_billable_tokens, i64_field, parse_jsonl_values, text_field};
 use crate::domain::{Source, UsageRecord};
+
+struct ClaudeTurn {
+    record: UsageRecord,
+    stop_reason: Option<String>,
+}
 
 pub fn parse_claude_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
     let values = parse_jsonl_values(content);
@@ -20,7 +27,10 @@ pub fn parse_claude_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> 
     if session_id.is_empty() {
         session_id = crate::adapters::project::session_id_from_source_file(source_file);
     }
-    let mut records = Vec::new();
+
+    let mut by_id: HashMap<String, ClaudeTurn> = HashMap::new();
+    let mut order: Vec<String> = Vec::new();
+    let mut anonymous = Vec::new();
 
     for value in values {
         if value.get("type").and_then(|v| v.as_str()) != Some("assistant") {
@@ -31,7 +41,7 @@ pub fn parse_claude_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> 
         if usage.is_null() {
             continue;
         }
-        records.push(finish(UsageRecord {
+        let record = finish(UsageRecord {
             occurred_at: text_field(&value, &["timestamp"]),
             source: Source::Claude,
             model: text_field(&message, &["model"]),
@@ -46,10 +56,51 @@ pub fn parse_claude_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> 
             reasoning_tokens: 0,
             total_tokens: 0,
             native_cost: None,
-        }));
+        });
+        if !has_billable_tokens(&record) {
+            continue;
+        }
+        let stop_reason = message
+            .get("stop_reason")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let message_id = text_field(&message, &["id"]);
+        if message_id.is_empty() {
+            anonymous.push(record);
+            continue;
+        }
+        let turn = ClaudeTurn {
+            record,
+            stop_reason,
+        };
+        let should_replace = match by_id.get(&message_id) {
+            None => true,
+            Some(existing) => should_replace_claude(existing, &turn),
+        };
+        if should_replace {
+            if !by_id.contains_key(&message_id) {
+                order.push(message_id.clone());
+            }
+            by_id.insert(message_id, turn);
+        }
     }
 
+    let mut records: Vec<UsageRecord> = order
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id).map(|turn| turn.record))
+        .collect();
+    records.extend(anonymous);
     records
+}
+
+/// 与 cc-switch 一致：同一 `message.id` 优先保留有 stop_reason 的，否则取 output 更大的。
+fn should_replace_claude(existing: &ClaudeTurn, next: &ClaudeTurn) -> bool {
+    match (existing.stop_reason.is_some(), next.stop_reason.is_some()) {
+        (false, true) => true,
+        (true, false) => false,
+        _ => next.record.output_tokens > existing.record.output_tokens,
+    }
 }
 
 fn project_from_path(source_file: &str) -> String {

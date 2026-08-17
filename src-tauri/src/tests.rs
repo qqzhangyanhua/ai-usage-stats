@@ -74,6 +74,23 @@ fn codex_adapter_counts_last_token_usage_not_cumulative() {
 }
 
 #[test]
+fn codex_adapter_falls_back_to_total_token_usage_delta() {
+    let records = codex::parse_codex_jsonl(
+        &fixture("codex-total-only.jsonl"),
+        "/Users/zhangyanhua/.codex/sessions/rollout.jsonl",
+    );
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].input_tokens, 100);
+    assert_eq!(records[0].cache_read_tokens, 50);
+    assert_eq!(records[0].output_tokens, 10);
+    assert_eq!(records[1].input_tokens, 50);
+    assert_eq!(records[1].cache_read_tokens, 25);
+    assert_eq!(records[1].output_tokens, 5);
+    let summed: i64 = records.iter().map(|r| r.input_tokens).sum();
+    assert_eq!(summed, 150);
+}
+
+#[test]
 fn claude_adapter_maps_usage_and_project_dir() {
     let records = claude::parse_claude_jsonl(
         &fixture("claude.jsonl"),
@@ -98,6 +115,21 @@ fn claude_adapter_maps_usage_and_project_dir() {
     assert_eq!(records[1].cache_read_tokens, 56332);
     assert_eq!(records[1].cache_creation_tokens, 0);
     assert_eq!(records[1].total_tokens, 56492);
+}
+
+#[test]
+fn claude_adapter_dedups_message_id_and_skips_zero_usage() {
+    let records = claude::parse_claude_jsonl(
+        &fixture("claude-dedup.jsonl"),
+        "/Users/zhangyanhua/.claude/projects/-Users-zhangyanhua-AI-cli/s-claude.jsonl",
+    );
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].input_tokens, 2);
+    assert_eq!(records[0].output_tokens, 80);
+    assert_eq!(records[0].cache_read_tokens, 48719);
+    assert_eq!(records[0].cache_creation_tokens, 2061);
+    assert_eq!(records[1].input_tokens, 10);
+    assert_eq!(records[1].output_tokens, 4);
 }
 
 #[test]
@@ -163,6 +195,26 @@ fn opencode_adapter_skips_user_and_keeps_native_cost() {
     assert_eq!(records[0].reasoning_tokens, 0);
     assert_eq!(records[0].total_tokens, 21140);
     assert_eq!(records[0].native_cost, Some(0.42));
+}
+
+#[test]
+fn opencode_adapter_ignores_zero_native_cost() {
+    let rows = [OpencodeMessage {
+        session_id: "s1".to_string(),
+        source_file: "opencode.db".to_string(),
+        data: serde_json::json!({
+            "role": "assistant",
+            "modelID": "mimo-v2.5-pro",
+            "time": { "created": 1, "completed": 2 },
+            "tokens": { "input": 1000, "output": 200 },
+            "cost": 0.0
+        }),
+    }];
+    let records = parse_opencode_messages(&rows);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].input_tokens, 1000);
+    assert_eq!(records[0].output_tokens, 200);
+    assert_eq!(records[0].native_cost, None);
 }
 
 #[test]
@@ -283,6 +335,34 @@ fn grok_adapter_decodes_project_and_dedups_prompt() {
 }
 
 #[test]
+fn grok_adapter_reads_turn_completed_usage_not_context_total() {
+    let records = grok::parse_grok_updates(
+        &fixture("grok-turn-completed.jsonl"),
+        "/Users/zhangyanhua/.grok/sessions/%2FUsers%2Fzhangyanhua%2FAI%2FTradingAgents-CN/019fd235/updates.jsonl",
+        "grok-4.5",
+    );
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].source, Source::Grok);
+    assert_eq!(records[0].project, "/Users/zhangyanhua/AI/TradingAgents-CN");
+    assert_eq!(records[0].session_id, "019fd235");
+    assert_eq!(records[0].model, "grok-4.6-build");
+    assert_eq!(records[0].input_tokens, 447430);
+    assert_eq!(records[0].output_tokens, 4742);
+    assert_eq!(records[0].cache_read_tokens, 410112);
+    assert_eq!(records[0].cache_creation_tokens, 0);
+    assert_eq!(records[0].reasoning_tokens, 3567);
+    assert_eq!(records[0].total_tokens, 452172);
+    assert_ne!(records[0].total_tokens, 15681);
+    assert!((records[0].native_cost.unwrap() - 0.308144).abs() < 1e-9);
+    assert_eq!(records[1].input_tokens, 100);
+    assert_eq!(records[1].output_tokens, 10);
+    assert_eq!(records[1].cache_read_tokens, 5);
+    assert_eq!(records[1].reasoning_tokens, 3);
+    assert_eq!(records[1].total_tokens, 110);
+    assert!((records[1].native_cost.unwrap() - 0.1).abs() < 1e-9);
+}
+
+#[test]
 fn qwen_adapter_returns_empty_when_no_tokens() {
     let records = qwen::parse_qwen_session(&fixture("qwen-logs.json"), "logs.json");
     assert!(records.is_empty());
@@ -322,7 +402,10 @@ fn cursor_agent_adapter_maps_result_usage_per_turn() {
     assert_eq!(records[0].model, "Cursor Grok 4.6 High Fast");
     assert_eq!(records[0].provider, "");
     assert_eq!(records[0].project, "/Users/dev/project");
-    assert_eq!(records[0].session_id, "3ce011d4-33d1-41d0-a16c-f6dc206c47f1");
+    assert_eq!(
+        records[0].session_id,
+        "3ce011d4-33d1-41d0-a16c-f6dc206c47f1"
+    );
     assert_eq!(records[0].occurred_at, "2026-08-17T05:31:13.226190+00:00");
     assert_eq!(records[0].input_tokens, 18851);
     assert_eq!(records[0].output_tokens, 35);
@@ -807,6 +890,27 @@ fn overview_from_grok_fixture_uses_last_total_per_prompt() {
     assert_eq!(dto.reasoning_tokens, 0);
     assert_eq!(dto.session_count, 1);
     assert_ne!(dto.total_tokens, 15681 + 26857 + 71351);
+}
+
+#[test]
+fn overview_from_grok_turn_completed_uses_usage_not_context_total() {
+    let records = grok::parse_grok_updates(
+        &fixture("grok-turn-completed.jsonl"),
+        "/Users/zhangyanhua/.grok/sessions/%2FUsers%2Fzhangyanhua%2FAI%2FTradingAgents-CN/019fd235/updates.jsonl",
+        "grok-4.5",
+    );
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+    assert_eq!(dto.total_tokens, 452282);
+    assert_eq!(dto.input_tokens, 447530);
+    assert_eq!(dto.output_tokens, 4752);
+    assert_eq!(dto.cache_read_tokens, 410117);
+    assert_eq!(dto.reasoning_tokens, 3570);
+    assert_eq!(dto.session_count, 1);
+    assert!((dto.cost.unwrap() - 0.408144).abs() < 1e-9);
+    assert!(!dto.unpriced);
 }
 
 #[test]
@@ -2074,6 +2178,46 @@ fn rebuilding_all_removes_unknown_source_records() {
 }
 
 #[test]
+fn remove_unknown_sources_keeps_every_registered_source() {
+    let conn = store::open_memory().unwrap();
+    for source in Source::ALL {
+        conn.execute(
+            r#"
+            INSERT INTO usage_records (
+                occurred_at, source, model, provider, project, session_id, source_file,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                reasoning_tokens, total_tokens, native_cost
+            ) VALUES ('2026-01-01T00:00:00Z', ?1, '', '', '', ?1, ?2, 1, 0, 0, 0, 0, 1, NULL)
+            "#,
+            rusqlite::params![source.as_str(), format!("/{}.jsonl", source.as_str())],
+        )
+        .unwrap();
+        conn.execute(
+            r#"
+            INSERT INTO ingested_files(path, mtime_ms, size, source, fingerprint, adapter_version)
+            VALUES(?1, 1, 1, ?2, '', 1)
+            "#,
+            rusqlite::params![format!("/{}.jsonl", source.as_str()), source.as_str()],
+        )
+        .unwrap();
+    }
+
+    let removed = store::remove_unknown_sources(&conn).unwrap();
+    assert_eq!(removed, 0);
+
+    for source in Source::ALL {
+        let (cached_files, record_count, _) = store::source_cache_stats(&conn, source).unwrap();
+        assert_eq!(
+            cached_files,
+            1,
+            "{} cached files were wiped",
+            source.as_str()
+        );
+        assert_eq!(record_count, 1, "{} records were wiped", source.as_str());
+    }
+}
+
+#[test]
 fn source_diagnostics_explain_detection_cache_and_usage_coverage() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
@@ -2423,7 +2567,10 @@ fn sql_queries_match_in_memory_aggregates() {
             query::session_turns(&conn, "s1", source, &Filter::default(), &prices).unwrap();
         let mem_turns =
             aggregate::session_turns(&records, "s1", source, &Filter::default(), &prices);
-        assert_eq!(sql_turns, mem_turns, "session_turns source={source:?} 不一致");
+        assert_eq!(
+            sql_turns, mem_turns,
+            "session_turns source={source:?} 不一致"
+        );
     }
 
     // filter_options

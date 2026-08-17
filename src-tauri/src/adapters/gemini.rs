@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::adapters::{finish, i64_field, text_field};
+use crate::adapters::{finish, has_billable_tokens, i64_field, text_field};
 use crate::domain::{Source, UsageRecord};
 
 pub fn parse_gemini_session(content: &str, source_file: &str) -> Vec<UsageRecord> {
@@ -18,15 +18,13 @@ pub fn parse_gemini_session(content: &str, source_file: &str) -> Vec<UsageRecord
 
     messages
         .into_iter()
-        .filter(|msg| {
-            matches!(
-                msg.get("type").and_then(|v| v.as_str()),
-                Some("gemini") | Some("assistant")
-            )
-        })
+        .filter(|msg| msg.get("type").and_then(|v| v.as_str()) == Some("gemini"))
         .filter_map(|msg| {
             let tokens = msg.get("tokens")?.clone();
-            Some(finish(UsageRecord {
+            if !tokens.is_object() {
+                return None;
+            }
+            let record = finish(UsageRecord {
                 occurred_at: text_field(&msg, &["timestamp"]),
                 source: Source::Gemini,
                 model: text_field(&msg, &["model"]),
@@ -41,7 +39,8 @@ pub fn parse_gemini_session(content: &str, source_file: &str) -> Vec<UsageRecord
                 reasoning_tokens: i64_field(&tokens, &["thoughts"]),
                 total_tokens: i64_field(&tokens, &["total"]),
                 native_cost: None,
-            }))
+            });
+            has_billable_tokens(&record).then_some(record)
         })
         .collect()
 }

@@ -1,0 +1,5 @@
+{"type":"user","sessionId":"s-claude","timestamp":"2026-04-01T10:00:00.000Z","cwd":"/Users/zhangyanhua/AI/cli"}
+{"type":"assistant","sessionId":"s-claude","timestamp":"2026-04-01T10:00:01.000Z","message":{"id":"msg_1","model":"claude-sonnet-5","usage":{"input_tokens":2,"output_tokens":1,"cache_read_input_tokens":48719,"cache_creation_input_tokens":2061}}}
+{"type":"assistant","sessionId":"s-claude","timestamp":"2026-04-01T10:00:02.000Z","message":{"id":"msg_1","model":"claude-sonnet-5","stop_reason":"end_turn","usage":{"input_tokens":2,"output_tokens":80,"cache_read_input_tokens":48719,"cache_creation_input_tokens":2061}}}
+{"type":"assistant","sessionId":"s-claude","timestamp":"2026-04-01T10:00:03.000Z","message":{"id":"msg_empty","model":"claude-sonnet-5","usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+{"type":"assistant","sessionId":"s-claude","timestamp":"2026-04-01T10:00:04.000Z","message":{"model":"claude-sonnet-5","usage":{"input_tokens":10,"output_tokens":4,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}

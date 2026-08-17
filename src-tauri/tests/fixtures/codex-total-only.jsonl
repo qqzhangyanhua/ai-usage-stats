@@ -1,0 +1,5 @@
+{"type":"session_meta","timestamp":"2025-11-18T16:32:49Z","payload":{"id":"019a9618-total-only","cwd":"/Users/zhangyanhua/AI/cli","model_provider":"openai"}}
+{"type":"turn_context","timestamp":"2025-11-18T16:33:01Z","payload":{"model":"gpt-5.1-codex"}}
+{"type":"event_msg","timestamp":"2025-11-18T16:33:10Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cache_read_input_tokens":50,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+{"type":"event_msg","timestamp":"2025-11-18T16:33:11Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cache_read_input_tokens":50,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+{"type":"event_msg","timestamp":"2025-11-18T16:34:00Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cache_read_input_tokens":75,"output_tokens":15,"reasoning_output_tokens":0,"total_tokens":165},"last_token_usage":{}}}}

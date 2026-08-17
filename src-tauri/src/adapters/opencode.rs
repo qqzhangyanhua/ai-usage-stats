@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::adapters::{finish, i64_field, text_field};
+use crate::adapters::{finish, has_billable_tokens, i64_field, text_field};
 use crate::domain::{Source, UsageRecord};
 
 pub fn parse_opencode_messages(rows: &[OpencodeMessage]) -> Vec<UsageRecord> {
@@ -19,7 +19,16 @@ fn parse_one(row: &OpencodeMessage) -> Option<UsageRecord> {
         return None;
     }
     let tokens = row.data.get("tokens").cloned().unwrap_or_default();
-    if tokens.is_null() {
+    if !tokens.is_object() {
+        return None;
+    }
+    // 进行中的消息只有半截 token，与 cc-switch 一样等 time.completed 再入账。
+    if row
+        .data
+        .get("time")
+        .and_then(|t| t.get("completed"))
+        .is_none()
+    {
         return None;
     }
     let cache = tokens.get("cache").cloned().unwrap_or_default();
@@ -32,12 +41,16 @@ fn parse_one(row: &OpencodeMessage) -> Option<UsageRecord> {
         .and_then(|v| v.as_i64())
         .map(millis_to_rfc3339)
         .unwrap_or_default();
-    let native_cost = row.data.get("cost").and_then(|v| {
-        v.as_f64()
-            .or_else(|| v.as_i64().map(|n| n as f64))
-            .or_else(|| v.get("total").and_then(|n| n.as_f64()))
-    });
-    Some(finish(UsageRecord {
+    let native_cost = row
+        .data
+        .get("cost")
+        .and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_i64().map(|n| n as f64))
+                .or_else(|| v.get("total").and_then(|n| n.as_f64()))
+        })
+        .filter(|amount| *amount > 0.0);
+    let record = finish(UsageRecord {
         occurred_at: occurred,
         source: Source::Opencode,
         model: text_field(&row.data, &["modelID", "modelId"]),
@@ -52,7 +65,8 @@ fn parse_one(row: &OpencodeMessage) -> Option<UsageRecord> {
         reasoning_tokens: i64_field(&tokens, &["reasoning"]),
         total_tokens: 0,
         native_cost,
-    }))
+    });
+    has_billable_tokens(&record).then_some(record)
 }
 
 fn millis_to_rfc3339(ms: i64) -> String {

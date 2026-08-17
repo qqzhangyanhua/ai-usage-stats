@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::domain::{Source, UsageRecord};
 
-pub const ADAPTER_VERSION: i64 = 3;
+pub const ADAPTER_VERSION: i64 = 5;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -256,16 +256,19 @@ pub fn invalidate_source(conn: &Connection, source: Source) -> Result<(), String
 }
 
 pub fn remove_unknown_sources(conn: &Connection) -> Result<u64, String> {
-    const KNOWN: &str =
-        "'codex','claude','pi','opencode','kimi','dsh','gemini','grok','qwen','factory'";
+    let known = Source::ALL
+        .iter()
+        .map(|source| format!("'{}'", source.as_str()))
+        .collect::<Vec<_>>()
+        .join(",");
     let removed = conn
         .execute(
-            &format!("DELETE FROM usage_records WHERE source NOT IN ({KNOWN})"),
+            &format!("DELETE FROM usage_records WHERE source NOT IN ({known})"),
             [],
         )
         .map_err(|e| e.to_string())? as u64;
     conn.execute(
-        &format!("DELETE FROM ingested_files WHERE source NOT IN ({KNOWN})"),
+        &format!("DELETE FROM ingested_files WHERE source NOT IN ({known})"),
         [],
     )
     .map_err(|e| e.to_string())?;

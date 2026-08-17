@@ -1,7 +1,59 @@
 use serde_json::Value;
 
-use crate::adapters::{finish, i64_field, parse_jsonl_values, text_field};
+use crate::adapters::{finish, has_billable_tokens, i64_field, parse_jsonl_values, text_field};
 use crate::domain::{Source, UsageRecord};
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct CodexUsage {
+    input: i64,
+    cached: i64,
+    output: i64,
+    reasoning: i64,
+    total: i64,
+}
+
+impl CodexUsage {
+    fn fingerprint(self) -> (i64, i64, i64, i64, i64) {
+        (
+            self.input,
+            self.cached,
+            self.output,
+            self.reasoning,
+            self.total,
+        )
+    }
+
+    fn is_zero(self) -> bool {
+        self.input == 0 && self.cached == 0 && self.output == 0 && self.reasoning == 0
+    }
+
+    fn clamped(self) -> Self {
+        Self {
+            cached: self.cached.min(self.input),
+            ..self
+        }
+    }
+
+    fn saturating_sub(self, prev: Self) -> Self {
+        Self {
+            input: self.input.saturating_sub(prev.input),
+            cached: self.cached.saturating_sub(prev.cached),
+            output: self.output.saturating_sub(prev.output),
+            reasoning: self.reasoning.saturating_sub(prev.reasoning),
+            total: self.total.saturating_sub(prev.total),
+        }
+    }
+
+    fn high_water(self, other: Self) -> Self {
+        Self {
+            input: self.input.max(other.input),
+            cached: self.cached.max(other.cached),
+            output: self.output.max(other.output),
+            reasoning: self.reasoning.max(other.reasoning),
+            total: self.total.max(other.total),
+        }
+    }
+}
 
 pub fn parse_codex_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
     let mut session_id = String::new();
@@ -9,6 +61,7 @@ pub fn parse_codex_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
     let mut provider = String::new();
     let mut model = String::new();
     let mut last_usage: Option<(i64, i64, i64, i64, i64)> = None;
+    let mut total_high_water: Option<CodexUsage> = None;
     let mut records = Vec::new();
 
     for value in parse_jsonl_values(content) {
@@ -37,21 +90,44 @@ pub fn parse_codex_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
                     continue;
                 }
                 let info = payload.get("info").cloned().unwrap_or(Value::Null);
-                let usage = info.get("last_token_usage").cloned().unwrap_or(Value::Null);
-                if usage.is_null() {
+                if info.is_null() {
                     continue;
                 }
-                let input = i64_field(&usage, &["input_tokens"]);
-                let output = i64_field(&usage, &["output_tokens"]);
-                let cache_read = i64_field(&usage, &["cached_input_tokens"]);
-                let reasoning = i64_field(&usage, &["reasoning_output_tokens"]);
-                let total = i64_field(&usage, &["total_tokens"]);
-                let fingerprint = (input, output, cache_read, reasoning, total);
+                let info_model = text_field(&info, &["model", "model_name"]);
+                if !info_model.is_empty() {
+                    model = info_model;
+                }
+                let last = parse_codex_usage(info.get("last_token_usage"));
+                let total = parse_codex_usage(info.get("total_token_usage"));
+                if last.is_none() && total.is_none() {
+                    continue;
+                }
+                let usage = if let Some(last) = last {
+                    last
+                } else if let Some(total) = total {
+                    match total_high_water {
+                        Some(prev) => total.saturating_sub(prev),
+                        None => total,
+                    }
+                } else {
+                    continue;
+                };
+                if let Some(total) = total {
+                    total_high_water = Some(match total_high_water {
+                        Some(prev) => prev.high_water(total),
+                        None => total,
+                    });
+                }
+                let usage = usage.clamped();
+                if usage.is_zero() {
+                    continue;
+                }
+                let fingerprint = usage.fingerprint();
                 if last_usage == Some(fingerprint) {
                     continue;
                 }
                 last_usage = Some(fingerprint);
-                records.push(finish(UsageRecord {
+                let record = finish(UsageRecord {
                     occurred_at: timestamp,
                     source: Source::Codex,
                     model: model.clone(),
@@ -59,18 +135,47 @@ pub fn parse_codex_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
                     project: project.clone(),
                     session_id: session_id.clone(),
                     source_file: source_file.to_string(),
-                    input_tokens: input,
-                    output_tokens: output,
-                    cache_read_tokens: cache_read,
+                    input_tokens: usage.input,
+                    output_tokens: usage.output,
+                    cache_read_tokens: usage.cached,
                     cache_creation_tokens: 0,
-                    reasoning_tokens: reasoning,
-                    total_tokens: total,
+                    reasoning_tokens: usage.reasoning,
+                    total_tokens: usage.total,
                     native_cost: None,
-                }));
+                });
+                if !has_billable_tokens(&record) {
+                    continue;
+                }
+                records.push(record);
             }
             _ => {}
         }
     }
 
     records
+}
+
+fn parse_codex_usage(value: Option<&Value>) -> Option<CodexUsage> {
+    let value = value?;
+    let object = value.as_object()?;
+    if ![
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key))
+    {
+        return None;
+    }
+    Some(CodexUsage {
+        input: i64_field(value, &["input_tokens"]),
+        cached: i64_field(value, &["cached_input_tokens", "cache_read_input_tokens"]),
+        output: i64_field(value, &["output_tokens"]),
+        reasoning: i64_field(value, &["reasoning_output_tokens"]),
+        total: i64_field(value, &["total_tokens"]),
+    })
 }

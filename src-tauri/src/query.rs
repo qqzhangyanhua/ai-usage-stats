@@ -87,19 +87,28 @@ fn filter_clauses(filter: &Filter) -> (Vec<String>, Vec<Value>) {
         params.push(Value::Text(to.clone()));
     }
     if !filter.sources.is_empty() {
-        clauses.push(format!("r.source IN ({})", placeholders(filter.sources.len())));
+        clauses.push(format!(
+            "r.source IN ({})",
+            placeholders(filter.sources.len())
+        ));
         for s in &filter.sources {
             params.push(Value::Text(s.clone()));
         }
     }
     if !filter.models.is_empty() {
-        clauses.push(format!("r.model IN ({})", placeholders(filter.models.len())));
+        clauses.push(format!(
+            "r.model IN ({})",
+            placeholders(filter.models.len())
+        ));
         for m in &filter.models {
             params.push(Value::Text(m.clone()));
         }
     }
     if !filter.projects.is_empty() {
-        clauses.push(format!("r.project IN ({})", placeholders(filter.projects.len())));
+        clauses.push(format!(
+            "r.project IN ({})",
+            placeholders(filter.projects.len())
+        ));
         for p in &filter.projects {
             params.push(Value::Text(p.clone()));
         }
@@ -108,9 +117,7 @@ fn filter_clauses(filter: &Filter) -> (Vec<String>, Vec<Value>) {
 }
 
 fn placeholders(n: usize) -> String {
-    std::iter::repeat_n("?", n)
-        .collect::<Vec<_>>()
-        .join(", ")
+    std::iter::repeat_n("?", n).collect::<Vec<_>>().join(", ")
 }
 
 /// 转义 LIKE 通配符，避免用户输入的 `%`/`_` 被解释为通配符。
@@ -219,7 +226,8 @@ pub fn trend(
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 fn breakdown_name_expr(dimension: &str) -> Result<&'static str, String> {
@@ -420,13 +428,13 @@ pub fn application_analytics(
         .map_err(|e| e.to_string())?;
     let mut trend_map: BTreeMap<String, ApplicationTrendPoint> = BTreeMap::new();
     for (bucket, source, total) in trend_rows {
-        let point = trend_map.entry(bucket.clone()).or_insert_with(|| {
-            ApplicationTrendPoint {
+        let point = trend_map
+            .entry(bucket.clone())
+            .or_insert_with(|| ApplicationTrendPoint {
                 bucket,
                 total_tokens: 0,
                 values: BTreeMap::new(),
-            }
-        });
+            });
         point.total_tokens += total;
         *point.values.entry(source).or_default() += total;
     }
@@ -457,13 +465,13 @@ pub fn application_analytics(
         } else {
             project
         };
-        let row = projects_map.entry(project.clone()).or_insert_with(|| {
-            ProjectApplicationRow {
+        let row = projects_map
+            .entry(project.clone())
+            .or_insert_with(|| ProjectApplicationRow {
                 project,
                 total_tokens: 0,
                 values: BTreeMap::new(),
-            }
-        });
+            });
         row.total_tokens += total;
         *row.values.entry(source).or_default() += total;
     }
@@ -801,7 +809,8 @@ pub fn session_turns(
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 pub fn filter_options(conn: &Connection) -> Result<FilterOptions, String> {
@@ -810,10 +819,14 @@ pub fn filter_options(conn: &Connection) -> Result<FilterOptions, String> {
         let rows = stmt
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
     Ok(FilterOptions {
-        sources: distinct(conn, "SELECT DISTINCT source FROM usage_records ORDER BY source")?,
+        sources: distinct(
+            conn,
+            "SELECT DISTINCT source FROM usage_records ORDER BY source",
+        )?,
         models: distinct(
             conn,
             "SELECT DISTINCT model FROM usage_records WHERE model != '' ORDER BY model",

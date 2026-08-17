@@ -18,5 +18,27 @@
       "tokens": {"input": 20882, "output": 138, "reasoning": 0, "cache": {"read": 100, "write": 20}},
       "cost": 0.42
     }
+  },
+  {
+    "session_id": "ses_4064c35bcffeKnRpPdbo4Ege2l",
+    "data": {
+      "role": "assistant",
+      "modelID": "gemini-claude-sonnet-4-5-thinking",
+      "providerID": "anthropic",
+      "time": {"created": 1769420880000},
+      "tokens": {"input": 500, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+      "cost": 0.01
+    }
+  },
+  {
+    "session_id": "ses_4064c35bcffeKnRpPdbo4Ege2l",
+    "data": {
+      "role": "assistant",
+      "modelID": "gemini-claude-sonnet-4-5-thinking",
+      "providerID": "anthropic",
+      "time": {"created": 1769420890000, "completed": 1769420891000},
+      "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+      "cost": 0.99
+    }
   }
 ]

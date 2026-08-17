@@ -54,12 +54,19 @@
 
 ## grok
 
-- 有 token：部分（仅上下文总量）
-- 口径：`params._meta.totalTokens` → total；无 input/output/cache/reasoning
-- 模型：`params.update._meta.modelId`
+- 有 token：是（`turn_completed.usage` 轮级分项；旧日志才只有上下文总量）
+- 口径：`params.update.usage`（`sessionUpdate=turn_completed`）
+  - input ← `inputTokens`（含 cache read）
+  - output ← `outputTokens`（含 reasoning）
+  - cache_read ← `cachedReadTokens`
+  - cache_creation ← `cacheCreationTokens`
+  - reasoning ← `reasoningTokens`
+  - total ← `totalTokens`
+  - native_cost ← `costUsdTicks` / 1e10
+- 模型：`usage.modelUsage` 的键
 - 项目：url-decode 的会话父目录
 - 会话：目录 uuid
-- 去重：同一 `promptId` 取最后一次 totalTokens
+- 去重：同一 `prompt_id`+model 取最后一次 `turn_completed`
 
 ## qwen
 

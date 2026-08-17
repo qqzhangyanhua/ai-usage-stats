@@ -54,3 +54,11 @@ pub fn text_field(value: &serde_json::Value, keys: &[&str]) -> String {
 pub fn finish(record: UsageRecord) -> UsageRecord {
     record.with_total()
 }
+
+pub fn has_billable_tokens(record: &UsageRecord) -> bool {
+    record.input_tokens > 0
+        || record.output_tokens > 0
+        || record.cache_read_tokens > 0
+        || record.cache_creation_tokens > 0
+        || record.reasoning_tokens > 0
+}

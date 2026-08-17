@@ -192,15 +192,37 @@ fn probe_grok(root: &Path) {
         let Ok(text) = fs::read_to_string(&file) else {
             continue;
         };
+        let mut turn_usage: Option<Value> = None;
+        let mut turn_model = String::new();
+        let mut turn_prompt = String::new();
         let mut last_total = None;
         let mut prompt_id = String::new();
         let mut model = String::new();
-        for line in text.lines().take(80) {
+        for line in text.lines() {
             let Ok(value) = serde_json::from_str::<Value>(line) else {
                 continue;
             };
             if model.is_empty() {
                 model = text_of_pointer(&value, "/params/update/_meta/modelId");
+            }
+            let kind = value
+                .pointer("/params/update/sessionUpdate")
+                .and_then(|v| v.as_str());
+            if kind == Some("turn_completed") {
+                if let Some(usage) = value.pointer("/params/update/usage").cloned() {
+                    if usage.is_object() {
+                        turn_usage = Some(usage);
+                        turn_prompt = text_of_pointer(&value, "/params/update/prompt_id");
+                        if let Some(models) = value
+                            .pointer("/params/update/usage/modelUsage")
+                            .and_then(|v| v.as_object())
+                        {
+                            if let Some(name) = models.keys().next() {
+                                turn_model = name.clone();
+                            }
+                        }
+                    }
+                }
             }
             if let Some(total) = value
                 .pointer("/params/_meta/totalTokens")
@@ -209,6 +231,59 @@ fn probe_grok(root: &Path) {
                 last_total = Some(total);
                 prompt_id = text_of_pointer(&value, "/params/_meta/promptId");
             }
+        }
+        if let Some(usage) = turn_usage {
+            found = true;
+            println!("sample={}", file.display());
+            println!("has_token=true");
+            println!("map.input=params.update.usage.inputTokens");
+            println!("map.output=params.update.usage.outputTokens");
+            println!("map.cache_read=params.update.usage.cachedReadTokens");
+            println!("map.cache_creation=params.update.usage.cacheCreationTokens");
+            println!("map.reasoning=params.update.usage.reasoningTokens");
+            println!("map.total=params.update.usage.totalTokens");
+            println!("map.native_cost=params.update.usage.costUsdTicks");
+            println!(
+                "sample_input={}",
+                usage
+                    .get("inputTokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
+            );
+            println!(
+                "sample_output={}",
+                usage
+                    .get("outputTokens")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
+            );
+            println!("sample_prompt_id={turn_prompt}");
+            println!(
+                "model={}",
+                if turn_model.is_empty() {
+                    model
+                } else {
+                    turn_model
+                }
+            );
+            println!(
+                "project={}",
+                file.parent()
+                    .and_then(|p| p.parent())
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .map(decode_url)
+                    .unwrap_or_default()
+            );
+            println!(
+                "session_id={}",
+                file.parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+            );
+            println!("dedupe=last turn_completed per prompt_id+model");
+            break;
         }
         if last_total.is_some() {
             found = true;

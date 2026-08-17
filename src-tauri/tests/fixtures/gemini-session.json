@@ -9,6 +9,20 @@
       "type": "gemini",
       "model": "gemini-3-flash-preview",
       "tokens": {"input": 13354, "output": 662, "cached": 0, "thoughts": 285, "tool": 0, "total": 14301}
+    },
+    {
+      "id": "a2",
+      "timestamp": "2026-03-07T07:28:00.000Z",
+      "type": "assistant",
+      "model": "gemini-3-flash-preview",
+      "tokens": {"input": 99, "output": 9, "cached": 0, "thoughts": 0, "total": 108}
+    },
+    {
+      "id": "a3",
+      "timestamp": "2026-03-07T07:28:10.000Z",
+      "type": "gemini",
+      "model": "gemini-3-flash-preview",
+      "tokens": {"input": 0, "output": 0, "cached": 0, "thoughts": 0, "tool": 0, "total": 0}
     }
   ]
 }
