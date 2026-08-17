@@ -119,6 +119,7 @@ export default function App() {
                     turnsLoading={data.turnsLoading}
                     selected={data.selectedSession}
                     onSelect={data.setSelectedSession}
+                    onFilterChange={data.applyFilter}
                   />
                 </ErrorBoundary>
               </div>

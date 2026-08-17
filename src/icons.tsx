@@ -24,7 +24,9 @@ export type IconName =
   | "download"
   | "chevron"
   | "check"
+  | "close"
   | "search"
+  | "copy"
   | "inbox"
   | "alertTriangle"
   | "logo";
@@ -168,10 +170,22 @@ const strokes: Record<Exclude<IconName, "logo">, ReactElement> = {
       <path d="M5 12.5 9.5 17 19 7.5" />
     </>
   ),
+  close: (
+    <>
+      <path d="M6 6l12 12" />
+      <path d="M18 6 6 18" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="6.5" />
       <path d="M16 16.5 20.5 21" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8" y="8" width="11" height="13" rx="1.6" />
+      <path d="M6 16V5.6A1.6 1.6 0 0 1 7.6 4H16" />
     </>
   ),
   inbox: (

@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Icon, sourceTone } from "../icons";
 import {
   applicationLabel,
-  formatCost,
+  formatClock,
   formatTokens,
   projectLabel,
   relativeTime,
@@ -11,12 +11,13 @@ import {
 import type { Filter, SessionPage, SessionRow, SessionSortKey, SortDir, TurnRow } from "../types";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
-import { KpiCard, Spark } from "./Kpi";
+import { KpiCard } from "./Kpi";
 import { LoadingOverlay } from "./LoadingOverlay";
 import { Pagination } from "./Pagination";
+import { SessionTurns } from "./SessionTurns";
 import { Spinner } from "./Spinner";
+import { Button } from "./ui/Button";
 import { SearchField } from "./ui/Field";
-import { ModelLabel } from "./VendorIcon";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -49,8 +50,8 @@ function sessionRowToExportCells(row: SessionRow): (string | number)[] {
     projectLabel(row.project),
     row.model,
     row.total_tokens,
-    row.started_at,
-    row.ended_at,
+    formatClock(row.started_at),
+    formatClock(row.ended_at),
     row.cost ?? "",
     row.source_file,
   ];
@@ -63,6 +64,7 @@ export function Sessions({
   turnsLoading = false,
   selected,
   onSelect,
+  onFilterChange,
 }: {
   filter: Filter;
   /** 底层数据变化（摄取、重建）时递增，用于触发重新拉取当前页 */
@@ -72,10 +74,11 @@ export function Sessions({
   turnsLoading?: boolean;
   selected: { id: string; source: string } | null;
   onSelect: (session: { id: string; source: string }) => void;
+  onFilterChange: (filter: Filter) => void;
 }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<SessionSortKey>("tokens");
+  const [sortKey, setSortKey] = useState<SessionSortKey>("time");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
   const [pageData, setPageData] = useState<SessionPage>({
@@ -94,6 +97,10 @@ export function Sessions({
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
   }, [searchInput]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -129,13 +136,6 @@ export function Sessions({
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const averageTokens = total > 0 ? totalTokens / total : 0;
   const maxTotal = Math.max(1, ...rows.map((row) => row.total_tokens));
-
-  const turnStats = useMemo(() => {
-    const turnTotalTokens = turns.reduce((sum, turn) => sum + turn.total_tokens, 0);
-    const totalCost = turns.reduce((sum, turn) => sum + (turn.cost ?? 0), 0);
-    const hasCost = turns.some((turn) => turn.cost != null);
-    return { totalTokens: turnTotalTokens, totalCost, hasCost };
-  }, [turns]);
 
   function toggleSort(key: SessionSortKey) {
     if (key === sortKey) {
@@ -183,7 +183,7 @@ export function Sessions({
 
       <div className="panel">
         <div className="panel-head">
-          <h2>Top 会话</h2>
+          <h2>会话管理</h2>
           <SearchField
             placeholder="搜索会话 / 项目 / 模型…"
             value={searchInput}
@@ -250,22 +250,44 @@ export function Sessions({
                   }
                   onClick={() => onSelect({ id: row.session_id, source: row.source })}
                 >
-                  <td className="mono" title={row.session_id}>
-                    {row.session_id}
+                  <td>
+                    <SessionIdCell sessionId={row.session_id} />
                   </td>
                   <td>
-                    <span className={`src-pill ${sourceTone[row.source] ?? "tone-other"}`}>
-                      {applicationLabel(row.source)}
-                    </span>
+                    <FilterChip
+                      label={applicationLabel(row.source)}
+                      title={`筛选应用：${applicationLabel(row.source)}`}
+                      active={isSoleFilter(filter.sources, row.source)}
+                      className={`src-pill ${sourceTone[row.source] ?? "tone-other"}`}
+                      onPick={() =>
+                        onFilterChange({
+                          ...filter,
+                          sources: toggleSoleFilter(filter.sources, row.source),
+                        })
+                      }
+                    />
                   </td>
-                  <td title={row.project}>{projectLabel(row.project)}</td>
+                  <td>
+                    <FilterChip
+                      label={projectLabel(row.project)}
+                      title={`筛选项目：${projectLabel(row.project)}`}
+                      active={isSoleFilter(filter.projects, row.project)}
+                      className="project-chip"
+                      onPick={() =>
+                        onFilterChange({
+                          ...filter,
+                          projects: toggleSoleFilter(filter.projects, row.project),
+                        })
+                      }
+                    />
+                  </td>
                   <td>
                     <span className="cell-bar">
                       <i style={{ width: `${(row.total_tokens / maxTotal) * 100}%` }} />
                     </span>
                     <span className="cell-bar-label">{formatTokens(row.total_tokens)}</span>
                   </td>
-                  <td title={`${row.started_at} → ${row.ended_at}`}>
+                  <td title={`${formatClock(row.started_at)} → ${formatClock(row.ended_at)}`}>
                     {relativeTime(row.started_at)} → {relativeTime(row.ended_at)}
                   </td>
                   <td className="mono" title={row.source_file}>
@@ -294,105 +316,82 @@ export function Sessions({
         <Pagination page={page} pageCount={pageCount} totalCount={total} onPageChange={setPage} />
       </div>
       {selected ? (
-        <div className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>
-                会话 {selected.id}（{applicationLabel(selected.source)}）每轮明细
-              </h2>
-              <p className="panel-note">
-                共 {turns.length} 轮 · {formatTokens(turnStats.totalTokens)} Token
-                {turnStats.hasCost ? ` · $${turnStats.totalCost.toFixed(4)}` : ""}
-              </p>
-            </div>
-            <div className="export-action">
-              {turns.length > 1 ? (
-                <Spark values={turns.map((turn) => turn.total_tokens)} color="#8b6cff" />
-              ) : null}
-              <ExportButton
-                label="导出明细"
-                filename={`会话-${selected.id}-明细`}
-                headers={[
-                  "时间",
-                  "模型",
-                  "输入",
-                  "输出",
-                  "缓存读",
-                  "缓存写",
-                  "推理",
-                  "总量",
-                  "费用",
-                ]}
-                rows={turns.map((turn) => [
-                  turn.occurred_at,
-                  turn.model || "（未知）",
-                  turn.input_tokens,
-                  turn.output_tokens,
-                  turn.cache_read_tokens,
-                  turn.cache_creation_tokens,
-                  turn.reasoning_tokens,
-                  turn.total_tokens,
-                  turn.cost ?? "",
-                ])}
-              />
-            </div>
-          </div>
-          <LoadingOverlay active={turnsLoading && turns.length > 0} className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>时间</th>
-                  <th>模型</th>
-                  <th>输入</th>
-                  <th>输出</th>
-                  <th>缓存读</th>
-                  <th>缓存写</th>
-                  <th>推理</th>
-                  <th>总量</th>
-                  <th>费用</th>
-                  <th>原始文件</th>
-                </tr>
-              </thead>
-              <tbody>
-                {turns.map((turn, index) => (
-                  <tr key={`${turn.occurred_at}-${index}`}>
-                    <td>{turn.occurred_at}</td>
-                    <td>
-                      <ModelLabel name={turn.model} provider={turn.provider} />
-                    </td>
-                    <td>{formatTokens(turn.input_tokens)}</td>
-                    <td>{formatTokens(turn.output_tokens)}</td>
-                    <td>{formatTokens(turn.cache_read_tokens)}</td>
-                    <td>{formatTokens(turn.cache_creation_tokens)}</td>
-                    <td>{formatTokens(turn.reasoning_tokens)}</td>
-                    <td>
-                      <strong>{formatTokens(turn.total_tokens)}</strong>
-                    </td>
-                    <td>
-                      {formatCost(turn.cost, turn.unpriced)}
-                      {turn.cost_note ? ` · ${turn.cost_note}` : ""}
-                    </td>
-                    <td className="mono" title={turn.source_file}>
-                      {turn.source_file}
-                    </td>
-                  </tr>
-                ))}
-                {turns.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="analytics-empty">
-                      {turnsLoading ? (
-                        <EmptyState icon="chat" title="正在加载明细…" />
-                      ) : (
-                        <EmptyState icon="chat" title="该会话暂无明细" />
-                      )}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </LoadingOverlay>
-        </div>
+        <SessionTurns
+          sessionId={selected.id}
+          source={selected.source}
+          sourceLabel={applicationLabel(selected.source)}
+          turns={turns}
+          turnsLoading={turnsLoading}
+        />
       ) : null}
+    </div>
+  );
+}
+
+function isSoleFilter(selected: string[], value: string): boolean {
+  return selected.length === 1 && selected[0] === value;
+}
+
+function toggleSoleFilter(selected: string[], value: string): string[] {
+  return isSoleFilter(selected, value) ? [] : [value];
+}
+
+function FilterChip({
+  label,
+  title,
+  active,
+  className,
+  onPick,
+}: {
+  label: string;
+  title: string;
+  active: boolean;
+  className: string;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${className}${active ? " is-active" : ""}`}
+      title={title}
+      onClick={(event: MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        onPick();
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SessionIdCell({ sessionId }: { sessionId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyId(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="session-id-cell">
+      <span className="mono" title={sessionId}>
+        {sessionId}
+      </span>
+      <Button
+        variant="icon"
+        className={copied ? "table-icon-btn is-copied" : "table-icon-btn"}
+        onClick={copyId}
+        title={copied ? "已复制" : "复制会话 ID"}
+        aria-label={copied ? "已复制会话 ID" : "复制会话 ID"}
+      >
+        <Icon name={copied ? "check" : "copy"} size={12} />
+      </Button>
     </div>
   );
 }
