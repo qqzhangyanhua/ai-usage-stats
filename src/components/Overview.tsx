@@ -1,9 +1,9 @@
-import ReactECharts from "echarts-for-react";
 import { memo, useMemo } from "react";
 import { Icon, sourceTone } from "../icons";
 import { ModelLabel, VendorIcon } from "./VendorIcon";
 import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
+import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { EmptyState } from "./EmptyState";
 import { KpiCard, LegendRow, Spark } from "./Kpi";
@@ -70,7 +70,7 @@ export const Overview = memo(function Overview({
   const rate = last ? Math.round(last.total_tokens / 1440) : 0;
   const spark = trend.map((p) => p.total_tokens);
   const recent = useMemo(
-    () => [...sessions].sort((a, b) => b.ended_at.localeCompare(a.ended_at)).slice(0, 4),
+    () => [...sessions].sort((a, b) => b.ended_at.localeCompare(a.ended_at)).slice(0, 8),
     [sessions],
   );
   const topProjects = projects.slice(0, 5);
@@ -80,16 +80,17 @@ export const Overview = memo(function Overview({
   const outputShare = data.total_tokens === 0 ? 0 : (data.output_tokens / data.total_tokens) * 100;
   const trendOption = useMemo(() => areaTrendOption(trend, theme), [trend, theme]);
   const modelOption = useMemo(
-    () => donutOption(modelItems, formatCompact(data.total_tokens), theme),
-    [modelItems, data.total_tokens, theme],
+    () => donutOption(modelItems, theme),
+    [modelItems, theme],
   );
+  const tokenTotal = formatCompact(data.total_tokens);
   const tokenOption = useMemo(() => {
     const tokenItems = [
       { name: "输入 Token", value: data.input_tokens, color: palette.input },
       { name: "输出 Token", value: data.output_tokens, color: palette.output },
     ];
-    return donutOption(tokenItems, formatCompact(data.total_tokens), theme);
-  }, [data.input_tokens, data.output_tokens, data.total_tokens, theme, palette]);
+    return donutOption(tokenItems, theme);
+  }, [data.input_tokens, data.output_tokens, theme, palette]);
 
   return (
     <div className="dash">
@@ -154,10 +155,10 @@ export const Overview = memo(function Overview({
             </div>
             <div className="cs-split">
               <span>
-                输入 <em>{formatTokensLocal(last?.input_tokens ?? 0)}</em>
+                输入 <em>{formatCompact(last?.input_tokens ?? 0)}</em>
               </span>
               <span>
-                输出 <em>{formatTokensLocal(last?.output_tokens ?? 0)}</em>
+                输出 <em>{formatCompact(last?.output_tokens ?? 0)}</em>
               </span>
             </div>
           </div>
@@ -166,7 +167,7 @@ export const Overview = memo(function Overview({
               <h2>模型使用分布</h2>
             </div>
             <div className="donut-wrap">
-              <ReactECharts option={modelOption} style={{ height: 140, width: 140 }} />
+              <DonutChart option={modelOption} centerValue={tokenTotal} />
               <div className="legend-col">
                 {modelItems.map((item) => (
                   <LegendRow
@@ -190,18 +191,18 @@ export const Overview = memo(function Overview({
             <h2>Token 使用统计</h2>
           </div>
           <div className="donut-wrap">
-            <ReactECharts option={tokenOption} style={{ height: 140, width: 140 }} />
+            <DonutChart option={tokenOption} centerValue={tokenTotal} />
             <div className="legend-col">
               <LegendRow
                 color={palette.input}
                 label="输入 Token"
-                value={formatTokensLocal(data.input_tokens)}
+                value={formatCompact(data.input_tokens)}
                 extra={`${inputShare.toFixed(1)}%`}
               />
               <LegendRow
                 color={palette.output}
                 label="输出 Token"
-                value={formatTokensLocal(data.output_tokens)}
+                value={formatCompact(data.output_tokens)}
                 extra={`${outputShare.toFixed(1)}%`}
               />
             </div>
@@ -256,7 +257,7 @@ export const Overview = memo(function Overview({
                   </div>
                 </div>
                 <span className="sess-time">{relativeTime(row.ended_at)}</span>
-                <span className="sess-tokens">{formatTokensLocal(row.total_tokens)}</span>
+                <span className="sess-tokens">{formatCompact(row.total_tokens)}</span>
               </li>
             ))}
             {recent.length === 0 ? (
@@ -316,6 +317,3 @@ function periodDays(preset: string, grain: Grain, bucketCount: number): number {
   return Math.max(bucketCount, 1);
 }
 
-function formatTokensLocal(n: number): string {
-  return n.toLocaleString("zh-CN");
-}

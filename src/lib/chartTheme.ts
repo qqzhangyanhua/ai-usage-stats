@@ -83,12 +83,12 @@ export function areaTrendOption(points: SeriesPoint[], theme: ChartTheme = "dark
     legend: {
       data: ["输入 Token", "输出 Token"],
       top: 0,
-      left: 44,
+      right: 32,
       itemWidth: 10,
       itemHeight: 10,
       textStyle: { color: p.text, fontSize: 11 },
     },
-    grid: { left: 8, right: 8, top: 36, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 8, top: 30, bottom: 8, containLabel: true },
     xAxis: {
       type: "category",
       boundaryGap: false,
@@ -99,8 +99,6 @@ export function areaTrendOption(points: SeriesPoint[], theme: ChartTheme = "dark
     },
     yAxis: {
       type: "value",
-      name: "数量",
-      nameTextStyle: { color: p.text, fontSize: 11, padding: [0, 0, 0, 8] },
       axisLine: { show: false },
       axisTick: { show: false },
       splitLine: { lineStyle: { color: p.split } },
@@ -317,7 +315,6 @@ export function breakdownBarOption(
 
 export function donutOption(
   items: { name: string; value: number; color: string }[],
-  centerValue: string,
   theme: ChartTheme = "dark",
 ): EChartsOption {
   const p = paletteFor(theme);
@@ -339,7 +336,7 @@ export function donutOption(
     series: [
       {
         type: "pie",
-        radius: ["62%", "84%"],
+        radius: ["52%", "78%"],
         center: ["50%", "50%"],
         avoidLabelOverlap: false,
         label: { show: false },
@@ -350,31 +347,6 @@ export function donutOption(
           value: item.value,
           itemStyle: { color: item.color, borderWidth: 0 },
         })),
-      },
-    ],
-    graphic: [
-      {
-        type: "text",
-        left: "center",
-        top: "42%",
-        style: {
-          text: "总计",
-          fill: p.text,
-          fontSize: 11,
-          align: "center",
-        },
-      },
-      {
-        type: "text",
-        left: "center",
-        top: "52%",
-        style: {
-          text: centerValue,
-          fill: p.centerValue,
-          fontSize: 18,
-          fontWeight: 650,
-          align: "center",
-        },
       },
     ],
   };

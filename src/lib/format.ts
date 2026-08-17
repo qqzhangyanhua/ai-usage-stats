@@ -6,6 +6,9 @@ export function formatTokens(n: number): string {
 
 export function formatCompact(n: number): string {
   const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) {
+    return `${trimNum(n / 1_000_000_000)}B`;
+  }
   if (abs >= 1_000_000) {
     return `${trimNum(n / 1_000_000)}M`;
   }

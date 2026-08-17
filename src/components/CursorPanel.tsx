@@ -1,9 +1,9 @@
-import ReactECharts from "echarts-for-react";
 import { useMemo } from "react";
 import { donutOption } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { formatCompact, formatTokens } from "../lib/format";
 import type { CodeVolumeSummary } from "../types";
+import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { KpiCard, LegendRow } from "./Kpi";
 
@@ -27,8 +27,8 @@ export function CursorPanel({
       { name: "AI 生成行", value: data.composer_lines_added, color: "#8b6cff" },
       { name: "人工编写行", value: data.human_lines_added, color: "#22d3ee" },
     ];
-    return donutOption(donutItems, formatCompact(data.lines_added), theme);
-  }, [data.composer_lines_added, data.human_lines_added, data.lines_added, theme]);
+    return donutOption(donutItems, theme);
+  }, [data.composer_lines_added, data.human_lines_added, theme]);
 
   if (!summary) {
     return (
@@ -72,7 +72,7 @@ export function CursorPanel({
         </div>
         <p className="note">此面板只展示 AI 生成代码行数与占比，不会并入上方任何 token 总量。</p>
         <div className="donut-wrap">
-          <ReactECharts option={option} style={{ height: 160, width: 160 }} />
+          <DonutChart option={option} centerValue={formatCompact(data.lines_added)} />
           <div className="legend-col">
             <LegendRow
               color="#8b6cff"
