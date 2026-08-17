@@ -35,6 +35,7 @@ const emptyFilter: Filter = {
   sources: [],
   models: [],
   projects: [],
+  providers: [],
 };
 
 export const views: View[] = [
@@ -80,6 +81,7 @@ export function useUsageData() {
     sources: [],
     models: [],
     projects: [],
+    providers: [],
   });
   const [overview, setOverview] = useState<OverviewDto | null>(null);
   const [previous, setPrevious] = useState<OverviewDto | null>(null);

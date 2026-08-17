@@ -119,6 +119,8 @@ pub struct Filter {
     pub sources: Vec<String>,
     pub models: Vec<String>,
     pub projects: Vec<String>,
+    #[serde(default)]
+    pub providers: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -369,4 +371,5 @@ pub struct FilterOptions {
     pub sources: Vec<String>,
     pub models: Vec<String>,
     pub projects: Vec<String>,
+    pub providers: Vec<String>,
 }

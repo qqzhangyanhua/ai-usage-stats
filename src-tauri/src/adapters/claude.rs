@@ -55,7 +55,7 @@ pub fn parse_claude_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> 
             cache_creation_tokens: i64_field(&usage, &["cache_creation_input_tokens"]),
             reasoning_tokens: 0,
             total_tokens: 0,
-            native_cost: None,
+            native_cost: native_cost_from_event(&value),
         });
         if !has_billable_tokens(&record) {
             continue;
@@ -101,6 +101,21 @@ fn should_replace_claude(existing: &ClaudeTurn, next: &ClaudeTurn) -> bool {
         (true, false) => false,
         _ => next.record.output_tokens > existing.record.output_tokens,
     }
+}
+
+fn native_cost_from_event(value: &serde_json::Value) -> Option<f64> {
+    for key in ["costUSD", "costUsd", "cost_usd"] {
+        if let Some(amount) = value.get(key).and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_i64().map(|n| n as f64))
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        }) {
+            if amount > 0.0 {
+                return Some(amount);
+            }
+        }
+    }
+    None
 }
 
 fn project_from_path(source_file: &str) -> String {

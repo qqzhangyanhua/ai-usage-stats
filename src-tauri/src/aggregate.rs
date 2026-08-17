@@ -29,6 +29,9 @@ pub fn matches_filter(record: &UsageRecord, filter: &Filter) -> bool {
     if !filter.projects.is_empty() && !filter.projects.iter().any(|p| p == &record.project) {
         return false;
     }
+    if !filter.providers.is_empty() && !filter.providers.iter().any(|p| p == &record.provider) {
+        return false;
+    }
     true
 }
 
@@ -417,6 +420,7 @@ pub fn filter_options(records: &[UsageRecord]) -> FilterOptions {
     let mut sources = std::collections::BTreeSet::new();
     let mut models = std::collections::BTreeSet::new();
     let mut projects = std::collections::BTreeSet::new();
+    let mut providers = std::collections::BTreeSet::new();
     for record in records {
         sources.insert(record.source.as_str().to_string());
         if !record.model.is_empty() {
@@ -425,10 +429,14 @@ pub fn filter_options(records: &[UsageRecord]) -> FilterOptions {
         if !record.project.is_empty() {
             projects.insert(record.project.clone());
         }
+        if !record.provider.is_empty() {
+            providers.insert(record.provider.clone());
+        }
     }
     FilterOptions {
         sources: sources.into_iter().collect(),
         models: models.into_iter().collect(),
         projects: projects.into_iter().collect(),
+        providers: providers.into_iter().collect(),
     }
 }

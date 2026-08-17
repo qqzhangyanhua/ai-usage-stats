@@ -92,7 +92,7 @@ export function heatmapWindow(end: Date): HeatmapWindow {
   };
 }
 
-/** 保留来源/模型/项目筛选，日期窗口固定为近 53 周。 */
+/** 保留来源/模型/项目/Provider 筛选，日期窗口固定为近 53 周。 */
 export function heatmapFilter(filter: Filter): {
   filter: Filter;
   fromDate: string;

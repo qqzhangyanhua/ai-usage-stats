@@ -113,6 +113,15 @@ fn filter_clauses(filter: &Filter) -> (Vec<String>, Vec<Value>) {
             params.push(Value::Text(p.clone()));
         }
     }
+    if !filter.providers.is_empty() {
+        clauses.push(format!(
+            "r.provider IN ({})",
+            placeholders(filter.providers.len())
+        ));
+        for p in &filter.providers {
+            params.push(Value::Text(p.clone()));
+        }
+    }
     (clauses, params)
 }
 
@@ -834,6 +843,10 @@ pub fn filter_options(conn: &Connection) -> Result<FilterOptions, String> {
         projects: distinct(
             conn,
             "SELECT DISTINCT project FROM usage_records WHERE project != '' ORDER BY project",
+        )?,
+        providers: distinct(
+            conn,
+            "SELECT DISTINCT provider FROM usage_records WHERE provider != '' ORDER BY provider",
         )?,
     })
 }

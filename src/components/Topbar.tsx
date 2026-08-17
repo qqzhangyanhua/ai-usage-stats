@@ -2,7 +2,13 @@ import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "../icons";
 import { useAnchoredPanel } from "../hooks/useAnchoredPanel";
 import { useDismissible } from "../hooks/useDismissible";
-import { applicationLabel, customRangeFilter, formatRangeLabel, projectLabel } from "../lib/format";
+import {
+  applicationLabel,
+  customRangeFilter,
+  formatRangeLabel,
+  projectLabel,
+  providerChannel,
+} from "../lib/format";
 import type { Filter, FilterOptions, View } from "../types";
 import { viewTitle } from "./Sidebar";
 import { Button } from "./ui/Button";
@@ -134,6 +140,14 @@ export function Topbar({
             disabled={disabled}
             renderIcon={(model) => <VendorIcon name={model} size={14} />}
             onChange={(models) => onChange({ ...filter, models })}
+          />
+          <MultiSelect
+            label="全部 Provider"
+            options={options.providers}
+            selected={filter.providers}
+            disabled={disabled}
+            renderLabel={(name) => `${name}（${providerChannel(name)}）`}
+            onChange={(providers) => onChange({ ...filter, providers })}
           />
         </div>
       ) : null}

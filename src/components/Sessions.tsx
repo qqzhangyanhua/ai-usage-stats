@@ -25,6 +25,7 @@ import { Pagination } from "./Pagination";
 import { SessionIdCell, SortArrow, SortButton } from "./SessionTableParts";
 import { SessionTurns } from "./SessionTurns";
 import { Spinner } from "./Spinner";
+import { SearchField } from "./ui/Field";
 import { Select } from "./ui/Select";
 
 const ALL_APPS = "__all__";
@@ -98,11 +99,21 @@ export function Sessions({
     lastEnded: null,
   });
   const [loading, setLoading] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const requestGeneration = useRef(0);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 筛选或搜索变化时回到第一页
     setPage(1);
-  }, [filter]);
+  }, [filter, search]);
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -111,6 +122,7 @@ export function Sessions({
     invoke<SessionPage>("get_sessions_page", {
       query: {
         filter,
+        search: search || null,
         sortBy: sortKey,
         sortDir,
         page,
@@ -131,7 +143,7 @@ export function Sessions({
         }
       });
     // revision 变化即代表底层数据可能已更新，需要重新拉取
-  }, [filter, revision, sortKey, sortDir, page]);
+  }, [filter, revision, search, sortKey, sortDir, page]);
 
   const { rows, total, totalTokens, lastEnded } = pageData;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -152,6 +164,7 @@ export function Sessions({
     const result = await invoke<SessionPage>("get_sessions_page", {
       query: {
         filter,
+        search: search || null,
         sortBy: sortKey,
         sortDir,
         page: 1,
@@ -184,6 +197,12 @@ export function Sessions({
       <div className="panel">
         <div className="panel-head">
           <h2>会话管理</h2>
+          <SearchField
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="搜索会话、项目、模型或路径"
+            ariaLabel="搜索会话"
+          />
           <span className="muted">
             共 {total} 个会话
             {loading ? (
@@ -322,7 +341,7 @@ export function Sessions({
                       <EmptyState
                         icon="sessions"
                         title="当前筛选条件下暂无会话"
-                        hint="试试更换应用或项目筛选"
+                        hint="试试搜索会话，或更换应用、项目筛选"
                       />
                     )}
                   </td>

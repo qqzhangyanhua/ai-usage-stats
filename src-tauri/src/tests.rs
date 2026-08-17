@@ -115,6 +115,8 @@ fn claude_adapter_maps_usage_and_project_dir() {
     assert_eq!(records[1].cache_read_tokens, 56332);
     assert_eq!(records[1].cache_creation_tokens, 0);
     assert_eq!(records[1].total_tokens, 56492);
+    assert!((records[0].native_cost.unwrap() - 0.0123).abs() < 1e-9);
+    assert!((records[1].native_cost.unwrap() - 0.0081).abs() < 1e-9);
 }
 
 #[test]
@@ -128,8 +130,10 @@ fn claude_adapter_dedups_message_id_and_skips_zero_usage() {
     assert_eq!(records[0].output_tokens, 80);
     assert_eq!(records[0].cache_read_tokens, 48719);
     assert_eq!(records[0].cache_creation_tokens, 2061);
+    assert!((records[0].native_cost.unwrap() - 0.05).abs() < 1e-9);
     assert_eq!(records[1].input_tokens, 10);
     assert_eq!(records[1].output_tokens, 4);
+    assert!(records[1].native_cost.is_none());
 }
 
 #[test]
@@ -760,6 +764,8 @@ fn overview_from_claude_fixture_sums_per_record_token_dimensions() {
     assert_eq!(dto.cache_creation_tokens, 56332);
     assert_eq!(dto.reasoning_tokens, 0);
     assert_eq!(dto.session_count, 1);
+    assert!((dto.cost.unwrap() - 0.0204).abs() < 1e-9);
+    assert!(!dto.unpriced);
 }
 
 #[test]
@@ -1070,6 +1076,7 @@ fn filter_options_list_distinct_sources_models_projects() {
         vec!["claude-sonnet-5", "gpt-5.1-codex", "gpt-5.5"]
     );
     assert_eq!(options.projects, vec!["/proj/a", "/proj/b"]);
+    assert_eq!(options.providers, vec!["anthropic", "official", "subapi"]);
 }
 
 #[test]
@@ -1323,6 +1330,15 @@ fn breakdown_by_provider_ranks_and_follows_filter() {
     assert_eq!(filtered[2].total_tokens, 50);
     assert_eq!(filtered[3].name, "（未标注）");
     assert_eq!(filtered[3].total_tokens, 20);
+
+    let by_official = Filter {
+        providers: vec!["official".into()],
+        ..Filter::default()
+    };
+    let official_only = aggregate::by_name(&stored, &by_official, &prices, |r| r.provider.clone());
+    assert_eq!(official_only.len(), 1);
+    assert_eq!(official_only[0].name, "official");
+    assert_eq!(official_only[0].total_tokens, 100);
 }
 
 #[test]
@@ -2579,6 +2595,7 @@ fn sql_queries_match_in_memory_aggregates() {
     assert_eq!(sql_fo.sources, mem_fo.sources);
     assert_eq!(sql_fo.models, mem_fo.models);
     assert_eq!(sql_fo.projects, mem_fo.projects);
+    assert_eq!(sql_fo.providers, mem_fo.providers);
 
     // 过滤条件的 overview 对照（覆盖 WHERE 子句）
     let filters = [
@@ -2600,6 +2617,10 @@ fn sql_queries_match_in_memory_aggregates() {
         },
         Filter {
             sources: vec!["codex".into()],
+            ..Filter::default()
+        },
+        Filter {
+            providers: vec!["official".into()],
             ..Filter::default()
         },
     ];

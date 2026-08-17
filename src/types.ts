@@ -4,6 +4,7 @@ export type Filter = {
   sources: string[];
   models: string[];
   projects: string[];
+  providers: string[];
 };
 
 export type OverviewDto = {
@@ -154,6 +155,7 @@ export type FilterOptions = {
   sources: string[];
   models: string[];
   projects: string[];
+  providers: string[];
 };
 
 export type IngestIssue = {

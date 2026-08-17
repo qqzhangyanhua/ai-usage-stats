@@ -29,7 +29,7 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 | Source | 存储 | 本机 token | 本机费用 |
 |--------|------|:---:|:---:|
 | Codex | jsonl `~/.codex/sessions` | ✅ | ❌ |
-| Claude Code | jsonl `~/.claude/projects` | ✅ | ❌ |
+| Claude Code | jsonl `~/.claude/projects` | ✅ | ✅ 自带 `costUSD` |
 | pi | jsonl `~/.pi/agent/sessions` | ✅ | ✅ 自带 |
 | dsh | zstd jsonl `~/.dsh/sessions` | ✅(需解压) | 待确认 |
 | opencode | sqlite+json `~/.local/share/opencode` | ✅ | ✅ 自带 |
