@@ -3801,6 +3801,115 @@ fn backup_and_restore_round_trips_records_and_user_config() {
 }
 
 #[test]
+fn restore_rejects_invalid_backup_without_touching_live_files() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path,
+        budget_path,
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+    drop(conn);
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+
+    assert!(backup::validate_restore(&dest).is_err());
+    assert!(backup::restore_from(&dest, &paths).is_err());
+
+    std::fs::write(
+        dest.join("manifest.json"),
+        "{\"created_at\":\"x\",\"files\":[],\"note\":\"\"}",
+    )
+    .unwrap();
+    assert!(
+        backup::restore_from(&dest, &paths)
+            .unwrap_err()
+            .contains("usage.sqlite"),
+        "missing sqlite should fail before overwrite"
+    );
+
+    let still = store::open_db(db_path.to_str().unwrap()).unwrap();
+    assert_eq!(store::load_all(&still).unwrap()[0].total_tokens, 42);
+    assert_eq!(
+        std::fs::read_to_string(&prices_path).unwrap(),
+        "{\"prices\":[]}"
+    );
+}
+
+#[test]
+fn restore_rolls_back_live_files_when_a_later_replace_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path,
+        budget_path,
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+    backup::backup_to(&conn, &dest, &paths).unwrap();
+    drop(conn);
+
+    std::fs::remove_file(&prices_path).unwrap();
+    std::fs::create_dir(&prices_path).unwrap();
+
+    let error = backup::restore_from(&dest, &paths).unwrap_err();
+    assert!(error.contains("写入") || error.contains("失败"), "{error}");
+
+    let still = store::open_db(db_path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        store::load_all(&still).unwrap()[0].total_tokens,
+        42,
+        "db should roll back when a later file cannot be replaced"
+    );
+}
+
+#[test]
 fn should_check_budget_skips_missing_or_non_positive_limits() {
     assert!(!budget::should_check_budget(&BudgetConfig {
         monthly_usd: None
