@@ -12,6 +12,7 @@ pub const DB_NAME: &str = "usage.sqlite";
 pub const PRICES_NAME: &str = "prices.json";
 pub const SNAPSHOT_NAME: &str = "litellm_prices.json";
 pub const BUDGET_NAME: &str = "budget.json";
+pub const BUDGET_NOTIFY_NAME: &str = "budget_notify_state.json";
 
 const STAGING_DIR: &str = ".restore-staging";
 const BAK_SUFFIX: &str = ".restore-bak";
@@ -22,6 +23,7 @@ pub struct AppDataPaths {
     pub prices_path: PathBuf,
     pub snapshot_path: PathBuf,
     pub budget_path: PathBuf,
+    pub budget_notify_path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +94,12 @@ pub fn backup_to(
         &dest_dir.join(BUDGET_NAME),
         &mut files,
         BUDGET_NAME,
+    )?;
+    copy_if_exists(
+        &paths.budget_notify_path,
+        &dest_dir.join(BUDGET_NOTIFY_NAME),
+        &mut files,
+        BUDGET_NOTIFY_NAME,
     )?;
 
     let manifest = BackupManifest {
@@ -184,6 +192,13 @@ fn stage_restore(
         src_dir,
         BUDGET_NAME,
         &paths.budget_path,
+        staging,
+        &mut planned,
+    )?;
+    stage_optional(
+        src_dir,
+        BUDGET_NOTIFY_NAME,
+        &paths.budget_notify_path,
         staging,
         &mut planned,
     )?;

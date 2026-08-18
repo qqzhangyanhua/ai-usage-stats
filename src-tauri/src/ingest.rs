@@ -144,6 +144,7 @@ pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String
 
 /// 与 ingest 使用同一套 cache fingerprint（主文件 metadata + sidecar）。
 /// 新文件、fingerprint 变化、或缓存路径已从磁盘消失时视为 stale。
+/// 同时覆盖 Cursor 会话 transcript 与代码量 sqlite，避免托盘心跳漏扫这两类输入。
 pub fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
     scan_is_stale_with_overrides(conn, home, &env_overrides())
 }
@@ -180,7 +181,7 @@ pub(crate) fn scan_is_stale_with_overrides(
             return Ok(true);
         }
     }
-    Ok(false)
+    cursor_session::scan_is_stale(conn, home)
 }
 
 struct WatchedInput {

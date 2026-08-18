@@ -103,7 +103,12 @@ export default function App() {
                 </div>
               ) : null}
               {view === "cursor-sessions" ? (
-                <CursorSessionPanel summary={data.cursorSessionSummary} theme={theme} />
+                <CursorSessionPanel
+                  summary={data.cursorSessionSummary}
+                  theme={theme}
+                  revision={data.sessionsRevision}
+                  onError={data.reportError}
+                />
               ) : null}
               {view === "settings" ? (
                 <Settings

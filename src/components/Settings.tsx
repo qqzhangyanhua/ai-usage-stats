@@ -12,7 +12,7 @@ import {
   presetToPriceEntry,
   PRICE_PRESETS,
 } from "../lib/pricePresets";
-import { formatPerMillionInput, fromPerMillion } from "../lib/priceUnits";
+import { formatPerMillionInput, parsePerMillionInput } from "../lib/priceUnits";
 import type {
   BudgetStatusDto,
   IngestReport,
@@ -239,7 +239,13 @@ export function Settings({
               min="0"
               step="any"
               value={formatPerMillionInput(row.input)}
-              onChange={(event) => update(index, { input: fromPerMillion(Number(event.target.value)) })}
+              onChange={(event) => {
+                const parsed = parsePerMillionInput(event.target.value);
+                if (parsed === null) {
+                  return;
+                }
+                update(index, { input: parsed });
+              }}
             />
             <Field
               label="输出 / 1M"
@@ -247,9 +253,13 @@ export function Settings({
               min="0"
               step="any"
               value={formatPerMillionInput(row.output)}
-              onChange={(event) =>
-                update(index, { output: fromPerMillion(Number(event.target.value)) })
-              }
+              onChange={(event) => {
+                const parsed = parsePerMillionInput(event.target.value);
+                if (parsed === null) {
+                  return;
+                }
+                update(index, { output: parsed });
+              }}
             />
             <Field
               label="缓存读 / 1M"
@@ -257,9 +267,13 @@ export function Settings({
               min="0"
               step="any"
               value={formatPerMillionInput(row.cache_read)}
-              onChange={(event) =>
-                update(index, { cache_read: fromPerMillion(Number(event.target.value)) })
-              }
+              onChange={(event) => {
+                const parsed = parsePerMillionInput(event.target.value);
+                if (parsed === null) {
+                  return;
+                }
+                update(index, { cache_read: parsed });
+              }}
             />
             <Field
               label="缓存写 / 1M"
@@ -267,9 +281,13 @@ export function Settings({
               min="0"
               step="any"
               value={formatPerMillionInput(row.cache_creation)}
-              onChange={(event) =>
-                update(index, { cache_creation: fromPerMillion(Number(event.target.value)) })
-              }
+              onChange={(event) => {
+                const parsed = parsePerMillionInput(event.target.value);
+                if (parsed === null) {
+                  return;
+                }
+                update(index, { cache_creation: parsed });
+              }}
             />
             <Button
               variant="danger"

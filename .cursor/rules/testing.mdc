@@ -26,4 +26,5 @@ alwaysApply: false
 
 ## 前端
 
-- 当前没有前端自动化测试（无 Jest/Vitest/Playwright 测试套件配置）；`tsc` 类型检查是 `pnpm run build` 的一部分，是前端唯一的强制校验
+- 纯函数单测用 Vitest（`pnpm test`），集中在 `src/lib/*.test.ts`，node 环境；暂无组件级/E2E 测试
+- `tsc` 类型检查是 `pnpm run build` 的一部分，改 DTO/`types.ts` 时必须能通过

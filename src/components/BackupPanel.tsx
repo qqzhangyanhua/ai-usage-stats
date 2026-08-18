@@ -24,6 +24,12 @@ export function BackupPanel({ onRestored }: { onRestored?: () => void }) {
   }
 
   async function handleRestore() {
+    const confirmed = window.confirm(
+      "恢复会覆盖当前用量缓存、单价表、月度预算和通知状态，且成功后无法自动撤回。确定继续？",
+    );
+    if (!confirmed) {
+      return;
+    }
     setBusy("restore");
     setMessage(null);
     setError(null);
@@ -46,8 +52,8 @@ export function BackupPanel({ onRestored }: { onRestored?: () => void }) {
         <div>
           <h2>数据备份与恢复</h2>
           <p className="panel-note">
-            备份本机用量缓存（sqlite）、单价表、月度预算和 LiteLLM 价目快照。不含 Cursor
-            钥匙串里的会话 token。恢复会覆盖当前缓存。
+            备份本机用量缓存（sqlite）、单价表、月度预算、预算通知状态和 LiteLLM
+            价目快照。不含 Cursor 钥匙串里的会话 token。恢复会覆盖当前缓存。
           </p>
         </div>
         <div className="row-actions">

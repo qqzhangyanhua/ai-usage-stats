@@ -1,18 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatClock, formatTokens, projectLabel, relativeTime } from "../lib/format";
-import type { CursorSessionListRow } from "../types";
+import type {
+  CursorSessionListRow,
+  CursorSessionPage,
+  CursorSessionSortKey,
+  SortDir,
+} from "../types";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
+import { LoadingOverlay } from "./LoadingOverlay";
 import { Pagination } from "./Pagination";
 import { SessionIdCell, SortArrow } from "./SessionTableParts";
-import type { CursorSessionSortKey } from "./type";
+import { Spinner } from "./Spinner";
 import { SearchField } from "./ui/Field";
 import { Select } from "./ui/Select";
 
 const PAGE_SIZE = 20;
+const EXPORT_ROW_LIMIT = 20000;
 const ALL_PROJECTS = "__all__";
 
-const TABLE_COLUMNS: { key: CursorSessionSortKey | "model"; label: string }[] = [
+const TABLE_COLUMNS: { key: CursorSessionSortKey; label: string }[] = [
   { key: "session", label: "会话 ID" },
   { key: "project", label: "项目" },
   { key: "model", label: "模型" },
@@ -37,79 +45,6 @@ const EXPORT_HEADERS = [
   "最近活跃",
   "原始文件",
 ];
-
-type SortDir = "asc" | "desc";
-
-function compareText(left: string, right: string): number {
-  return left.localeCompare(right, "zh-CN");
-}
-
-function compareNullableTime(left: string | null, right: string | null): number {
-  if (left === right) {
-    return 0;
-  }
-  if (left == null) {
-    return -1;
-  }
-  if (right == null) {
-    return 1;
-  }
-  return left.localeCompare(right);
-}
-
-function sortRows(
-  rows: CursorSessionListRow[],
-  sortKey: CursorSessionSortKey,
-  sortDir: SortDir,
-): CursorSessionListRow[] {
-  const sign = sortDir === "asc" ? 1 : -1;
-  return [...rows].sort((left, right) => {
-    let cmp = 0;
-    switch (sortKey) {
-      case "session":
-        cmp = compareText(left.session_id, right.session_id);
-        break;
-      case "project":
-        cmp = compareText(left.project, right.project);
-        break;
-      case "turns":
-        cmp = left.turn_count - right.turn_count;
-        break;
-      case "errors":
-        cmp = left.error_count - right.error_count;
-        break;
-      case "tools":
-        cmp = left.tool_call_count - right.tool_call_count;
-        break;
-      case "files":
-        cmp = left.files_touched - right.files_touched;
-        break;
-      case "time":
-        cmp = compareNullableTime(left.last_seen_at, right.last_seen_at);
-        break;
-    }
-    if (cmp === 0) {
-      cmp = compareText(left.session_id, right.session_id);
-    }
-    return cmp * sign;
-  });
-}
-
-function matchesSearch(row: CursorSessionListRow, query: string): boolean {
-  if (!query) {
-    return true;
-  }
-  const haystack = [
-    row.session_id,
-    row.project,
-    projectLabel(row.project),
-    row.models.join(" "),
-    row.source_file,
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query);
-}
 
 function modelsLabel(models: string[]): string {
   if (models.length === 0) {
@@ -136,23 +71,30 @@ function sessionRowToExportCells(row: CursorSessionListRow): (string | number)[]
 }
 
 export function CursorSessionTable({
-  sessions,
+  revision,
+  projectNames,
   selectedProject,
   onSelectProject,
+  onError,
 }: {
-  sessions: CursorSessionListRow[];
+  revision: number;
+  projectNames: string[];
   selectedProject: string | null;
   onSelectProject: (project: string | null) => void;
+  onError?: (error: unknown) => void;
 }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<CursorSessionSortKey>("time");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
+  const [pageData, setPageData] = useState<CursorSessionPage>({ rows: [], total: 0 });
+  const [loading, setLoading] = useState(false);
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSearch(searchInput.trim().toLowerCase());
+      setSearch(searchInput.trim());
     }, 300);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
@@ -162,30 +104,49 @@ export function CursorSessionTable({
     setPage(1);
   }, [search, selectedProject, sortKey, sortDir]);
 
-  const projectOptions = useMemo(() => {
-    const names = [...new Set(sessions.map((row) => row.project))].sort((left, right) =>
-      compareText(left, right),
-    );
-    return [
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 标准的“发起请求前先置 loading”写法
+    setLoading(true);
+    invoke<CursorSessionPage>("get_cursor_sessions_page", {
+      query: {
+        search: search || null,
+        project: selectedProject,
+        sortBy: sortKey,
+        sortDir,
+        page,
+        pageSize: PAGE_SIZE,
+      },
+    })
+      .then((result) => {
+        if (generation === requestGeneration.current) {
+          setPageData(result);
+        }
+      })
+      .catch((error) => {
+        if (generation === requestGeneration.current) {
+          onError?.(error);
+        }
+      })
+      .finally(() => {
+        if (generation === requestGeneration.current) {
+          setLoading(false);
+        }
+      });
+  }, [revision, search, selectedProject, sortKey, sortDir, page, onError]);
+
+  const { rows, total } = pageData;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const projectOptions = useMemo(
+    () => [
       { value: ALL_PROJECTS, label: "全部项目" },
-      ...names.map((name) => ({ value: name, label: projectLabel(name) })),
-    ];
-  }, [sessions]);
-
-  const filtered = useMemo(() => {
-    return sessions.filter((row) => {
-      if (selectedProject && row.project !== selectedProject) {
-        return false;
-      }
-      return matchesSearch(row, search);
-    });
-  }, [sessions, selectedProject, search]);
-
-  const sorted = useMemo(() => sortRows(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
-
-  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const pageRows = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+      ...[...projectNames]
+        .sort((left, right) => left.localeCompare(right, "zh-CN"))
+        .map((name) => ({ value: name, label: projectLabel(name) })),
+    ],
+    [projectNames],
+  );
 
   function toggleSort(key: CursorSessionSortKey) {
     if (key === sortKey) {
@@ -193,7 +154,21 @@ export function CursorSessionTable({
       return;
     }
     setSortKey(key);
-    setSortDir(key === "session" || key === "project" ? "asc" : "desc");
+    setSortDir(key === "session" || key === "project" || key === "model" ? "asc" : "desc");
+  }
+
+  async function fetchAllMatchingRows(): Promise<(string | number)[][]> {
+    const result = await invoke<CursorSessionPage>("get_cursor_sessions_page", {
+      query: {
+        search: search || null,
+        project: selectedProject,
+        sortBy: sortKey,
+        sortDir,
+        page: 1,
+        pageSize: Math.min(Math.max(total, 1), EXPORT_ROW_LIMIT),
+      },
+    });
+    return result.rows.map(sessionRowToExportCells);
   }
 
   return (
@@ -206,14 +181,22 @@ export function CursorSessionTable({
           placeholder="搜索会话 ID、项目、模型或路径"
           ariaLabel="搜索 Cursor 会话"
         />
-        <span className="muted">共 {sorted.length} 个会话</span>
+        <span className="muted">
+          共 {total} 个会话
+          {loading ? (
+            <span className="inline-loading">
+              <Spinner size={12} />
+              加载中…
+            </span>
+          ) : null}
+        </span>
         <ExportButton
           filename="Cursor会话明细"
           headers={EXPORT_HEADERS}
-          rows={sorted.map(sessionRowToExportCells)}
+          getRows={fetchAllMatchingRows}
         />
       </div>
-      <div className="table-scroll cursor-session-table-scroll">
+      <LoadingOverlay active={loading && rows.length > 0} className="table-scroll cursor-session-table-scroll">
         <table className="cursor-session-table">
           <thead>
             <tr>
@@ -221,7 +204,7 @@ export function CursorSessionTable({
                 <th
                   key={column.key}
                   aria-sort={
-                    column.key !== "model" && sortKey === column.key
+                    sortKey === column.key
                       ? sortDir === "asc"
                         ? "ascending"
                         : "descending"
@@ -248,19 +231,8 @@ export function CursorSessionTable({
                         <SortArrow active={sortKey === "project"} dir={sortDir} />
                       </button>
                     </div>
-                  ) : column.key === "model" ? (
-                    column.label
                   ) : (
-                    <button
-                      type="button"
-                      className="sort-th"
-                      onClick={() => {
-                        if (column.key === "model") {
-                          return;
-                        }
-                        toggleSort(column.key);
-                      }}
-                    >
+                    <button type="button" className="sort-th" onClick={() => toggleSort(column.key)}>
                       {column.label}
                       <SortArrow active={sortKey === column.key} dir={sortDir} />
                     </button>
@@ -270,7 +242,7 @@ export function CursorSessionTable({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((row) => (
+            {rows.map((row) => (
               <tr key={`${row.source_file}-${row.session_id}`}>
                 <td>
                   <SessionIdCell sessionId={row.session_id} />
@@ -304,26 +276,25 @@ export function CursorSessionTable({
                 </td>
               </tr>
             ))}
-            {pageRows.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={8} className="analytics-empty">
-                  <EmptyState
-                    icon="sessions"
-                    title="当前筛选条件下暂无会话"
-                    hint="试试搜索会话 ID，或更换项目筛选"
-                  />
+                  {loading ? (
+                    <EmptyState icon="sessions" title="正在加载会话…" />
+                  ) : (
+                    <EmptyState
+                      icon="sessions"
+                      title="当前筛选条件下暂无会话"
+                      hint="试试搜索会话 ID，或更换项目筛选"
+                    />
+                  )}
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
-      </div>
-      <Pagination
-        page={safePage}
-        pageCount={pageCount}
-        totalCount={sorted.length}
-        onPageChange={setPage}
-      />
+      </LoadingOverlay>
+      <Pagination page={page} pageCount={pageCount} totalCount={total} onPageChange={setPage} />
     </section>
   );
 }

@@ -314,7 +314,7 @@ pub struct SessionQuery {
     pub page: Option<u32>,
     #[serde(default)]
     pub page_size: Option<u32>,
-    /// 列表 UI 不展示费用；仅导出时打开，避免对全表做价目 JOIN。
+    /// 列表与导出都可打开；打开后对聚合结果做价目 JOIN。
     #[serde(default)]
     pub include_cost: Option<bool>,
 }
@@ -631,7 +631,6 @@ pub struct CursorSessionSummaryDto {
     pub by_model: Vec<CursorSessionModelRow>,
     pub top_tools: Vec<CursorSessionToolRow>,
     pub daily: Vec<CursorSessionDailyPoint>,
-    pub sessions: Vec<CursorSessionListRow>,
 }
 
 impl CursorSessionSummaryDto {
@@ -646,9 +645,33 @@ impl CursorSessionSummaryDto {
             by_model: Vec::new(),
             top_tools: Vec::new(),
             daily: Vec::new(),
-            sessions: Vec::new(),
         }
     }
+}
+
+/// Cursor 会话列表明细：搜索/项目/排序/分页均下沉到 SQL。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorSessionQuery {
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub sort_by: Option<String>,
+    #[serde(default)]
+    pub sort_dir: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorSessionPage {
+    pub rows: Vec<CursorSessionListRow>,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

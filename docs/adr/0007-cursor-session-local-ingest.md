@@ -1,5 +1,7 @@
 # Cursor 会话走本机文件摄取、独立维度
 
+> 原文件名 `0005-cursor-session-local-ingest.md`，2026-08-18 重编号为 0007，避免与路径配置 ADR 0005 撞号。
+
 Cursor IDE Agent 与 `cursor-agent` CLI 共用本机目录：`~/.cursor/chats/<md5(cwd)>/<session>/store.db` 和 `~/.cursor/projects/*/agent-transcripts/*/*.jsonl`。transcript 不含 token；行为统计（轮次、工具调用、失败率）与代码量、账号用量语义不同，不应并入消耗记录或总览 token KPI。`~/.cursor-agent-usage` 只是本仓库包装脚本的 token 落盘，不是官方会话库。
 
 **决定**：新增独立维度「Cursor 会话 (Cursor Session)」。在 `ingest_all` 时扫描 `~/.cursor/projects/*/agent-transcripts/*/*.jsonl`，并从 `ai-code-tracking.db` 的 `ai_code_hashes` enrich 模型/文件/时间；解析为会话级聚合写入独立缓存表 `cursor_sessions`；只存聚合字段，不存对话正文。orphan hash 不单独造会话。

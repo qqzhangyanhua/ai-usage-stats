@@ -3,15 +3,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use rusqlite::Connection;
+use rusqlite::{params_from_iter, types::Value, Connection};
 
 use crate::adapters::cursor_session::{
     apply_hash_enrichment, build_cursor_session_record, load_hash_enrichments,
     parse_cursor_session_transcript,
 };
 use crate::domain::{
-    CursorSessionDailyPoint, CursorSessionListRow, CursorSessionModelRow, CursorSessionProjectRow,
-    CursorSessionRecord, CursorSessionSummaryDto, CursorSessionToolRow, IngestIssue, IngestReport,
+    CursorSessionDailyPoint, CursorSessionListRow, CursorSessionModelRow, CursorSessionPage,
+    CursorSessionProjectRow, CursorSessionQuery, CursorSessionRecord, CursorSessionSummaryDto,
+    CursorSessionToolRow, IngestIssue, IngestReport,
 };
 use crate::store;
 
@@ -31,10 +32,13 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     };
 
-    let enrichments = load_hash_enrichments(home).unwrap_or_else(|error| {
-        record_issue(report, &root.to_string_lossy(), &error);
-        BTreeMap::new()
-    });
+    let enrichments = match load_hash_enrichments(home) {
+        Ok(map) => Some(map),
+        Err(error) => {
+            record_issue(report, &root.to_string_lossy(), &error);
+            None
+        }
+    };
 
     let mut seen_paths = BTreeSet::new();
     let mut any_failed = false;
@@ -101,7 +105,10 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
                 continue;
             }
         };
-        if let Some(enrichment) = enrichments.get(&record.session_id) {
+        if let Some(enrichment) = enrichments
+            .as_ref()
+            .and_then(|map| map.get(&record.session_id))
+        {
             if let Err(error) = apply_hash_enrichment(&mut record, enrichment) {
                 record_issue(report, &path_key, &error);
                 any_failed = true;
@@ -129,8 +136,17 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     }
 
-    if let Err(error) = refresh_hash_enrichments(conn, &enrichments) {
-        record_issue(report, &root.to_string_lossy(), &error);
+    if let Some(map) = enrichments.as_ref() {
+        match refresh_hash_enrichments(conn, map) {
+            Ok(()) => {
+                if let Err(error) =
+                    store::set_cursor_tracking_fingerprint(conn, &tracking_db_fingerprint(home))
+                {
+                    record_issue(report, &root.to_string_lossy(), &error);
+                }
+            }
+            Err(error) => record_issue(report, &root.to_string_lossy(), &error),
+        }
     }
 
     let _ = store::set_cursor_session_as_of(conn, &chrono::Utc::now().to_rfc3339());
@@ -187,7 +203,6 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
     let mut daily: BTreeMap<String, (i64, i64)> = BTreeMap::new();
     let mut models: BTreeMap<String, i64> = BTreeMap::new();
     let mut tools: BTreeMap<String, i64> = BTreeMap::new();
-    let mut list_rows: Vec<CursorSessionListRow> = Vec::with_capacity(sessions.len());
 
     for session in sessions {
         let project = display_project(&session.project);
@@ -218,33 +233,10 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         }
 
         let session_tools = parse_tools(&session.tool_calls_json);
-        let mut tool_call_count = 0i64;
         for (name, count) in session_tools {
             *tools.entry(name).or_insert(0) += count;
-            tool_call_count += count;
         }
-
-        list_rows.push(CursorSessionListRow {
-            session_id: session.session_id.clone(),
-            project,
-            turn_count: session.turn_count,
-            success_count: session.success_count,
-            error_count: session.error_count,
-            aborted_count: session.aborted_count,
-            models: session_models,
-            tool_call_count,
-            first_seen_at: session.first_seen_at.clone(),
-            last_seen_at: session.last_seen_at.clone(),
-            files_touched: session.files_touched,
-            source_file: session.source_file.clone(),
-        });
     }
-
-    list_rows.sort_by(|a, b| {
-        b.last_seen_at
-            .cmp(&a.last_seen_at)
-            .then_with(|| a.session_id.cmp(&b.session_id))
-    });
 
     let active_project_count = projects.len() as i64;
     let mut by_project: Vec<CursorSessionProjectRow> = projects
@@ -309,8 +301,182 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         by_model,
         top_tools,
         daily,
-        sessions: list_rows,
     }
+}
+
+pub fn sessions_page(
+    conn: &Connection,
+    query: &CursorSessionQuery,
+) -> Result<CursorSessionPage, String> {
+    let mut clauses = Vec::new();
+    let mut params: Vec<Value> = Vec::new();
+
+    if let Some(project) = query
+        .project
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        clauses.push("display_project = ?".to_string());
+        params.push(Value::Text(project.to_string()));
+    }
+
+    if let Some(search) = query
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let pattern = format!("%{}%", escape_like(search));
+        clauses.push(
+            "(session_id LIKE ? ESCAPE '\\' OR display_project LIKE ? ESCAPE '\\'
+                OR models_json LIKE ? ESCAPE '\\' OR source_file LIKE ? ESCAPE '\\')"
+                .to_string(),
+        );
+        for _ in 0..4 {
+            params.push(Value::Text(pattern.clone()));
+        }
+    }
+
+    let where_sql = if clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", clauses.join(" AND "))
+    };
+
+    let sort_column = match query.sort_by.as_deref() {
+        Some("session") => "session_id",
+        Some("project") => "display_project",
+        Some("turns") => "turn_count",
+        Some("errors") => "error_count",
+        Some("tools") => "tool_call_count",
+        Some("files") => "files_touched",
+        Some("model") => "models_json",
+        _ => "last_seen_at",
+    };
+    let sort_dir = if query.sort_dir.as_deref() == Some("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
+
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 20_000);
+    let offset = (page - 1) * page_size;
+    params.push(Value::Integer(page_size as i64));
+    params.push(Value::Integer(offset as i64));
+
+    let sql = format!(
+        "WITH listed AS MATERIALIZED (
+            SELECT
+                source_file,
+                session_id,
+                CASE WHEN project = '' THEN '未知项目' ELSE project END AS display_project,
+                turn_count,
+                success_count,
+                error_count,
+                aborted_count,
+                models_json,
+                first_seen_at,
+                last_seen_at,
+                files_touched,
+                COALESCE((
+                    SELECT SUM(CAST(json_each.value AS INTEGER))
+                    FROM json_each(tool_calls_json)
+                ), 0) AS tool_call_count
+            FROM cursor_sessions
+        ),
+        filtered AS MATERIALIZED (
+            SELECT * FROM listed {where_sql}
+        ),
+        summary AS (
+            SELECT COUNT(*) AS match_count FROM filtered
+        ),
+        page AS (
+            SELECT source_file, session_id, display_project, turn_count, success_count,
+                error_count, aborted_count, models_json, tool_call_count,
+                first_seen_at, last_seen_at, files_touched
+            FROM filtered
+            ORDER BY {sort_column} {sort_dir}, session_id ASC
+            LIMIT ? OFFSET ?
+        )
+        SELECT summary.match_count,
+            page.source_file, page.session_id, page.display_project, page.turn_count,
+            page.success_count, page.error_count, page.aborted_count, page.models_json,
+            page.tool_call_count, page.first_seen_at, page.last_seen_at, page.files_touched
+        FROM summary
+        LEFT JOIN page ON 1"
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let raw = stmt
+        .query_map(params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, u32>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<i64>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<String>>(11)?,
+                row.get::<_, Option<i64>>(12)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut total = 0;
+    let mut rows = Vec::new();
+    for (
+        match_count,
+        source_file,
+        session_id,
+        project,
+        turn_count,
+        success_count,
+        error_count,
+        aborted_count,
+        models_json,
+        tool_call_count,
+        first_seen_at,
+        last_seen_at,
+        files_touched,
+    ) in raw
+    {
+        total = match_count;
+        let Some(session_id) = session_id else {
+            continue;
+        };
+        rows.push(CursorSessionListRow {
+            session_id,
+            project: project.unwrap_or_else(|| "未知项目".to_string()),
+            turn_count: turn_count.unwrap_or(0),
+            success_count: success_count.unwrap_or(0),
+            error_count: error_count.unwrap_or(0),
+            aborted_count: aborted_count.unwrap_or(0),
+            models: parse_models(&models_json.unwrap_or_else(|| "[]".to_string())),
+            tool_call_count: tool_call_count.unwrap_or(0),
+            first_seen_at,
+            last_seen_at,
+            files_touched: files_touched.unwrap_or(0),
+            source_file: source_file.unwrap_or_default(),
+        });
+    }
+
+    Ok(CursorSessionPage { rows, total })
+}
+
+fn escape_like(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn display_project(project: &str) -> String {
@@ -344,6 +510,51 @@ fn later_ts(current: &Option<String>, candidate: &Option<String>) -> Option<Stri
             };
             Some(if pick_right { right } else { left }.to_string())
         }
+    }
+}
+
+/// 托盘心跳用：transcript 指纹或代码量 sqlite 变化时视为 stale。
+pub(crate) fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
+    let root = home.join(".cursor/projects");
+    let transcripts = if root.exists() {
+        walk_transcripts(&root)?
+    } else {
+        Vec::new()
+    };
+    let cached = store::cached_cursor_session_file_stats(conn)?;
+    if transcripts.is_empty() && cached.is_empty() {
+        return Ok(false);
+    }
+    let seen: BTreeSet<String> = transcripts
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    if cached.len() != seen.len() || cached.iter().any(|(path, _, _)| !seen.contains(path)) {
+        return Ok(true);
+    }
+    for path in transcripts {
+        let loc = path.to_string_lossy().to_string();
+        let meta = match fs::metadata(&path) {
+            Ok(meta) => meta,
+            Err(_) => return Ok(true),
+        };
+        match store::cursor_session_file_fingerprint(conn, &loc)? {
+            Some((mtime, size)) if mtime == modified_millis(&meta) && size == meta.len() as i64 => {
+            }
+            _ => return Ok(true),
+        }
+    }
+
+    let current = tracking_db_fingerprint(home);
+    let stored = store::cursor_tracking_fingerprint(conn)?;
+    Ok(current != stored)
+}
+
+fn tracking_db_fingerprint(home: &Path) -> String {
+    let path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    match fs::metadata(&path) {
+        Ok(meta) => format!("{}|{}", modified_millis(&meta), meta.len()),
+        Err(_) => String::new(),
     }
 }
 
@@ -475,12 +686,10 @@ mod tests {
 
         assert_eq!(summary.session_count, 2);
         assert_eq!(summary.active_project_count, 2);
-        assert_eq!(summary.sessions.len(), 2);
-        assert_eq!(summary.sessions[0].session_id, "sess-new");
-        assert_eq!(summary.sessions[0].project, "/Users/test/beta");
-        assert_eq!(summary.sessions[0].tool_call_count, 3);
-        assert_eq!(summary.sessions[1].session_id, "sess-old");
+        assert_eq!(summary.turn_count, 5);
         assert_eq!(summary.by_project.len(), 2);
+        assert_eq!(summary.top_tools[0].name, "Read");
+        assert_eq!(summary.top_tools[0].call_count, 3);
         let beta = summary
             .by_project
             .iter()

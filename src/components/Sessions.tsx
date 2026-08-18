@@ -4,6 +4,7 @@ import { sourceTone } from "../icons";
 import {
   applicationLabel,
   formatClock,
+  formatCost,
   formatTokens,
   projectLabel,
   relativeTime,
@@ -38,7 +39,9 @@ const SORT_COLUMNS: { key: SessionSortKey; label: string }[] = [
   { key: "session", label: "会话" },
   { key: "application", label: "应用" },
   { key: "project", label: "项目" },
+  { key: "model", label: "模型" },
   { key: "tokens", label: "token" },
+  { key: "cost", label: "费用" },
   { key: "time", label: "起止" },
 ];
 
@@ -129,6 +132,7 @@ export function Sessions({
         sortDir,
         page,
         pageSize: PAGE_SIZE,
+        includeCost: true,
       },
     })
       .then((result) => {
@@ -160,7 +164,7 @@ export function Sessions({
       setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      setSortDir(key === "tokens" ? "desc" : "asc");
+      setSortDir(key === "tokens" || key === "cost" ? "desc" : "asc");
     }
     setPage(1);
   }
@@ -323,11 +327,16 @@ export function Sessions({
                     </span>
                   </td>
                   <td title={row.project}>{projectLabel(row.project)}</td>
+                  <td title={row.model || undefined}>{row.model || "—"}</td>
                   <td>
                     <span className="cell-bar">
                       <i style={{ width: `${(row.total_tokens / maxTotal) * 100}%` }} />
                     </span>
                     <span className="cell-bar-label">{formatTokens(row.total_tokens)}</span>
+                  </td>
+                  <td title={row.unpriced ? "部分轮次单价未配置" : undefined}>
+                    {formatCost(row.cost, row.unpriced)}
+                    {row.unpriced ? <span className="muted"> *</span> : null}
                   </td>
                   <td title={`${formatClock(row.started_at)} → ${formatClock(row.ended_at)}`}>
                     {relativeTime(row.started_at)} → {relativeTime(row.ended_at)}
@@ -339,7 +348,7 @@ export function Sessions({
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="analytics-empty">
+                  <td colSpan={8} className="analytics-empty">
                     {loading ? (
                       <EmptyState icon="sessions" title="正在加载会话…" />
                     ) : (

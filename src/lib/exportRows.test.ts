@@ -232,7 +232,6 @@ describe("cursor export tables", () => {
       by_model: [],
       top_tools: [{ name: "read", call_count: 9 }],
       daily: [],
-      sessions: [],
     };
     expect(cursorSessionProjectTable(data).rows[0]).toEqual(["demo", 2, 5]);
     expect(cursorSessionToolTable(data).rows[0]).toEqual(["read", 9]);
