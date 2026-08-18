@@ -48,5 +48,27 @@ pub fn summarize_code_volume(commits: &[CodeVolumeCommit]) -> CodeVolumeSummary 
         composer_lines_added,
         human_lines_added,
         ai_percentage,
+        total_cost: None,
+        cost_unpriced: false,
+        cost_per_thousand_ai_lines: None,
     }
+}
+
+/// 把「全部时间、全部来源」的消耗记录费用叠加到代码量摘要上，算出粗略的 ROI 交叉指标。
+/// 两个输入统计口径不同（费用覆盖所有 AI CLI，AI 生成行只来自 Cursor 记录），调用方需保证
+/// 两者都是不加筛选的全量口径，否则时间窗口对不上、比值没有意义。
+pub fn with_cost_roi(
+    mut summary: CodeVolumeSummary,
+    total_cost: Option<f64>,
+    cost_unpriced: bool,
+) -> CodeVolumeSummary {
+    summary.total_cost = total_cost;
+    summary.cost_unpriced = cost_unpriced;
+    summary.cost_per_thousand_ai_lines = match total_cost {
+        Some(cost) if summary.composer_lines_added > 0 => {
+            Some(cost / (summary.composer_lines_added as f64 / 1000.0))
+        }
+        _ => None,
+    };
+    summary
 }
