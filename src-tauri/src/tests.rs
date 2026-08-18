@@ -1128,6 +1128,17 @@ fn trend_buckets_by_day_and_week() {
     assert_eq!(months[0].bucket, "2026-08");
     assert_eq!(months[0].total_tokens, 470);
 
+    let hours = aggregate::trend(&stored, &Filter::default(), &prices, "hour");
+    assert!(hours.iter().any(|point| point.bucket == "2026-08-01T11"));
+    assert_eq!(
+        hours
+            .iter()
+            .filter(|point| point.bucket == "2026-08-01T11")
+            .map(|point| point.total_tokens)
+            .sum::<i64>(),
+        20
+    );
+
     let weeks = aggregate::trend(&stored, &Filter::default(), &prices, "week");
     assert_eq!(weeks.len(), 2);
     assert_eq!(weeks[0].bucket, "2026-W31");
@@ -2789,6 +2800,57 @@ fn billing_windows_do_not_mix_sources() {
     assert_eq!(codex.total_tokens, 90);
 }
 
+#[test]
+fn weekly_window_sums_last_seven_days_per_source() {
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    let records = vec![
+        window_rec("2026-08-11T12:00:00Z", Source::Claude, "s1", 100),
+        window_rec("2026-08-16T09:00:00Z", Source::Claude, "s1", 50),
+        // 8 天前，超出 7 天滚动窗口，不应计入。
+        window_rec("2026-08-09T12:00:00Z", Source::Claude, "s2", 999),
+        window_rec("2026-08-15T00:00:00Z", Source::Codex, "x1", 70),
+    ];
+    let dto = billing_window::summarize(&records, &PriceTable::default(), now);
+    assert_eq!(dto.weekly_window_days, 7);
+    assert_eq!(dto.weekly.len(), 2);
+
+    let claude = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "claude")
+        .expect("claude weekly window");
+    assert_eq!(claude.total_tokens, 150);
+    assert_eq!(claude.session_count, 1);
+    assert_eq!(claude.end, "2026-08-17T12:00:00Z");
+    assert_eq!(claude.start, "2026-08-10T12:00:00Z");
+    assert!((claude.daily_average_tokens - 150.0 / 7.0).abs() < 1e-9);
+    let claude_cost = claude.cost.expect("claude weekly cost");
+    assert!((claude_cost - 0.15).abs() < 1e-9);
+    let claude_daily_cost = claude.daily_average_cost.expect("claude daily cost");
+    assert!((claude_daily_cost - claude_cost / 7.0).abs() < 1e-9);
+
+    let codex = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "codex")
+        .expect("codex weekly window");
+    assert_eq!(codex.total_tokens, 70);
+
+    // 按 total_tokens 降序排列。
+    assert_eq!(dto.weekly[0].source, "claude");
+}
+
+#[test]
+fn weekly_window_excludes_activity_older_than_seven_days_but_within_the_lookback() {
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    // 10 天前：仍落在 14 天摄取回看窗内，但超出 7 天滚动窗口，不应计入 weekly。
+    let records = vec![window_rec("2026-08-07T12:00:00Z", Source::Claude, "s1", 40)];
+    let dto = billing_window::summarize(&records, &PriceTable::default(), now);
+    assert!(dto.weekly.is_empty());
+    // 仍应出现在 recent（5 小时窗）里，证明记录本身被正常摄取，只是不满足 weekly 的时间范围。
+    assert_eq!(dto.recent.len(), 1);
+}
+
 fn assert_opt_f64_eq(a: Option<f64>, b: Option<f64>) {
     match (a, b) {
         (Some(x), Some(y)) => assert!((x - y).abs() < 1e-9, "金额不一致：{x} vs {y}"),
@@ -2939,8 +3001,8 @@ fn sql_queries_match_in_memory_aggregates() {
     assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
     assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
 
-    // trend 三种粒度
-    for grain in ["day", "week", "month"] {
+    // trend 四种粒度
+    for grain in ["hour", "day", "week", "month"] {
         let sql_tr = query::trend(&conn, &Filter::default(), &prices, grain).unwrap();
         let mem_tr = aggregate::trend(&records, &Filter::default(), &prices, grain);
         assert_eq!(sql_tr, mem_tr, "trend grain={grain} 不一致");
@@ -3513,7 +3575,10 @@ fn cursor_account_clear_resets_watermark_without_touching_usage_records() {
     assert_eq!(cleared.event_count, 0);
     assert_eq!(cleared.total_tokens, 0);
     assert_eq!(cleared.as_of, None);
-    assert_eq!(crate::cursor_account::incremental_start_ms(&conn).unwrap(), 0);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        0
+    );
     assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
 
     let kept = store::load_all(&conn).unwrap();
@@ -3806,7 +3871,9 @@ fn cursor_session_ingest_reconciles_deleted_transcripts() {
     let mut report = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut report);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         1
     );
 
@@ -3814,7 +3881,9 @@ fn cursor_session_ingest_reconciles_deleted_transcripts() {
     let mut again = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut again);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         0
     );
     assert_eq!(again.records_removed, 1);
@@ -3841,7 +3910,9 @@ fn cursor_session_ingest_skips_reconcile_when_parse_failed() {
     let mut first = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut first);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         2
     );
 
@@ -3851,17 +3922,21 @@ fn cursor_session_ingest_skips_reconcile_when_parse_failed() {
     crate::cursor_session::ingest(&conn, home, &mut failed);
     assert_eq!(failed.files_failed, 1);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         2,
         "reconcile should be skipped while a transcript parse fails"
     );
 
-    std::fs::write(&path_two, &fixture("cursor-session-transcript.jsonl")).expect("fix transcript");
+    std::fs::write(&path_two, fixture("cursor-session-transcript.jsonl")).expect("fix transcript");
     let mut clean = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut clean);
     assert_eq!(clean.files_failed, 0);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         1
     );
     assert_eq!(clean.records_removed, 1);
@@ -3882,7 +3957,9 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
     let mut report = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut report);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().turn_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
         2
     );
 
@@ -3891,15 +3968,14 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
     crate::cursor_session::ingest(&conn, home, &mut bad);
     assert_eq!(bad.files_failed, 1);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().turn_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
         2
     );
 }
 
-fn seed_ai_code_hashes(
-    home: &std::path::Path,
-    rows: &[(&str, &str, i64, &str)],
-) {
+fn seed_ai_code_hashes(home: &std::path::Path, rows: &[(&str, &str, i64, &str)]) {
     let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
     std::fs::create_dir_all(db_path.parent().expect("parent")).expect("create dirs");
     let conn = rusqlite::Connection::open(&db_path).expect("open tracking db");
@@ -3949,10 +4025,7 @@ fn cursor_session_enriches_from_ai_code_hashes() {
         "sess-1",
         &fixture("cursor-session-transcript.jsonl"),
     );
-    seed_ai_code_hashes(
-        home,
-        &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")],
-    );
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
 
     let conn = store::open_memory().unwrap();
     let mut report = crate::domain::IngestReport::default();
@@ -3962,7 +4035,11 @@ fn cursor_session_enriches_from_ai_code_hashes() {
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].files_touched, 1);
     assert!(sessions[0].models_json.contains("grok-4.6"));
-    assert!(sessions[0].first_seen_at.as_deref().unwrap().contains("2026"));
+    assert!(sessions[0]
+        .first_seen_at
+        .as_deref()
+        .unwrap()
+        .contains("2026"));
 
     let summary = crate::cursor_session::load_summary(&conn).unwrap();
     assert_eq!(summary.by_model.len(), 1);
@@ -3993,7 +4070,9 @@ fn cursor_session_transcript_without_hash_stays_counted() {
     assert_eq!(sessions[0].models_json, "[]");
     assert_eq!(sessions[0].files_touched, 0);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         1
     );
 }
@@ -4013,7 +4092,9 @@ fn cursor_session_orphan_hash_does_not_create_session() {
 
     assert!(store::load_cursor_sessions(&conn).unwrap().is_empty());
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         0
     );
 }

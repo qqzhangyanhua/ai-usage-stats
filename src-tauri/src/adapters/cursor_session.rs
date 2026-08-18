@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::adapters::project;
 use crate::domain::CursorSessionRecord;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionHashEnrichment {
     pub models: BTreeSet<String>,
     pub files: BTreeSet<String>,
@@ -105,8 +105,7 @@ pub fn build_cursor_session_record(
     parsed: &ParsedCursorSession,
     seen_at: Option<String>,
 ) -> Result<CursorSessionRecord, String> {
-    let tool_calls_json =
-        serde_json::to_string(&parsed.tool_calls).map_err(|e| e.to_string())?;
+    let tool_calls_json = serde_json::to_string(&parsed.tool_calls).map_err(|e| e.to_string())?;
     Ok(CursorSessionRecord {
         session_id: project::session_id_from_source_file(source_file),
         project: project_from_transcript_path(Path::new(source_file)),
@@ -124,7 +123,9 @@ pub fn build_cursor_session_record(
 }
 
 /// 只读加载 ai_code_hashes，按 conversationId 聚合 enrich 字段。
-pub fn load_hash_enrichments(home: &Path) -> Result<BTreeMap<String, SessionHashEnrichment>, String> {
+pub fn load_hash_enrichments(
+    home: &Path,
+) -> Result<BTreeMap<String, SessionHashEnrichment>, String> {
     let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
     if !db_path.exists() {
         return Ok(BTreeMap::new());
@@ -175,23 +176,12 @@ pub fn load_hash_enrichments(home: &Path) -> Result<BTreeMap<String, SessionHash
     Ok(enrichments)
 }
 
-impl Default for SessionHashEnrichment {
-    fn default() -> Self {
-        Self {
-            models: BTreeSet::new(),
-            files: BTreeSet::new(),
-            first_ms: None,
-            last_ms: None,
-        }
-    }
-}
-
 pub fn apply_hash_enrichment(
     record: &mut CursorSessionRecord,
     enrichment: &SessionHashEnrichment,
 ) -> Result<(), String> {
-    record.models_json =
-        serde_json::to_string(&enrichment.models.iter().collect::<Vec<_>>()).map_err(|e| e.to_string())?;
+    record.models_json = serde_json::to_string(&enrichment.models.iter().collect::<Vec<_>>())
+        .map_err(|e| e.to_string())?;
     record.files_touched = enrichment.files.len() as i64;
     if let Some(ms) = enrichment.first_ms {
         record.first_seen_at = millis_to_rfc3339(ms);
@@ -202,7 +192,7 @@ pub fn apply_hash_enrichment(
     Ok(())
 }
 
-fn open_readonly(path: &PathBuf) -> Result<rusqlite::Connection, String> {
+fn open_readonly(path: &Path) -> Result<rusqlite::Connection, String> {
     let uri = format!("file:{}?mode=ro", path.to_string_lossy());
     rusqlite::Connection::open_with_flags(
         uri,

@@ -22,9 +22,7 @@ pub fn parse_cursor_usage_page(raw: &str) -> Result<CursorUsagePage, String> {
         .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|n| n.max(0) as u64)))
         .unwrap_or(0);
     let Some(items) = value.get("usageEventsDisplay").and_then(|v| v.as_array()) else {
-        return Err(
-            "Cursor 用量接口结构已变更，请稍后再试或检查应用更新".to_string(),
-        );
+        return Err("Cursor 用量接口结构已变更，请稍后再试或检查应用更新".to_string());
     };
 
     let mut events = Vec::new();

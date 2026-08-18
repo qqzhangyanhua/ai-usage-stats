@@ -148,9 +148,10 @@ fn where_sql(clauses: &[String]) -> String {
     }
 }
 
-/// 时间桶表达式（day/week/month）。occurred_at 为 ISO 文本，前 10 位即日期。
+/// 时间桶表达式（hour/day/week/month）。occurred_at 为 ISO 文本，前缀截取即对应粒度。
 fn bucket_expr(grain: &str) -> &'static str {
     match grain {
+        "hour" => "substr(r.occurred_at, 1, 13)",
         "week" => "strftime('%G-W%V', substr(r.occurred_at, 1, 10))",
         "month" => "substr(r.occurred_at, 1, 7)",
         _ => "substr(r.occurred_at, 1, 10)",

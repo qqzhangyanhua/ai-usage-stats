@@ -171,12 +171,36 @@ pub struct BillingWindowDto {
     pub projection: Option<ProjectionDto>,
 }
 
+/// 按来源统计的 7 天滚动窗口：不像 5 小时窗那样按活动间隔切块，而是持续滚动的
+/// "最近 N 天用了多少"，贴近 Claude 等工具的周度限额心智模型（仅本地估计，非官方配额）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WeeklyWindowDto {
+    pub source: String,
+    pub application: String,
+    pub window_days: i64,
+    pub start: String,
+    pub end: String,
+    pub total_tokens: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub reasoning_tokens: i64,
+    pub session_count: i64,
+    pub cost: Option<f64>,
+    pub unpriced: bool,
+    pub daily_average_tokens: f64,
+    pub daily_average_cost: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BillingWindowsDto {
     pub now: String,
     pub window_hours: i64,
     pub current: Vec<BillingWindowDto>,
     pub recent: Vec<BillingWindowDto>,
+    pub weekly_window_days: i64,
+    pub weekly: Vec<WeeklyWindowDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

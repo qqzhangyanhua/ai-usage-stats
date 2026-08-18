@@ -7,11 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::cost::sum_costs;
 use crate::domain::{
     BillingWindowDto, BillingWindowsDto, BurnRateDto, PriceTable, ProjectionDto, UsageRecord,
+    WeeklyWindowDto,
 };
 
 pub const WINDOW_HOURS: i64 = 5;
 pub const LOOKBACK_DAYS: i64 = 14;
 pub const RECENT_LIMIT: usize = 6;
+/// 7 天滚动窗口：与官方「周配额」概念对齐，用来提前预警周度限额。
+pub const WEEKLY_WINDOW_DAYS: i64 = 7;
 
 struct Timed<'a> {
     at: DateTime<Utc>,
@@ -43,6 +46,23 @@ where
             .push(Timed { at, record });
     }
 
+    let weekly_start = now - Duration::days(WEEKLY_WINDOW_DAYS);
+    let mut weekly: Vec<WeeklyWindowDto> = by_source
+        .values()
+        .filter_map(|entries| {
+            let items: Vec<&Timed<'_>> = entries
+                .iter()
+                .filter(|entry| entry.at >= weekly_start)
+                .collect();
+            if items.is_empty() {
+                None
+            } else {
+                Some(build_weekly_window(&items, prices, weekly_start, now))
+            }
+        })
+        .collect();
+    weekly.sort_by_key(|window| std::cmp::Reverse(window.total_tokens));
+
     let window_len = Duration::hours(WINDOW_HOURS);
     let mut current = Vec::new();
     let mut recent = Vec::new();
@@ -66,6 +86,56 @@ where
         window_hours: WINDOW_HOURS,
         current,
         recent,
+        weekly_window_days: WEEKLY_WINDOW_DAYS,
+        weekly,
+    }
+}
+
+fn build_weekly_window(
+    items: &[&Timed<'_>],
+    prices: &PriceTable,
+    start: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> WeeklyWindowDto {
+    let records: Vec<&UsageRecord> = items.iter().map(|item| item.record).collect();
+    let source = items[0].record.source;
+
+    let mut total_tokens = 0;
+    let mut input_tokens = 0;
+    let mut output_tokens = 0;
+    let mut cache_read_tokens = 0;
+    let mut cache_creation_tokens = 0;
+    let mut reasoning_tokens = 0;
+    let mut sessions = BTreeSet::new();
+    for record in &records {
+        total_tokens += record.total_tokens;
+        input_tokens += record.input_tokens;
+        output_tokens += record.output_tokens;
+        cache_read_tokens += record.cache_read_tokens;
+        cache_creation_tokens += record.cache_creation_tokens;
+        reasoning_tokens += record.reasoning_tokens;
+        sessions.insert((record.source.as_str(), record.session_id.as_str()));
+    }
+    let (cost, unpriced) = sum_costs(&records, prices);
+    let days = WEEKLY_WINDOW_DAYS as f64;
+
+    WeeklyWindowDto {
+        source: source.as_str().to_string(),
+        application: source.application_name().to_string(),
+        window_days: WEEKLY_WINDOW_DAYS,
+        start: iso(start),
+        end: iso(now),
+        total_tokens,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        reasoning_tokens,
+        session_count: sessions.len() as i64,
+        cost,
+        unpriced,
+        daily_average_tokens: total_tokens as f64 / days,
+        daily_average_cost: cost.map(|amount| amount / days),
     }
 }
 

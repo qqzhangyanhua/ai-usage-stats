@@ -587,7 +587,10 @@ pub fn cursor_session_file_fingerprint(
     .map_err(|e| e.to_string())
 }
 
-pub fn upsert_cursor_session(conn: &Connection, record: &CursorSessionRecord) -> Result<(), String> {
+pub fn upsert_cursor_session(
+    conn: &Connection,
+    record: &CursorSessionRecord,
+) -> Result<(), String> {
     conn.execute(
         r#"
         INSERT INTO cursor_sessions (

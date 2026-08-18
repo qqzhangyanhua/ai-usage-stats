@@ -5,6 +5,7 @@ import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { BillingWindows } from "./BillingWindows";
+import { WeeklyWindows } from "./WeeklyWindows";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { EmptyState } from "./EmptyState";
@@ -30,6 +31,14 @@ import type {
   SessionRow,
 } from "../types";
 
+/** 各粒度下一个 trend bucket 覆盖的分钟数，用于把「最后一个 bucket 的 token 量」换算成「每分钟速率」。 */
+const BUCKET_MINUTES: Record<Grain, number> = {
+  hour: 60,
+  day: 24 * 60,
+  week: 7 * 24 * 60,
+  month: 30 * 24 * 60,
+};
+
 const emptyOverview: OverviewDto = {
   total_tokens: 0,
   input_tokens: 0,
@@ -40,13 +49,6 @@ const emptyOverview: OverviewDto = {
   session_count: 0,
   cost: null,
   unpriced: false,
-};
-
-/** 各粒度下一个 trend bucket 覆盖的分钟数，用于把"最后一个 bucket 的 token 量"换算成"每分钟速率"。 */
-const BUCKET_MINUTES: Record<Grain, number> = {
-  day: 24 * 60,
-  week: 7 * 24 * 60,
-  month: 30 * 24 * 60,
 };
 
 export const Overview = memo(function Overview({
@@ -166,6 +168,11 @@ export const Overview = memo(function Overview({
       </section>
 
       <BillingWindows data={billingWindows} />
+
+      <WeeklyWindows
+        windows={billingWindows?.weekly ?? []}
+        windowDays={billingWindows?.weekly_window_days ?? 7}
+      />
 
       <section className="dash-mid">
         <article className="panel trend-panel">
@@ -349,6 +356,9 @@ function periodDays(preset: string, grain: Grain, bucketCount: number): number {
   }
   if (grain === "month") {
     return Math.max(bucketCount * 30, 1);
+  }
+  if (grain === "hour") {
+    return Math.max(bucketCount / 24, 1);
   }
   return Math.max(bucketCount, 1);
 }
