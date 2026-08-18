@@ -10,6 +10,7 @@ use crate::ingest;
 use crate::query;
 use crate::store;
 use chrono::{Local, NaiveTime, TimeZone, Utc};
+use std::path::PathBuf;
 
 fn fixture(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2446,6 +2447,120 @@ fn source_diagnostics_explain_detection_cache_and_usage_coverage() {
     assert_eq!(codex.coverage, "轮级 Token");
     assert!(!qwen.detected);
     assert_eq!(qwen.coverage, "本地无 Token");
+}
+
+#[test]
+fn source_scan_dirs_default_to_home_relative_paths() {
+    let home = std::path::Path::new("/home/example");
+    let overrides = ingest::PathOverrides::new();
+
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Codex),
+        vec![home.join(".codex/sessions")],
+    );
+    // Claude Code 有的安装方式写到 XDG 目录而不是 ~/.claude，默认两个都扫。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Claude),
+        vec![
+            home.join(".claude/projects"),
+            home.join(".config/claude/projects"),
+        ],
+    );
+}
+
+#[test]
+fn source_scan_dirs_env_override_replaces_defaults_with_same_leaf_join_rule() {
+    let home = std::path::Path::new("/home/example");
+    let overrides = ingest::PathOverrides::from([
+        ("CODEX_HOME", vec![PathBuf::from("/custom/codex")]),
+        (
+            "CLAUDE_CONFIG_DIR",
+            vec![
+                PathBuf::from("/custom/claude-a"),
+                PathBuf::from("/custom/claude-b"),
+            ],
+        ),
+    ]);
+
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Codex),
+        vec![PathBuf::from("/custom/codex/sessions")],
+    );
+    // 覆盖后不再回退到默认的 XDG 双路径，只扫用户显式给出的目录。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Claude),
+        vec![
+            PathBuf::from("/custom/claude-a/projects"),
+            PathBuf::from("/custom/claude-b/projects"),
+        ],
+    );
+    // 未覆盖的 Source 仍然用默认路径。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Grok),
+        vec![home.join(".grok/sessions")],
+    );
+}
+
+#[test]
+fn ingest_scans_multiple_overridden_directories_for_one_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    // 默认路径 home/.codex/sessions 放一份数据，用来验证覆盖后它不会再被扫到。
+    let default_sessions = home.join(".codex/sessions");
+    std::fs::create_dir_all(&default_sessions).unwrap();
+    std::fs::write(
+        default_sessions.join("ignored.jsonl"),
+        fixture("codex.jsonl"),
+    )
+    .unwrap();
+
+    // CODEX_HOME 覆盖为两个自定义根目录（逗号分隔多个），两个都要按同样的 /sessions
+    // 规则拼接、都要被扫到。
+    let root_a = home.join("codex-root-a");
+    let root_b = home.join("codex-root-b");
+    std::fs::create_dir_all(root_a.join("sessions")).unwrap();
+    std::fs::create_dir_all(root_b.join("sessions")).unwrap();
+    std::fs::write(root_a.join("sessions/a.jsonl"), fixture("codex.jsonl")).unwrap();
+    std::fs::write(root_b.join("sessions/b.jsonl"), fixture("codex.jsonl")).unwrap();
+
+    let overrides =
+        ingest::PathOverrides::from([("CODEX_HOME", vec![root_a.clone(), root_b.clone()])]);
+
+    let conn = store::open_memory().unwrap();
+    let report = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+
+    assert_eq!(report.files_parsed, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 4);
+    assert!(records.iter().all(|r| r.source == Source::Codex));
+    assert!(records
+        .iter()
+        .all(|r| !r.source_file.contains("ignored.jsonl")));
+
+    // 删掉其中一个根目录下的文件，reconcile 应该只处理那一份，另一份不受影响——
+    // 说明多目录是合并到同一次对账里的，而不是互相独立、互不感知。
+    // 按 ADR 0004，消失的文件只归档、不物理删除，归档记录仍计入统计。
+    std::fs::remove_file(root_a.join("sessions/a.jsonl")).unwrap();
+    let second = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+    assert_eq!(second.records_removed, 0);
+    assert_eq!(second.records_archived, 2);
+    assert_eq!(
+        store::load_all(&conn).unwrap().len(),
+        4,
+        "archived records still count in totals"
+    );
+
+    // 被归档的正好是 root_a 那一份：显式清理归档记录后，剩下的应当只有 root_b 的记录。
+    assert_eq!(
+        store::purge_archived(&conn, Some(Source::Codex)).unwrap(),
+        2
+    );
+    let remaining = store::load_all(&conn).unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining
+        .iter()
+        .all(|r| r.source_file.contains("codex-root-b")));
 }
 
 fn rollup_sum(

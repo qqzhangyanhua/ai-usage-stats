@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -19,10 +19,131 @@ pub fn default_home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// 每个 Source 的路径环境变量名，用于整体覆盖默认扫描根目录（逗号分隔多个绝对路径）。
+/// 命名尽量对齐 ccusage 等同类工具的既有约定，方便同时使用多个统计工具的用户复用配置。
+const PATH_ENV_VARS: [&str; 11] = [
+    "CODEX_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "PI_AGENT_DIR",
+    "OPENCODE_DATA_DIR",
+    "KIMI_DATA_DIR",
+    "DSH_HOME",
+    "GEMINI_DATA_DIR",
+    "GROK_HOME",
+    "QWEN_DATA_DIR",
+    "FACTORY_SESSIONS_DIR",
+    "CURSOR_AGENT_USAGE_DIR",
+];
+
+/// 环境变量覆盖表：键为环境变量名，值为解析后的根目录列表。只在真正设置了变量时才有
+/// 条目。用一个显式的 map 而不是在各处直接读 `std::env::var`，是为了让路径拼接逻辑可以
+/// 脱离进程级环境变量单独做单元测试（并行跑测试时修改真实环境变量并不安全）。
+pub(crate) type PathOverrides = BTreeMap<&'static str, Vec<PathBuf>>;
+
+fn env_overrides() -> PathOverrides {
+    PATH_ENV_VARS
+        .iter()
+        .filter_map(|&var| env_override(var).map(|paths| (var, paths)))
+        .collect()
+}
+
+fn env_override(var: &str) -> Option<Vec<PathBuf>> {
+    let raw = std::env::var(var).ok()?;
+    let paths: Vec<PathBuf> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .map(PathBuf::from)
+        .collect();
+    (!paths.is_empty()).then_some(paths)
+}
+
+/// 解析某个 Source 的根目录列表：环境变量整体覆盖优先，否则退回默认的单个 home 相对路径；
+/// 两种情况都按同样的规则拼接叶子子路径（`leaf` 为空表示根目录本身就是扫描目标）。
+fn resolve_dirs(
+    overrides: &PathOverrides,
+    home: &Path,
+    env_var: &str,
+    default_relative: &str,
+    leaf: &str,
+) -> Vec<PathBuf> {
+    let roots = overrides
+        .get(env_var)
+        .cloned()
+        .unwrap_or_else(|| vec![home.join(default_relative)]);
+    if leaf.is_empty() {
+        roots
+    } else {
+        roots.into_iter().map(|root| root.join(leaf)).collect()
+    }
+}
+
+/// Claude Code 在部分安装方式下把会话写到 XDG 目录（`~/.config/claude`）而不是
+/// `~/.claude`；默认两个都扫，显式设置 `CLAUDE_CONFIG_DIR` 后只扫用户指定的目录。
+fn resolve_claude_dirs(overrides: &PathOverrides, home: &Path) -> Vec<PathBuf> {
+    let roots = overrides
+        .get("CLAUDE_CONFIG_DIR")
+        .cloned()
+        .unwrap_or_else(|| vec![home.join(".claude"), home.join(".config/claude")]);
+    roots
+        .into_iter()
+        .map(|root| root.join("projects"))
+        .collect()
+}
+
+/// 每个 Source 实际要扫描的目录（可能不止一个）。Kimi 的条目是「工具根目录」而不是
+/// 叶子目录，因为 `ingest_kimi` 还要从根目录派生 `sessions/` 和 `kimi.json` 两个子路径。
+pub(crate) fn source_scan_dirs_with(
+    overrides: &PathOverrides,
+    home: &Path,
+    source: Source,
+) -> Vec<PathBuf> {
+    match source {
+        Source::Codex => resolve_dirs(overrides, home, "CODEX_HOME", ".codex", "sessions"),
+        Source::Claude => resolve_claude_dirs(overrides, home),
+        Source::Pi => resolve_dirs(overrides, home, "PI_AGENT_DIR", ".pi/agent/sessions", ""),
+        Source::Opencode => resolve_dirs(
+            overrides,
+            home,
+            "OPENCODE_DATA_DIR",
+            ".local/share/opencode",
+            "opencode.db",
+        ),
+        Source::Kimi => resolve_dirs(overrides, home, "KIMI_DATA_DIR", ".kimi", ""),
+        Source::Dsh => resolve_dirs(overrides, home, "DSH_HOME", ".dsh", "sessions"),
+        Source::Gemini => resolve_dirs(overrides, home, "GEMINI_DATA_DIR", ".gemini/tmp", ""),
+        Source::Grok => resolve_dirs(overrides, home, "GROK_HOME", ".grok", "sessions"),
+        Source::Qwen => resolve_dirs(overrides, home, "QWEN_DATA_DIR", ".qwen", "tmp"),
+        Source::Factory => resolve_dirs(
+            overrides,
+            home,
+            "FACTORY_SESSIONS_DIR",
+            ".factory/sessions",
+            "",
+        ),
+        Source::CursorAgent => resolve_dirs(
+            overrides,
+            home,
+            "CURSOR_AGENT_USAGE_DIR",
+            ".cursor-agent-usage",
+            "",
+        ),
+    }
+}
+
 pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String> {
+    ingest_all_with_overrides(conn, home, &env_overrides())
+}
+
+/// 供测试直接注入路径覆盖表，绕开真实进程环境变量（并行跑测试改真实环境变量不安全）。
+pub(crate) fn ingest_all_with_overrides(
+    conn: &Connection,
+    home: &Path,
+    overrides: &PathOverrides,
+) -> Result<IngestReport, String> {
     let transaction = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let removed_unknown = store::remove_unknown_sources(&transaction)?;
-    let mut report = ingest_all_inner(&transaction, home)?;
+    let mut report = ingest_all_inner(&transaction, home, overrides)?;
     report.records_removed += removed_unknown;
     report.partial_success = report.files_failed > 0;
     transaction.commit().map_err(|e| e.to_string())?;
@@ -30,17 +151,22 @@ pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String
 }
 
 pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDiagnostic>, String> {
+    let overrides = env_overrides();
     Source::ALL
         .iter()
         .map(|source| {
-            let root = source_root(home, *source);
+            let dirs = source_scan_dirs_with(&overrides, home, *source);
             let (cached_files, record_count, total_tokens, archived_record_count) =
                 store::source_cache_stats(conn, *source)?;
             Ok(SourceDiagnostic {
                 source: source.as_str().to_string(),
                 application: source.application_name().to_string(),
-                detected: root.exists(),
-                root_path: root.to_string_lossy().to_string(),
+                detected: dirs.iter().any(|dir| dir.exists()),
+                root_path: dirs
+                    .iter()
+                    .map(|dir| dir.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 cached_files,
                 record_count,
                 total_tokens,
@@ -56,6 +182,7 @@ pub fn rebuild_cache(
     home: &Path,
     source: Option<Source>,
 ) -> Result<IngestReport, String> {
+    let overrides = env_overrides();
     let transaction = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let mut removed_unknown = 0;
     match source {
@@ -73,17 +200,21 @@ pub fn rebuild_cache(
         ..IngestReport::default()
     };
     match source {
-        Some(source) => ingest_source(&transaction, home, source, &mut report)?,
-        None => ingest_all_sources(&transaction, home, &mut report)?,
+        Some(source) => ingest_source(&transaction, home, &overrides, source, &mut report)?,
+        None => ingest_all_sources(&transaction, home, &overrides, &mut report)?,
     }
     report.partial_success = report.files_failed > 0;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(report)
 }
 
-fn ingest_all_inner(conn: &Connection, home: &Path) -> Result<IngestReport, String> {
+fn ingest_all_inner(
+    conn: &Connection,
+    home: &Path,
+    overrides: &PathOverrides,
+) -> Result<IngestReport, String> {
     let mut report = IngestReport::default();
-    ingest_all_sources(conn, home, &mut report)?;
+    ingest_all_sources(conn, home, overrides, &mut report)?;
     cursor_session::ingest(conn, home, &mut report);
     Ok(report)
 }
@@ -91,35 +222,25 @@ fn ingest_all_inner(conn: &Connection, home: &Path) -> Result<IngestReport, Stri
 fn ingest_all_sources(
     conn: &Connection,
     home: &Path,
+    overrides: &PathOverrides,
     report: &mut IngestReport,
 ) -> Result<(), String> {
     for source in Source::ALL {
-        if let Err(error) = ingest_source(conn, home, source, report) {
+        if let Err(error) = ingest_source(conn, home, overrides, source, report) {
             if error.starts_with("扫描目录") {
-                let root = source_root(home, source);
-                record_failure(report, source, &root.to_string_lossy(), &error);
+                let dirs = source_scan_dirs_with(overrides, home, source);
+                let path = dirs
+                    .iter()
+                    .map(|dir| dir.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                record_failure(report, source, &path, &error);
                 continue;
             }
             return Err(error);
         }
     }
     Ok(())
-}
-
-fn source_root(home: &Path, source: Source) -> PathBuf {
-    match source {
-        Source::Codex => home.join(".codex/sessions"),
-        Source::Claude => home.join(".claude/projects"),
-        Source::Pi => home.join(".pi/agent/sessions"),
-        Source::Opencode => home.join(".local/share/opencode/opencode.db"),
-        Source::Kimi => home.join(".kimi/sessions"),
-        Source::Dsh => home.join(".dsh/sessions"),
-        Source::Gemini => home.join(".gemini/tmp"),
-        Source::Grok => home.join(".grok/sessions"),
-        Source::Qwen => home.join(".qwen/tmp"),
-        Source::Factory => home.join(".factory/sessions"),
-        Source::CursorAgent => home.join(".cursor-agent-usage"),
-    }
 }
 
 fn source_coverage(source: Source) -> &'static str {
@@ -137,73 +258,60 @@ fn source_coverage(source: Source) -> &'static str {
 fn ingest_source(
     conn: &Connection,
     home: &Path,
+    overrides: &PathOverrides,
     source: Source,
     report: &mut IngestReport,
 ) -> Result<(), String> {
+    let dirs = source_scan_dirs_with(overrides, home, source);
     match source {
-        Source::Codex => ingest_jsonl_tree(
-            conn,
-            source,
-            &home.join(".codex/sessions"),
-            "jsonl",
-            report,
-            |content, path| Ok(codex::parse_codex_jsonl(content, path)),
-        ),
-        Source::Claude => ingest_jsonl_tree(
-            conn,
-            source,
-            &home.join(".claude/projects"),
-            "jsonl",
-            report,
-            |content, path| Ok(claude::parse_claude_jsonl(content, path)),
-        ),
-        Source::Pi => ingest_jsonl_tree(
-            conn,
-            source,
-            &home.join(".pi/agent/sessions"),
-            "jsonl",
-            report,
-            |content, path| Ok(pi::parse_pi_jsonl(content, path)),
-        ),
-        Source::Kimi => ingest_kimi(conn, &home.join(".kimi"), report),
-        Source::Dsh => ingest_dsh(conn, &home.join(".dsh/sessions"), report),
-        Source::Gemini => ingest_gemini(conn, &home.join(".gemini/tmp"), report),
-        Source::Grok => ingest_grok(conn, &home.join(".grok/sessions"), report),
-        Source::Qwen => ingest_qwen(conn, &home.join(".qwen/tmp"), report),
-        Source::Factory => ingest_factory(conn, &home.join(".factory/sessions"), report),
-        Source::CursorAgent => ingest_jsonl_tree(
-            conn,
-            source,
-            &home.join(".cursor-agent-usage"),
-            "jsonl",
-            report,
-            |content, path| Ok(cursor_agent::parse_cursor_agent_jsonl(content, path)),
-        ),
-        Source::Opencode => ingest_opencode(
-            conn,
-            &home.join(".local/share/opencode/opencode.db"),
-            report,
-        ),
+        Source::Codex => {
+            ingest_jsonl_tree(conn, source, &dirs, "jsonl", report, |content, path| {
+                Ok(codex::parse_codex_jsonl(content, path))
+            })
+        }
+        Source::Claude => {
+            ingest_jsonl_tree(conn, source, &dirs, "jsonl", report, |content, path| {
+                Ok(claude::parse_claude_jsonl(content, path))
+            })
+        }
+        Source::Pi => ingest_jsonl_tree(conn, source, &dirs, "jsonl", report, |content, path| {
+            Ok(pi::parse_pi_jsonl(content, path))
+        }),
+        Source::Kimi => ingest_kimi(conn, &dirs, report),
+        Source::Dsh => ingest_dsh(conn, &dirs, report),
+        Source::Gemini => ingest_gemini(conn, &dirs, report),
+        Source::Grok => ingest_grok(conn, &dirs, report),
+        Source::Qwen => ingest_qwen(conn, &dirs, report),
+        Source::Factory => ingest_factory(conn, &dirs, report),
+        Source::CursorAgent => {
+            ingest_jsonl_tree(conn, source, &dirs, "jsonl", report, |content, path| {
+                Ok(cursor_agent::parse_cursor_agent_jsonl(content, path))
+            })
+        }
+        Source::Opencode => ingest_opencode(conn, &dirs, report),
     }
 }
 
+/// `roots` 里的每一项都是一个可以直接遍历的扫描目录（叶子目录，已经拼接好子路径）。
 fn ingest_jsonl_tree(
     conn: &Connection,
     source: Source,
-    root: &Path,
+    roots: &[PathBuf],
     ext: &str,
     report: &mut IngestReport,
     parse: impl Fn(&str, &str) -> Result<Vec<UsageRecord>, String>,
 ) -> Result<(), String> {
-    set_detected(report, source, root.exists());
+    set_detected(report, source, roots.iter().any(|root| root.exists()));
     let mut seen = BTreeSet::new();
-    for path in walk_files(root, ext)? {
-        seen.insert(path.to_string_lossy().to_string());
-        ingest_one(conn, source, &path, "", report, |bytes, loc| {
-            let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
-            validate_jsonl(&content)?;
-            parse(&content, loc)
-        })?;
+    for root in roots {
+        for path in walk_files(root, ext)? {
+            seen.insert(path.to_string_lossy().to_string());
+            ingest_one(conn, source, &path, "", report, |bytes, loc| {
+                let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
+                validate_jsonl(&content)?;
+                parse(&content, loc)
+            })?;
+        }
     }
     reconcile_source(conn, source, &seen, report)
 }
@@ -304,53 +412,64 @@ fn validate_jsonl(content: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn ingest_kimi(conn: &Connection, root: &Path, report: &mut IngestReport) -> Result<(), String> {
+/// `roots` 里的每一项都是一个 Kimi 工具根目录（下面挂 `sessions/` 和 `kimi.json`）。
+fn ingest_kimi(
+    conn: &Connection,
+    roots: &[PathBuf],
+    report: &mut IngestReport,
+) -> Result<(), String> {
     let source = Source::Kimi;
-    let sessions = root.join("sessions");
-    set_detected(report, source, sessions.exists());
-    let sidecar = root.join("kimi.json");
-    let fingerprint = content_fingerprint(&sidecar);
-    let projects = match kimi_projects(root) {
-        Ok(projects) => projects,
-        Err(error) => {
-            record_failure(
-                report,
-                source,
-                &sidecar.to_string_lossy(),
-                &format!("Kimi 项目映射无效：{error}"),
-            );
-            return Ok(());
-        }
-    };
+    set_detected(
+        report,
+        source,
+        roots.iter().any(|root| root.join("sessions").exists()),
+    );
     let mut seen = BTreeSet::new();
-    for path in walk_files(&sessions, "jsonl")? {
-        if path.file_name().and_then(|name| name.to_str()) != Some("wire.jsonl") {
-            continue;
+    for root in roots {
+        let sessions = root.join("sessions");
+        let sidecar = root.join("kimi.json");
+        let fingerprint = content_fingerprint(&sidecar);
+        let projects = match kimi_projects(root) {
+            Ok(projects) => projects,
+            Err(error) => {
+                record_failure(
+                    report,
+                    source,
+                    &sidecar.to_string_lossy(),
+                    &format!("Kimi 项目映射无效：{error}"),
+                );
+                continue;
+            }
+        };
+        for path in walk_files(&sessions, "jsonl")? {
+            if path.file_name().and_then(|name| name.to_str()) != Some("wire.jsonl") {
+                continue;
+            }
+            seen.insert(path.to_string_lossy().to_string());
+            let session_id = path
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+                .to_string();
+            let project = projects
+                .iter()
+                .find(|(id, _)| id == &session_id)
+                .map(|(_, project)| project.clone())
+                .unwrap_or_else(|| {
+                    path.parent()
+                        .and_then(|parent| parent.parent())
+                        .and_then(|parent| parent.file_name())
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("")
+                        .to_string()
+                });
+            ingest_one(conn, source, &path, &fingerprint, report, |bytes, loc| {
+                let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
+                validate_jsonl(&content)?;
+                Ok(kimi::parse_kimi_wire(&content, loc, &project))
+            })?;
         }
-        seen.insert(path.to_string_lossy().to_string());
-        let session_id = path
-            .parent()
-            .and_then(|parent| parent.file_name())
-            .and_then(|name| name.to_str())
-            .unwrap_or("")
-            .to_string();
-        let project = projects
-            .iter()
-            .find(|(id, _)| id == &session_id)
-            .map(|(_, project)| project.clone())
-            .unwrap_or_else(|| {
-                path.parent()
-                    .and_then(|parent| parent.parent())
-                    .and_then(|parent| parent.file_name())
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("")
-                    .to_string()
-            });
-        ingest_one(conn, source, &path, &fingerprint, report, |bytes, loc| {
-            let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
-            validate_jsonl(&content)?;
-            Ok(kimi::parse_kimi_wire(&content, loc, &project))
-        })?;
     }
     reconcile_source(conn, source, &seen, report)
 }
@@ -380,132 +499,166 @@ fn kimi_projects(root: &Path) -> Result<Vec<(String, String)>, String> {
         .unwrap_or_default())
 }
 
-fn ingest_dsh(conn: &Connection, root: &Path, report: &mut IngestReport) -> Result<(), String> {
+fn ingest_dsh(
+    conn: &Connection,
+    roots: &[PathBuf],
+    report: &mut IngestReport,
+) -> Result<(), String> {
     let source = Source::Dsh;
-    set_detected(report, source, root.exists());
+    set_detected(report, source, roots.iter().any(|root| root.exists()));
     let mut seen = BTreeSet::new();
-    for path in walk_suffix(root, "session.jsonl.zstd")? {
-        seen.insert(path.to_string_lossy().to_string());
-        ingest_one(conn, source, &path, "", report, dsh::parse_dsh_zstd)?;
+    for root in roots {
+        for path in walk_suffix(root, "session.jsonl.zstd")? {
+            seen.insert(path.to_string_lossy().to_string());
+            ingest_one(conn, source, &path, "", report, dsh::parse_dsh_zstd)?;
+        }
     }
     reconcile_source(conn, source, &seen, report)
 }
 
-fn ingest_gemini(conn: &Connection, root: &Path, report: &mut IngestReport) -> Result<(), String> {
+fn ingest_gemini(
+    conn: &Connection,
+    roots: &[PathBuf],
+    report: &mut IngestReport,
+) -> Result<(), String> {
     let source = Source::Gemini;
-    set_detected(report, source, root.exists());
+    set_detected(report, source, roots.iter().any(|root| root.exists()));
     let mut seen = BTreeSet::new();
-    for path in walk_files(root, "json")? {
-        if !path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("")
-            .starts_with("session-")
-        {
-            continue;
-        }
-        seen.insert(path.to_string_lossy().to_string());
-        ingest_one(conn, source, &path, "", report, |bytes, loc| {
-            let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
-            serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?;
-            Ok(gemini::parse_gemini_session(&content, loc))
-        })?;
-    }
-    reconcile_source(conn, source, &seen, report)
-}
-
-fn ingest_grok(conn: &Connection, root: &Path, report: &mut IngestReport) -> Result<(), String> {
-    let source = Source::Grok;
-    set_detected(report, source, root.exists());
-    let mut seen = BTreeSet::new();
-    for path in walk_files(root, "jsonl")? {
-        if path.file_name().and_then(|name| name.to_str()) != Some("updates.jsonl") {
-            continue;
-        }
-        seen.insert(path.to_string_lossy().to_string());
-        let summary_path = path
-            .parent()
-            .map(|parent| parent.join("summary.json"))
-            .unwrap_or_default();
-        let fingerprint = content_fingerprint(&summary_path);
-        let summary = if summary_path.exists() {
-            match fs::read_to_string(&summary_path)
-                .map_err(|error| error.to_string())
-                .and_then(|text| {
-                    serde_json::from_str::<serde_json::Value>(&text)
-                        .map_err(|error| error.to_string())
-                }) {
-                Ok(summary) => Some(summary),
-                Err(error) => {
-                    record_failure(
-                        report,
-                        source,
-                        &summary_path.to_string_lossy(),
-                        &format!("Grok 模型摘要无效：{error}"),
-                    );
-                    continue;
-                }
+    for root in roots {
+        for path in walk_files(root, "json")? {
+            if !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+                .starts_with("session-")
+            {
+                continue;
             }
-        } else {
-            None
-        };
-        let model = summary
-            .as_ref()
-            .and_then(|value| value.get("current_model_id"))
-            .and_then(|value| value.as_str())
-            .unwrap_or("")
-            .to_string();
-        ingest_one(conn, source, &path, &fingerprint, report, |bytes, loc| {
-            let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
-            validate_jsonl(&content)?;
-            Ok(grok::parse_grok_updates(&content, loc, &model))
-        })?;
-    }
-    reconcile_source(conn, source, &seen, report)
-}
-
-fn ingest_qwen(conn: &Connection, root: &Path, report: &mut IngestReport) -> Result<(), String> {
-    let source = Source::Qwen;
-    set_detected(report, source, root.exists());
-    let mut seen = BTreeSet::new();
-    for path in walk_files(root, "json")? {
-        if path.file_name().and_then(|name| name.to_str()) != Some("logs.json") {
-            continue;
+            seen.insert(path.to_string_lossy().to_string());
+            ingest_one(conn, source, &path, "", report, |bytes, loc| {
+                let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
+                serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?;
+                Ok(gemini::parse_gemini_session(&content, loc))
+            })?;
         }
-        seen.insert(path.to_string_lossy().to_string());
-        ingest_one(conn, source, &path, "", report, |bytes, loc| {
-            let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
-            serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?;
-            Ok(qwen::parse_qwen_session(&content, loc))
-        })?;
     }
     reconcile_source(conn, source, &seen, report)
 }
 
-fn ingest_factory(conn: &Connection, root: &Path, report: &mut IngestReport) -> Result<(), String> {
-    let source = Source::Factory;
-    set_detected(report, source, root.exists());
+fn ingest_grok(
+    conn: &Connection,
+    roots: &[PathBuf],
+    report: &mut IngestReport,
+) -> Result<(), String> {
+    let source = Source::Grok;
+    set_detected(report, source, roots.iter().any(|root| root.exists()));
     let mut seen = BTreeSet::new();
-    for path in walk_suffix(root, ".settings.json")? {
-        seen.insert(path.to_string_lossy().to_string());
-        ingest_one(conn, source, &path, "", report, |bytes, loc| {
-            let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
-            serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?;
-            Ok(factory::parse_factory_settings(&content, loc))
-        })?;
+    for root in roots {
+        for path in walk_files(root, "jsonl")? {
+            if path.file_name().and_then(|name| name.to_str()) != Some("updates.jsonl") {
+                continue;
+            }
+            seen.insert(path.to_string_lossy().to_string());
+            let summary_path = path
+                .parent()
+                .map(|parent| parent.join("summary.json"))
+                .unwrap_or_default();
+            let fingerprint = content_fingerprint(&summary_path);
+            let summary = if summary_path.exists() {
+                match fs::read_to_string(&summary_path)
+                    .map_err(|error| error.to_string())
+                    .and_then(|text| {
+                        serde_json::from_str::<serde_json::Value>(&text)
+                            .map_err(|error| error.to_string())
+                    }) {
+                    Ok(summary) => Some(summary),
+                    Err(error) => {
+                        record_failure(
+                            report,
+                            source,
+                            &summary_path.to_string_lossy(),
+                            &format!("Grok 模型摘要无效：{error}"),
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+            let model = summary
+                .as_ref()
+                .and_then(|value| value.get("current_model_id"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("")
+                .to_string();
+            ingest_one(conn, source, &path, &fingerprint, report, |bytes, loc| {
+                let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
+                validate_jsonl(&content)?;
+                Ok(grok::parse_grok_updates(&content, loc, &model))
+            })?;
+        }
     }
     reconcile_source(conn, source, &seen, report)
 }
 
+fn ingest_qwen(
+    conn: &Connection,
+    roots: &[PathBuf],
+    report: &mut IngestReport,
+) -> Result<(), String> {
+    let source = Source::Qwen;
+    set_detected(report, source, roots.iter().any(|root| root.exists()));
+    let mut seen = BTreeSet::new();
+    for root in roots {
+        for path in walk_files(root, "json")? {
+            if path.file_name().and_then(|name| name.to_str()) != Some("logs.json") {
+                continue;
+            }
+            seen.insert(path.to_string_lossy().to_string());
+            ingest_one(conn, source, &path, "", report, |bytes, loc| {
+                let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
+                serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?;
+                Ok(qwen::parse_qwen_session(&content, loc))
+            })?;
+        }
+    }
+    reconcile_source(conn, source, &seen, report)
+}
+
+fn ingest_factory(
+    conn: &Connection,
+    roots: &[PathBuf],
+    report: &mut IngestReport,
+) -> Result<(), String> {
+    let source = Source::Factory;
+    set_detected(report, source, roots.iter().any(|root| root.exists()));
+    let mut seen = BTreeSet::new();
+    for root in roots {
+        for path in walk_suffix(root, ".settings.json")? {
+            seen.insert(path.to_string_lossy().to_string());
+            ingest_one(conn, source, &path, "", report, |bytes, loc| {
+                let content = String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string())?;
+                serde_json::from_str::<serde_json::Value>(&content).map_err(|e| e.to_string())?;
+                Ok(factory::parse_factory_settings(&content, loc))
+            })?;
+        }
+    }
+    reconcile_source(conn, source, &seen, report)
+}
+
+/// `db_paths` 是每个候选 OpenCode 数据目录下的 `opencode.db` 文件本身（叶子文件路径）。
 fn ingest_opencode(
     conn: &Connection,
-    db_path: &Path,
+    db_paths: &[PathBuf],
     report: &mut IngestReport,
 ) -> Result<(), String> {
     let source = Source::Opencode;
-    set_detected(report, source, db_path.exists());
+    set_detected(report, source, db_paths.iter().any(|path| path.exists()));
     let mut seen = BTreeSet::new();
-    if db_path.exists() {
+    for db_path in db_paths {
+        if !db_path.exists() {
+            continue;
+        }
         seen.insert(db_path.to_string_lossy().to_string());
         let wal_path = PathBuf::from(format!("{}-wal", db_path.to_string_lossy()));
         let fingerprint = metadata_fingerprint(&wal_path);

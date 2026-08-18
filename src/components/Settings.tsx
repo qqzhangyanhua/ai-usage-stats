@@ -54,6 +54,8 @@ export function Settings({
             <h2>数据源健康</h2>
             <p className="panel-note">
               只展示扫描状态和用量元数据，不读取或保存会话正文。关闭窗口后应用会留在菜单栏，显示今日花费。
+              安装位置非默认路径时，可以用环境变量整体覆盖扫描目录（如 <code>CODEX_HOME</code>、
+              <code>CLAUDE_CONFIG_DIR</code>，逗号分隔可指定多个目录），重启应用后生效。
               源文件被工具自身清理后，对应记录会转为「已归档」但仍计入统计，不会静默消失。
             </p>
           </div>
