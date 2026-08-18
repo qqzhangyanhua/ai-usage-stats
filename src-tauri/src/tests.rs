@@ -1,4 +1,6 @@
-use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
+use crate::adapters::cursor::{
+    parse_cursor_commits, summarize_code_volume, with_cost_roi, CursorCommitRow,
+};
 use crate::adapters::cursor_account;
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
 use crate::adapters::{
@@ -716,6 +718,35 @@ fn cursor_code_volume_stays_outside_usage_records() {
     let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
     assert_eq!(dto.total_tokens, 450);
     assert_eq!(stored.len(), 3);
+}
+
+#[test]
+fn with_cost_roi_derives_cost_per_thousand_ai_lines() {
+    let summary = summarize_code_volume(&parse_cursor_commits(&[CursorCommitRow {
+        commit_hash: "abc".into(),
+        branch: "main".into(),
+        scored_at_ms: 1,
+        lines_added: 4000,
+        composer_lines_added: 2000,
+        human_lines_added: 2000,
+        ai_percentage: None,
+    }]));
+
+    let priced = with_cost_roi(summary.clone(), Some(30.0), false);
+    assert_eq!(priced.total_cost, Some(30.0));
+    assert!(!priced.cost_unpriced);
+    // 2000 行 AI 代码花了 $30，即每千行 $15。
+    assert!((priced.cost_per_thousand_ai_lines.unwrap() - 15.0).abs() < 1e-9);
+
+    // 未配置任何单价时 cost 为 None，ROI 也应为 None，而不是被当成 0 处理。
+    let unpriced = with_cost_roi(summary.clone(), None, true);
+    assert_eq!(unpriced.cost_per_thousand_ai_lines, None);
+    assert!(unpriced.cost_unpriced);
+
+    // 没有任何 AI 生成行时分母为 0，即使有费用也不应该算出 ROI。
+    let no_lines = summarize_code_volume(&[]);
+    let no_lines_priced = with_cost_roi(no_lines, Some(10.0), false);
+    assert_eq!(no_lines_priced.cost_per_thousand_ai_lines, None);
 }
 
 #[test]
@@ -3588,6 +3619,76 @@ fn budget_config_round_trips_through_disk() {
     };
     budget::save_config(&path, &config).unwrap();
     assert_eq!(budget::load_config(&path), config);
+}
+
+#[test]
+fn should_check_budget_skips_missing_or_non_positive_limits() {
+    assert!(!budget::should_check_budget(&BudgetConfig {
+        monthly_usd: None
+    }));
+    assert!(!budget::should_check_budget(&BudgetConfig {
+        monthly_usd: Some(0.0),
+    }));
+    assert!(!budget::should_check_budget(&BudgetConfig {
+        monthly_usd: Some(-10.0),
+    }));
+    assert!(budget::should_check_budget(&BudgetConfig {
+        monthly_usd: Some(20.0),
+    }));
+}
+
+#[test]
+fn prepare_notifications_emits_each_threshold_once_in_the_same_month() {
+    let empty = budget::NotifyState::default();
+    let (after_50, crossed) = budget::prepare_notifications(empty, "2026-08", 50.0);
+    assert_eq!(crossed, vec![50]);
+    assert_eq!(after_50.month, "2026-08");
+    assert_eq!(after_50.notified, vec![50]);
+
+    let (after_repeat, crossed) = budget::prepare_notifications(after_50.clone(), "2026-08", 55.0);
+    assert!(crossed.is_empty());
+    assert_eq!(after_repeat, after_50);
+
+    let (after_80, crossed) = budget::prepare_notifications(after_50, "2026-08", 80.0);
+    assert_eq!(crossed, vec![80]);
+    assert_eq!(after_80.notified, vec![50, 80]);
+
+    let (after_100, crossed) = budget::prepare_notifications(after_80, "2026-08", 120.0);
+    assert_eq!(crossed, vec![100]);
+    assert_eq!(after_100.notified, vec![50, 80, 100]);
+
+    let (after_all, crossed) = budget::prepare_notifications(after_100.clone(), "2026-08", 150.0);
+    assert!(crossed.is_empty());
+    assert_eq!(after_all, after_100);
+}
+
+#[test]
+fn prepare_notifications_resets_notified_thresholds_on_month_change() {
+    let last_month = budget::NotifyState {
+        month: "2026-07".into(),
+        notified: vec![50, 80, 100],
+    };
+    let (next, crossed) = budget::prepare_notifications(last_month, "2026-08", 52.0);
+    assert_eq!(crossed, vec![50]);
+    assert_eq!(next.month, "2026-08");
+    assert_eq!(next.notified, vec![50]);
+}
+
+#[test]
+fn notify_state_round_trips_through_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("budget-notify.json");
+    assert_eq!(
+        budget::load_notify_state(&path),
+        budget::NotifyState::default()
+    );
+
+    let state = budget::NotifyState {
+        month: "2026-08".into(),
+        notified: vec![50, 80],
+    };
+    budget::save_notify_state(&path, &state).unwrap();
+    assert_eq!(budget::load_notify_state(&path), state);
 }
 
 // ---------- Cursor 账号用量 ----------
