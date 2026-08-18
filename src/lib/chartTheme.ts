@@ -2,6 +2,7 @@ import type { EChartsOption } from "echarts";
 import type {
   ApplicationEfficiency,
   ApplicationTrendPoint,
+  CodeVolumeDailyPoint,
   CursorSessionDailyPoint,
   NamedAmount,
   SeriesPoint,
@@ -222,6 +223,82 @@ export function cursorSessionDailyOption(
         data: points.map((point) => point.turn_count),
         lineStyle: { width: 2.4, color: p.output },
         itemStyle: { color: p.output },
+      },
+    ],
+  };
+}
+
+export function codeVolumeDailyOption(
+  points: CodeVolumeDailyPoint[],
+  theme: ChartTheme = "dark",
+): EChartsOption {
+  const p = paletteFor(theme);
+  return {
+    tooltip: {
+      ...tooltipBase(theme),
+      trigger: "axis",
+    },
+    legend: {
+      data: ["新增行", "删除行", "AI 生成行"],
+      top: 0,
+      right: 32,
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: p.text, fontSize: 11 },
+    },
+    grid: { left: 8, right: 8, top: 30, bottom: 8, containLabel: true },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: points.map((point) => formatBucket(point.bucket)),
+      axisLine: { lineStyle: { color: p.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: p.text, fontSize: 11 },
+    },
+    yAxis: {
+      type: "value",
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: p.split } },
+      axisLabel: {
+        color: p.text,
+        fontSize: 11,
+        formatter: (v: number) => formatCompact(v),
+      },
+    },
+    series: [
+      {
+        name: "新增行",
+        type: "line",
+        smooth: 0.35,
+        symbol: "circle",
+        symbolSize: 7,
+        showSymbol: true,
+        data: points.map((point) => point.lines_added),
+        lineStyle: { width: 2.4, color: p.input },
+        itemStyle: { color: p.input },
+      },
+      {
+        name: "删除行",
+        type: "line",
+        smooth: 0.35,
+        symbol: "circle",
+        symbolSize: 7,
+        showSymbol: true,
+        data: points.map((point) => point.lines_deleted),
+        lineStyle: { width: 2.4, color: p.output },
+        itemStyle: { color: p.output },
+      },
+      {
+        name: "AI 生成行",
+        type: "line",
+        smooth: 0.35,
+        symbol: "circle",
+        symbolSize: 7,
+        showSymbol: true,
+        data: points.map((point) => point.composer_lines_added),
+        lineStyle: { width: 2.4, color: "#f59e0b" },
+        itemStyle: { color: "#f59e0b" },
       },
     ],
   };

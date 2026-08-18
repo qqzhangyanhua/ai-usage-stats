@@ -8,8 +8,10 @@ import {
   formatCompact,
   formatCost,
   formatDelta,
+  formatDuration,
   formatHoursMinutes,
   formatRangeLabel,
+  formatRatio,
   formatTokens,
   formatUsd,
   formatWindowClock,
@@ -166,6 +168,27 @@ describe("formatHoursMinutes", () => {
 
   it("clamps negative input to 0", () => {
     expect(formatHoursMinutes(-10)).toBe("0m");
+  });
+});
+
+describe("formatDuration", () => {
+  it("returns null when either side is missing or not later", () => {
+    expect(formatDuration(null, "2026-08-18T10:00:00Z")).toBeNull();
+    expect(formatDuration("2026-08-18T10:00:00Z", "2026-08-18T10:00:00Z")).toBeNull();
+  });
+
+  it("formats a positive span", () => {
+    expect(formatDuration("2026-08-18T10:00:00Z", "2026-08-18T12:05:00Z")).toBe("2h 5m");
+  });
+});
+
+describe("formatRatio", () => {
+  it("shows a dash for null", () => {
+    expect(formatRatio(null)).toBe("—");
+  });
+
+  it("keeps one decimal by default", () => {
+    expect(formatRatio(2.56)).toBe("2.6");
   });
 });
 

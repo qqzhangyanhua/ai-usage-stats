@@ -6,15 +6,21 @@ import {
   modelPalette,
 } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
-import { cursorSessionProjectTable, cursorSessionToolTable } from "../lib/exportRows";
+import {
+  cursorSessionProjectTable,
+  cursorSessionToolGroupTable,
+  cursorSessionToolTable,
+} from "../lib/exportRows";
 import {
   formatClock,
   formatCompact,
+  formatRatio,
   formatTokens,
   projectLabel,
   relativeTime,
 } from "../lib/format";
 import type { CursorSessionSummaryDto } from "../types";
+import { CursorSessionDetail } from "./CursorSessionDetail";
 import { CursorSessionTable } from "./CursorSessionTable";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
@@ -23,16 +29,34 @@ import { ExportableChart } from "./ExportableChart";
 import { KpiCard, LegendRow } from "./Kpi";
 import { LoadingOverlay } from "./LoadingOverlay";
 
+const TOOL_GROUP_LABELS: Record<string, string> = {
+  read: "读取",
+  write: "写入",
+  shell: "命令",
+  web: "网络",
+  agent: "委派",
+  other: "其他",
+};
+
 function emptySummary(): CursorSessionSummaryDto {
   return {
     as_of: null,
     session_count: 0,
     turn_count: 0,
+    aborted_count: 0,
+    user_prompt_count: 0,
+    subagent_count: 0,
     error_rate: null,
+    average_turns: null,
+    average_tools_per_turn: null,
+    write_read_ratio: null,
     active_project_count: 0,
     by_project: [],
     by_model: [],
+    by_source: [],
+    by_extension: [],
     top_tools: [],
+    tool_groups: [],
     daily: [],
   };
 }
@@ -52,6 +76,7 @@ export function CursorSessionPanel({
 }) {
   const data = summary ?? emptySummary();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedSourceFile, setSelectedSourceFile] = useState<string | null>(null);
 
   const trendOption = useMemo(
     () => cursorSessionDailyOption(data.daily, theme),
@@ -81,7 +106,16 @@ export function CursorSessionPanel({
     return breakdownBarOption(labels, values, theme);
   }, [data.top_tools, theme]);
 
+  const toolGroupOption = useMemo(() => {
+    const labels = data.tool_groups
+      .map((row) => TOOL_GROUP_LABELS[row.name] ?? row.name)
+      .reverse();
+    const values = data.tool_groups.map((row) => row.call_count).reverse();
+    return breakdownBarOption(labels, values, theme);
+  }, [data.tool_groups, theme]);
+
   const modelTotal = data.by_model.reduce((sum, row) => sum + row.session_count, 0);
+  const sourceTotal = data.by_source.reduce((sum, row) => sum + row.session_count, 0);
 
   if (!summary && loading) {
     return (
@@ -120,20 +154,61 @@ export function CursorSessionPanel({
           value={data.error_rate == null ? "—" : `${(data.error_rate * 100).toFixed(1)}%`}
         />
         <KpiCard
-          icon="project"
-          tone="blue"
-          label="活跃项目"
-          value={formatTokens(data.active_project_count)}
+          icon="alertTriangle"
+          tone="orange"
+          label="中止"
+          value={formatTokens(data.aborted_count)}
         />
       </section>
+      <section className="kpi-row">
+        <KpiCard
+          icon="chat"
+          tone="blue"
+          label="场均轮次"
+          value={data.average_turns == null ? "—" : formatRatio(data.average_turns)}
+        />
+        <KpiCard
+          icon="source"
+          tone="cyan"
+          label="工具/轮"
+          value={
+            data.average_tools_per_turn == null ? "—" : formatRatio(data.average_tools_per_turn)
+          }
+        />
+        <KpiCard
+          icon="inbox"
+          tone="purple"
+          label="提问数"
+          value={formatTokens(data.user_prompt_count)}
+        />
+        <KpiCard
+          icon="project"
+          tone="blue"
+          label="读写比"
+          value={data.write_read_ratio == null ? "—" : formatRatio(data.write_read_ratio)}
+        />
+      </section>
+      <p className="note">
+        子代理 transcript 并入父会话，不单独计数。当前合计 {formatTokens(data.subagent_count)}{" "}
+        个子代理、{formatTokens(data.active_project_count)} 个活跃项目。
+      </p>
 
       <CursorSessionTable
         revision={revision}
         projectNames={data.by_project.map((row) => row.name)}
         selectedProject={selectedProject}
+        selectedSourceFile={selectedSourceFile}
         onSelectProject={setSelectedProject}
+        onSelectSession={(sourceFile) =>
+          setSelectedSourceFile((current) => (current === sourceFile ? null : sourceFile))
+        }
         onError={onError}
       />
+      {selectedSourceFile ? (
+        <CursorSessionDetail sourceFile={selectedSourceFile} onError={onError} />
+      ) : (
+        <p className="note">点击上方会话行查看工具、读写路径和哈希文件。</p>
+      )}
 
       <section className="panel partition">
         <div className="panel-head">
@@ -164,6 +239,23 @@ export function CursorSessionPanel({
                     value={`${formatTokens(row.session_count)} 会话`}
                   />
                 ))}
+                {data.by_source.length > 0 ? (
+                  <p className="note">
+                    来源{" "}
+                    {data.by_source
+                      .map((row) => `${row.name} ${formatTokens(row.session_count)}`)
+                      .join(" · ")}
+                    {sourceTotal > 0 ? `（${formatTokens(sourceTotal)}）` : ""}
+                  </p>
+                ) : null}
+                {data.by_extension.length > 0 ? (
+                  <p className="note">
+                    扩展名{" "}
+                    {data.by_extension
+                      .map((row) => `${row.name} ${formatTokens(row.file_count)}`)
+                      .join(" · ")}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -173,7 +265,7 @@ export function CursorSessionPanel({
 
         <section className="panel partition">
           <div className="panel-head">
-            <h2>工具调用 Top N</h2>
+            <h2>工具调用</h2>
             <ExportButton
               filename="Cursor会话工具"
               headers={cursorSessionToolTable(data).headers}
@@ -189,6 +281,23 @@ export function CursorSessionPanel({
           ) : (
             <p className="note">暂无工具调用记录。</p>
           )}
+          {data.tool_groups.length > 0 ? (
+            <>
+              <div className="panel-head">
+                <h3>工具分类</h3>
+                <ExportButton
+                  filename="Cursor会话工具分类"
+                  headers={cursorSessionToolGroupTable(data).headers}
+                  rows={cursorSessionToolGroupTable(data).rows}
+                />
+              </div>
+              <ExportableChart
+                option={toolGroupOption}
+                filename="cursor-session-tool-groups"
+                style={{ height: Math.max(180, data.tool_groups.length * 36) }}
+              />
+            </>
+          ) : null}
         </section>
       </div>
 

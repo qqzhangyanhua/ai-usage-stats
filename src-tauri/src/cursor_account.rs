@@ -143,6 +143,33 @@ pub fn resolve_session_token(token: Option<String>) -> Result<String, String> {
     }
 }
 
+pub fn events_page(
+    conn: &Connection,
+    query: &crate::domain::CursorAccountEventQuery,
+) -> Result<crate::domain::CursorAccountEventPage, String> {
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 20_000);
+    let sort_dir = query.sort_dir.as_deref().unwrap_or("desc");
+    let (total, events) = store::cursor_account_events_page(conn, page, page_size, sort_dir)?;
+    let rows = events
+        .into_iter()
+        .map(|event| {
+            let total_tokens = event.total_tokens();
+            crate::domain::CursorAccountEventRow {
+                occurred_at: event.occurred_at,
+                model: event.model,
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
+                cache_read_tokens: event.cache_read_tokens,
+                cache_creation_tokens: event.cache_creation_tokens,
+                total_tokens,
+                is_headless: event.is_headless,
+            }
+        })
+        .collect();
+    Ok(crate::domain::CursorAccountEventPage { rows, total })
+}
+
 pub fn load_summary(conn: &Connection) -> Result<CursorAccountUsageDto, String> {
     let events = store::load_cursor_account_events(conn)?;
     let mut dto = summarize_cursor_usage(&events);

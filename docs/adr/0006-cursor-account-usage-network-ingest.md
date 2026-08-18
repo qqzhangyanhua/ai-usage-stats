@@ -21,3 +21,4 @@ Cursor 的真实 token 用量只存在于云端账号，本机会话文件里没
 - 接口是逆向的、非官方，Cursor 随时可改坏（2026-07-31 已追溯清零 self-serve 费用字段）。失败必须降级为可读中文提示。
 - cookie 会过期，用户需重新粘贴。自动解密本机 Chromium Cookies 不在本次范围。
 - `usage.sqlite` 新增 `cursor_account_usage` / `cursor_account_meta`，可独立清空，不参与 `ADAPTER_VERSION` 对账。
+- 事件表明细只读上述缓存表，分页下发，不重新联网。与本机会话没有关联键。

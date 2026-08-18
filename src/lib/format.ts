@@ -145,6 +145,25 @@ export function formatHoursMinutes(totalMinutes: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+export function formatDuration(from: string | null, to: string | null): string | null {
+  if (!from || !to) {
+    return null;
+  }
+  const start = Date.parse(from);
+  const end = Date.parse(to);
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+    return null;
+  }
+  return formatHoursMinutes((end - start) / 60_000);
+}
+
+export function formatRatio(value: number | null, digits = 1): string {
+  if (value == null || Number.isNaN(value)) {
+    return "—";
+  }
+  return value.toFixed(digits);
+}
+
 export function formatClock(iso: string | null): string {
   if (!iso) {
     return "—";

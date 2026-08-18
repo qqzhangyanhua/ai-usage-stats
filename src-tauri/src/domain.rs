@@ -534,18 +534,48 @@ pub struct CodeVolumeCommit {
     pub commit_hash: String,
     pub branch: String,
     pub scored_at: String,
+    pub commit_message: String,
+    pub lines_added: i64,
+    pub lines_deleted: i64,
+    pub composer_lines_added: i64,
+    pub composer_lines_deleted: i64,
+    pub human_lines_added: i64,
+    pub human_lines_deleted: i64,
+    pub tab_lines_added: i64,
+    pub tab_lines_deleted: i64,
+    pub ai_percentage: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodeVolumeDailyPoint {
+    pub bucket: String,
+    pub lines_added: i64,
+    pub lines_deleted: i64,
+    pub composer_lines_added: i64,
+    pub tab_lines_added: i64,
+    pub human_lines_added: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodeVolumeBranchRow {
+    pub name: String,
+    pub commit_count: i64,
     pub lines_added: i64,
     pub composer_lines_added: i64,
-    pub human_lines_added: i64,
-    pub ai_percentage: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CodeVolumeSummary {
     pub commit_count: i64,
     pub lines_added: i64,
+    pub lines_deleted: i64,
+    pub net_lines: i64,
     pub composer_lines_added: i64,
+    pub composer_lines_deleted: i64,
     pub human_lines_added: i64,
+    pub human_lines_deleted: i64,
+    pub tab_lines_added: i64,
+    pub tab_lines_deleted: i64,
     pub ai_percentage: Option<f64>,
     /// 全部时间、全部来源的消耗记录费用估算；与代码量一样按「至今累计」口径，不受总览筛选影响。
     /// 只用于下面的粗略 ROI 交叉指标，不代表 Cursor 单一来源的花费。
@@ -554,6 +584,33 @@ pub struct CodeVolumeSummary {
     /// = total_cost ÷ (composer_lines_added / 1000)。跨来源粗略口径：分子是全部 AI CLI 的费用，
     /// 分母只是 Cursor 记录到的 AI 生成行数，两者不是同一统计边界，仅供参考，不做精确归因。
     pub cost_per_thousand_ai_lines: Option<f64>,
+    pub daily: Vec<CodeVolumeDailyPoint>,
+    pub by_branch: Vec<CodeVolumeBranchRow>,
+    pub commits: Vec<CodeVolumeCommit>,
+}
+
+impl CodeVolumeSummary {
+    pub fn empty() -> Self {
+        Self {
+            commit_count: 0,
+            lines_added: 0,
+            lines_deleted: 0,
+            net_lines: 0,
+            composer_lines_added: 0,
+            composer_lines_deleted: 0,
+            human_lines_added: 0,
+            human_lines_deleted: 0,
+            tab_lines_added: 0,
+            tab_lines_deleted: 0,
+            ai_percentage: None,
+            total_cost: None,
+            cost_unpriced: false,
+            cost_per_thousand_ai_lines: None,
+            daily: Vec::new(),
+            by_branch: Vec::new(),
+            commits: Vec::new(),
+        }
+    }
 }
 
 /// 单条 Cursor 会话聚合（本机 agent-transcripts，不含正文）。
@@ -565,8 +622,12 @@ pub struct CursorSessionRecord {
     pub success_count: i64,
     pub error_count: i64,
     pub aborted_count: i64,
+    pub user_prompt_count: i64,
+    pub subagent_count: i64,
     pub tool_calls_json: String,
     pub models_json: String,
+    pub sources_json: String,
+    pub extensions_json: String,
     pub first_seen_at: Option<String>,
     pub last_seen_at: Option<String>,
     pub files_touched: i64,
@@ -582,7 +643,10 @@ pub struct CursorSessionListRow {
     pub success_count: i64,
     pub error_count: i64,
     pub aborted_count: i64,
+    pub user_prompt_count: i64,
+    pub subagent_count: i64,
     pub models: Vec<String>,
+    pub sources: Vec<String>,
     pub tool_call_count: i64,
     pub first_seen_at: Option<String>,
     pub last_seen_at: Option<String>,
@@ -619,17 +683,38 @@ pub struct CursorSessionToolRow {
     pub call_count: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionSourceRow {
+    pub name: String,
+    pub session_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionExtensionRow {
+    pub name: String,
+    pub file_count: i64,
+}
+
 /// Cursor 会话汇总：独立维度，不并入本机 token 总量。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CursorSessionSummaryDto {
     pub as_of: Option<String>,
     pub session_count: i64,
     pub turn_count: i64,
+    pub aborted_count: i64,
+    pub user_prompt_count: i64,
+    pub subagent_count: i64,
     pub error_rate: Option<f64>,
+    pub average_turns: Option<f64>,
+    pub average_tools_per_turn: Option<f64>,
+    pub write_read_ratio: Option<f64>,
     pub active_project_count: i64,
     pub by_project: Vec<CursorSessionProjectRow>,
     pub by_model: Vec<CursorSessionModelRow>,
+    pub by_source: Vec<CursorSessionSourceRow>,
+    pub by_extension: Vec<CursorSessionExtensionRow>,
     pub top_tools: Vec<CursorSessionToolRow>,
+    pub tool_groups: Vec<CursorSessionToolRow>,
     pub daily: Vec<CursorSessionDailyPoint>,
 }
 
@@ -639,11 +724,20 @@ impl CursorSessionSummaryDto {
             as_of: None,
             session_count: 0,
             turn_count: 0,
+            aborted_count: 0,
+            user_prompt_count: 0,
+            subagent_count: 0,
             error_rate: None,
+            average_turns: None,
+            average_tools_per_turn: None,
+            write_read_ratio: None,
             active_project_count: 0,
             by_project: Vec::new(),
             by_model: Vec::new(),
+            by_source: Vec::new(),
+            by_extension: Vec::new(),
             top_tools: Vec::new(),
+            tool_groups: Vec::new(),
             daily: Vec::new(),
         }
     }
@@ -671,6 +765,53 @@ pub struct CursorSessionQuery {
 #[serde(rename_all = "camelCase")]
 pub struct CursorSessionPage {
     pub rows: Vec<CursorSessionListRow>,
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionHashFile {
+    pub path: String,
+    pub extension: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionDetailDto {
+    pub session: CursorSessionListRow,
+    pub tools: Vec<CursorSessionToolRow>,
+    pub hash_files: Vec<CursorSessionHashFile>,
+    pub read_paths: Vec<String>,
+    pub write_paths: Vec<String>,
+    pub transcript_missing: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorAccountEventQuery {
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: Option<u32>,
+    #[serde(default)]
+    pub sort_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorAccountEventRow {
+    pub occurred_at: String,
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub total_tokens: i64,
+    pub is_headless: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorAccountEventPage {
+    pub rows: Vec<CursorAccountEventRow>,
     pub total: u32,
 }
 

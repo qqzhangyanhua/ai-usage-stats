@@ -107,8 +107,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             success_count INTEGER NOT NULL,
             error_count INTEGER NOT NULL,
             aborted_count INTEGER NOT NULL,
+            user_prompt_count INTEGER NOT NULL DEFAULT 0,
+            subagent_count INTEGER NOT NULL DEFAULT 0,
             tool_calls_json TEXT NOT NULL,
             models_json TEXT NOT NULL DEFAULT '[]',
+            sources_json TEXT NOT NULL DEFAULT '[]',
+            extensions_json TEXT NOT NULL DEFAULT '{}',
             first_seen_at TEXT,
             last_seen_at TEXT,
             files_touched INTEGER NOT NULL DEFAULT 0
@@ -144,6 +148,30 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     )?;
     // 源文件被工具自身清理后不再物理删除历史记录，只打时间戳归档（ADR 0004）。
     ensure_column(conn, "usage_records", "archived_at", "TEXT")?;
+    ensure_column(
+        conn,
+        "cursor_sessions",
+        "user_prompt_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "cursor_sessions",
+        "subagent_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "cursor_sessions",
+        "sources_json",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )?;
+    ensure_column(
+        conn,
+        "cursor_sessions",
+        "extensions_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )?;
     // 必须放在上面的 ensure_column 之后：老版本缓存库的 ingested_files 表可能还没有
     // source 列，若把这条建索引语句挪进最上面的初始 CREATE TABLE batch，会在旧库上先于
     // ALTER TABLE 执行而报错。
@@ -566,6 +594,51 @@ pub fn load_cursor_account_events(conn: &Connection) -> Result<Vec<CursorUsageEv
         .map_err(|e| e.to_string())
 }
 
+pub fn cursor_account_events_page(
+    conn: &Connection,
+    page: u32,
+    page_size: u32,
+    sort_dir: &str,
+) -> Result<(u32, Vec<crate::domain::CursorUsageEvent>), String> {
+    let total: u32 = conn
+        .query_row("SELECT COUNT(*) FROM cursor_account_usage", [], |row| {
+            row.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    let dir = if sort_dir.eq_ignore_ascii_case("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
+    let offset = (page.saturating_sub(1) as i64) * page_size as i64;
+    let sql = format!(
+        r#"
+        SELECT occurred_at, model, input_tokens, output_tokens,
+               cache_read_tokens, cache_creation_tokens, is_headless
+        FROM cursor_account_usage
+        ORDER BY occurred_at {dir}, model ASC
+        LIMIT ?1 OFFSET ?2
+        "#
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![page_size as i64, offset], |row| {
+            Ok(crate::domain::CursorUsageEvent {
+                occurred_at: row.get(0)?,
+                model: row.get(1)?,
+                input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                cache_read_tokens: row.get(4)?,
+                cache_creation_tokens: row.get(5)?,
+                is_headless: row.get::<_, i64>(6)? != 0,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok((total, rows))
+}
+
 pub fn set_cursor_account_as_of(conn: &Connection, as_of: &str) -> Result<(), String> {
     conn.execute(
         r#"
@@ -658,8 +731,9 @@ pub fn upsert_cursor_session(
         r#"
         INSERT INTO cursor_sessions (
             source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
-            tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+            user_prompt_count, subagent_count, tool_calls_json, models_json, sources_json,
+            extensions_json, first_seen_at, last_seen_at, files_touched
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
         ON CONFLICT(source_file) DO UPDATE SET
             session_id = excluded.session_id,
             project = excluded.project,
@@ -667,8 +741,12 @@ pub fn upsert_cursor_session(
             success_count = excluded.success_count,
             error_count = excluded.error_count,
             aborted_count = excluded.aborted_count,
+            user_prompt_count = excluded.user_prompt_count,
+            subagent_count = excluded.subagent_count,
             tool_calls_json = excluded.tool_calls_json,
             models_json = excluded.models_json,
+            sources_json = excluded.sources_json,
+            extensions_json = excluded.extensions_json,
             first_seen_at = COALESCE(cursor_sessions.first_seen_at, excluded.first_seen_at),
             last_seen_at = excluded.last_seen_at,
             files_touched = excluded.files_touched
@@ -681,8 +759,12 @@ pub fn upsert_cursor_session(
             record.success_count,
             record.error_count,
             record.aborted_count,
+            record.user_prompt_count,
+            record.subagent_count,
             record.tool_calls_json,
             record.models_json,
+            record.sources_json,
+            record.extensions_json,
             record.first_seen_at,
             record.last_seen_at,
             record.files_touched,
@@ -714,7 +796,8 @@ pub fn load_cursor_sessions(conn: &Connection) -> Result<Vec<CursorSessionRecord
         .prepare(
             r#"
             SELECT source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
-                   tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched
+                   user_prompt_count, subagent_count, tool_calls_json, models_json, sources_json,
+                   extensions_json, first_seen_at, last_seen_at, files_touched
             FROM cursor_sessions
             ORDER BY last_seen_at ASC, source_file ASC
             "#,
@@ -730,16 +813,58 @@ pub fn load_cursor_sessions(conn: &Connection) -> Result<Vec<CursorSessionRecord
                 success_count: row.get(4)?,
                 error_count: row.get(5)?,
                 aborted_count: row.get(6)?,
-                tool_calls_json: row.get(7)?,
-                models_json: row.get(8)?,
-                first_seen_at: row.get(9)?,
-                last_seen_at: row.get(10)?,
-                files_touched: row.get(11)?,
+                user_prompt_count: row.get(7)?,
+                subagent_count: row.get(8)?,
+                tool_calls_json: row.get(9)?,
+                models_json: row.get(10)?,
+                sources_json: row.get(11)?,
+                extensions_json: row.get(12)?,
+                first_seen_at: row.get(13)?,
+                last_seen_at: row.get(14)?,
+                files_touched: row.get(15)?,
             })
         })
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+pub fn load_cursor_session(
+    conn: &Connection,
+    source_file: &str,
+) -> Result<Option<CursorSessionRecord>, String> {
+    conn.query_row(
+        r#"
+        SELECT source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
+               user_prompt_count, subagent_count, tool_calls_json, models_json, sources_json,
+               extensions_json, first_seen_at, last_seen_at, files_touched
+        FROM cursor_sessions
+        WHERE source_file = ?1
+        "#,
+        params![source_file],
+        |row| {
+            Ok(CursorSessionRecord {
+                source_file: row.get(0)?,
+                session_id: row.get(1)?,
+                project: row.get(2)?,
+                turn_count: row.get(3)?,
+                success_count: row.get(4)?,
+                error_count: row.get(5)?,
+                aborted_count: row.get(6)?,
+                user_prompt_count: row.get(7)?,
+                subagent_count: row.get(8)?,
+                tool_calls_json: row.get(9)?,
+                models_json: row.get(10)?,
+                sources_json: row.get(11)?,
+                extensions_json: row.get(12)?,
+                first_seen_at: row.get(13)?,
+                last_seen_at: row.get(14)?,
+                files_touched: row.get(15)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }
 
 pub fn reconcile_cursor_sessions(
@@ -763,6 +888,27 @@ pub fn reconcile_cursor_sessions(
             params![path],
         )
         .map_err(|e| e.to_string())?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+pub fn reconcile_cursor_session_files(
+    conn: &Connection,
+    seen_paths: &BTreeSet<String>,
+) -> Result<u64, String> {
+    let cached: Vec<String> = conn
+        .prepare("SELECT path FROM cursor_session_files")
+        .map_err(|e| e.to_string())?
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let mut removed = 0u64;
+    for path in cached {
+        if seen_paths.contains(&path) {
+            continue;
+        }
         conn.execute(
             "DELETE FROM cursor_session_files WHERE path = ?1",
             params![path],
@@ -771,6 +917,31 @@ pub fn reconcile_cursor_sessions(
         removed += 1;
     }
     Ok(removed)
+}
+
+pub const CURSOR_SESSION_SCHEMA_VERSION: &str = "2";
+
+pub fn cursor_session_schema_version(conn: &Connection) -> Result<String, String> {
+    conn.query_row(
+        "SELECT value FROM cursor_session_meta WHERE key = 'schema_version'",
+        [],
+        |row| row.get(0),
+    )
+    .optional()
+    .map(|value| value.unwrap_or_default())
+    .map_err(|e| e.to_string())
+}
+
+pub fn set_cursor_session_schema_version(conn: &Connection, version: &str) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_session_meta(key, value) VALUES('schema_version', ?1)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![version],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn set_cursor_session_as_of(conn: &Connection, as_of: &str) -> Result<(), String> {

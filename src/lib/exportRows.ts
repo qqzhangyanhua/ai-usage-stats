@@ -1,8 +1,11 @@
 import { projectLabel } from "./format";
 import type {
   ApplicationAnalyticsDto,
+  CodeVolumeCommit,
   CodeVolumeSummary,
+  CursorAccountEventRow,
   CursorAccountUsageDto,
+  CursorSessionDetailDto,
   CursorSessionSummaryDto,
 } from "../types";
 
@@ -56,7 +59,10 @@ export function codeVolumeTable(data: CodeVolumeSummary): ExportTable {
     rows: [
       ["提交数", data.commit_count, ""],
       ["新增行", data.lines_added, ""],
+      ["删除行", data.lines_deleted, ""],
+      ["净增行", data.net_lines, ""],
       ["AI 生成行", data.composer_lines_added, ""],
+      ["Tab 行", data.tab_lines_added, ""],
       ["人工编写行", data.human_lines_added, ""],
       ["AI 占比", ratioCell(data.ai_percentage), ""],
       ["全部来源累计费用", costCell(data.total_cost), unpriced],
@@ -95,5 +101,68 @@ export function cursorSessionToolTable(data: CursorSessionSummaryDto): ExportTab
   return {
     headers: ["工具", "调用次数"],
     rows: data.top_tools.map((row) => [row.name, row.call_count]),
+  };
+}
+
+export function cursorSessionToolGroupTable(data: CursorSessionSummaryDto): ExportTable {
+  return {
+    headers: ["分类", "调用次数"],
+    rows: data.tool_groups.map((row) => [row.name, row.call_count]),
+  };
+}
+
+export function cursorSessionDetailToolTable(data: CursorSessionDetailDto): ExportTable {
+  return {
+    headers: ["工具", "调用次数"],
+    rows: data.tools.map((row) => [row.name, row.call_count]),
+  };
+}
+
+export function cursorSessionPathTable(data: CursorSessionDetailDto): ExportTable {
+  return {
+    headers: ["类型", "路径"],
+    rows: [
+      ...data.read_paths.map((path) => ["读", path]),
+      ...data.write_paths.map((path) => ["写", path]),
+    ],
+  };
+}
+
+export function cursorSessionHashFileTable(data: CursorSessionDetailDto): ExportTable {
+  return {
+    headers: ["路径", "扩展名", "来源"],
+    rows: data.hash_files.map((row) => [row.path, row.extension, row.source]),
+  };
+}
+
+export function cursorAccountEventTable(rows: CursorAccountEventRow[]): ExportTable {
+  return {
+    headers: ["时间", "模型", "输入", "输出", "缓存读", "缓存写", "总量", "无头"],
+    rows: rows.map((row) => [
+      row.occurred_at,
+      row.model,
+      row.input_tokens,
+      row.output_tokens,
+      row.cache_read_tokens,
+      row.cache_creation_tokens,
+      row.total_tokens,
+      row.is_headless ? "是" : "",
+    ]),
+  };
+}
+
+export function codeVolumeCommitTable(commits: CodeVolumeCommit[]): ExportTable {
+  return {
+    headers: ["提交", "分支", "说明", "新增", "删除", "AI 行", "Tab 行", "时间"],
+    rows: commits.map((row) => [
+      row.commit_hash,
+      row.branch,
+      row.commit_message,
+      row.lines_added,
+      row.lines_deleted,
+      row.composer_lines_added,
+      row.tab_lines_added,
+      row.scored_at,
+    ]),
   };
 }

@@ -5,6 +5,7 @@ import { areaTrendOption, donutOption, modelSlices } from "../lib/chartTheme";
 import { formatClock, formatCompact, formatTokens, humanStatus } from "../lib/format";
 import { cursorAccountDailyTable, cursorAccountModelTable } from "../lib/exportRows";
 import type { CursorAccountUsageDto } from "../types";
+import { CursorAccountEventTable } from "./CursorAccountEventTable";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
@@ -275,6 +276,10 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
               </div>
             </section>
           </div>
+          <CursorAccountEventTable
+            revision={data.as_of ?? data.event_count}
+            onError={(err) => setError(humanStatus(err))}
+          />
         </>
       )}
     </div>

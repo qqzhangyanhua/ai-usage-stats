@@ -4,7 +4,11 @@ import {
   applicationProjectMatrixTable,
   codeVolumeTable,
   cursorAccountDailyTable,
+  cursorAccountEventTable,
   cursorAccountModelTable,
+  cursorSessionDetailToolTable,
+  cursorSessionHashFileTable,
+  cursorSessionPathTable,
   cursorSessionProjectTable,
   cursorSessionToolTable,
 } from "./exportRows";
@@ -72,17 +76,29 @@ describe("cursor export tables", () => {
     const data: CodeVolumeSummary = {
       commit_count: 3,
       lines_added: 100,
+      lines_deleted: 20,
+      net_lines: 80,
       composer_lines_added: 40,
+      composer_lines_deleted: 5,
       human_lines_added: 60,
+      human_lines_deleted: 2,
+      tab_lines_added: 3,
+      tab_lines_deleted: 0,
       ai_percentage: 40,
       total_cost: 8,
       cost_unpriced: false,
       cost_per_thousand_ai_lines: 200,
+      daily: [],
+      by_branch: [],
+      commits: [],
     };
     expect(codeVolumeTable(data).rows).toEqual([
       ["提交数", 3, ""],
       ["新增行", 100, ""],
+      ["删除行", 20, ""],
+      ["净增行", 80, ""],
       ["AI 生成行", 40, ""],
+      ["Tab 行", 3, ""],
       ["人工编写行", 60, ""],
       ["AI 占比", 40, ""],
       ["全部来源累计费用", 8, ""],
@@ -94,12 +110,21 @@ describe("cursor export tables", () => {
     const data: CodeVolumeSummary = {
       commit_count: 0,
       lines_added: 0,
+      lines_deleted: 0,
+      net_lines: 0,
       composer_lines_added: 0,
+      composer_lines_deleted: 0,
       human_lines_added: 0,
+      human_lines_deleted: 0,
+      tab_lines_added: 0,
+      tab_lines_deleted: 0,
       ai_percentage: null,
       total_cost: null,
       cost_unpriced: true,
       cost_per_thousand_ai_lines: null,
+      daily: [],
+      by_branch: [],
+      commits: [],
     };
     const table = codeVolumeTable(data);
     expect(table.headers).toEqual(["指标", "数值", "未定价"]);
@@ -141,7 +166,13 @@ describe("cursor export tables", () => {
       as_of: null,
       session_count: 2,
       turn_count: 5,
+      aborted_count: 0,
+      user_prompt_count: 3,
+      subagent_count: 1,
       error_rate: 0,
+      average_turns: 2.5,
+      average_tools_per_turn: 1.8,
+      write_read_ratio: 0.4,
       active_project_count: 1,
       by_project: [
         {
@@ -154,10 +185,63 @@ describe("cursor export tables", () => {
         },
       ],
       by_model: [],
+      by_source: [],
+      by_extension: [],
       top_tools: [{ name: "read", call_count: 9 }],
+      tool_groups: [{ name: "read", call_count: 9 }],
       daily: [],
     };
     expect(cursorSessionProjectTable(data).rows[0]).toEqual(["demo", 2, 5]);
     expect(cursorSessionToolTable(data).rows[0]).toEqual(["read", 9]);
+  });
+
+  it("exports session detail paths and hash files", () => {
+    const detail = {
+      session: {
+        session_id: "s1",
+        project: "/tmp/demo",
+        turn_count: 1,
+        success_count: 1,
+        error_count: 0,
+        aborted_count: 0,
+        user_prompt_count: 1,
+        subagent_count: 0,
+        models: [],
+        sources: [],
+        tool_call_count: 2,
+        first_seen_at: null,
+        last_seen_at: null,
+        files_touched: 1,
+        source_file: "/tmp/s1.jsonl",
+      },
+      tools: [{ name: "Read", call_count: 2 }],
+      hash_files: [{ path: "/tmp/a.rs", extension: "rs", source: "cli" }],
+      read_paths: ["/tmp/a.rs"],
+      write_paths: ["/tmp/b.rs"],
+      transcript_missing: false,
+    };
+    expect(cursorSessionDetailToolTable(detail).rows[0]).toEqual(["Read", 2]);
+    expect(cursorSessionPathTable(detail).rows).toEqual([
+      ["读", "/tmp/a.rs"],
+      ["写", "/tmp/b.rs"],
+    ]);
+    expect(cursorSessionHashFileTable(detail).rows[0]).toEqual(["/tmp/a.rs", "rs", "cli"]);
+  });
+
+  it("exports account events", () => {
+    expect(
+      cursorAccountEventTable([
+        {
+          occurred_at: "2026-08-17T00:00:00Z",
+          model: "grok-4.6",
+          input_tokens: 8,
+          output_tokens: 2,
+          cache_read_tokens: 0,
+          cache_creation_tokens: 0,
+          total_tokens: 10,
+          is_headless: true,
+        },
+      ]).rows[0],
+    ).toEqual(["2026-08-17T00:00:00Z", "grok-4.6", 8, 2, 0, 0, 10, "是"]);
   });
 });

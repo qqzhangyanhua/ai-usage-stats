@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatClock, formatTokens, projectLabel, relativeTime } from "../lib/format";
+import {
+  formatClock,
+  formatDuration,
+  formatTokens,
+  projectLabel,
+  relativeTime,
+} from "../lib/format";
 import type {
   CursorSessionListRow,
   CursorSessionPage,
@@ -35,6 +41,7 @@ const EXPORT_HEADERS = [
   "会话ID",
   "项目",
   "模型",
+  "来源",
   "轮次",
   "成功",
   "失败",
@@ -53,11 +60,19 @@ function modelsLabel(models: string[]): string {
   return models.join(", ");
 }
 
+function sourcesLabel(sources: string[]): string {
+  if (sources.length === 0) {
+    return "—";
+  }
+  return sources.join(", ");
+}
+
 function sessionRowToExportCells(row: CursorSessionListRow): (string | number)[] {
   return [
     row.session_id,
     row.project,
     row.models.join(", "),
+    row.sources.join(", "),
     row.turn_count,
     row.success_count,
     row.error_count,
@@ -74,13 +89,17 @@ export function CursorSessionTable({
   revision,
   projectNames,
   selectedProject,
+  selectedSourceFile,
   onSelectProject,
+  onSelectSession,
   onError,
 }: {
   revision: number;
   projectNames: string[];
   selectedProject: string | null;
+  selectedSourceFile: string | null;
   onSelectProject: (project: string | null) => void;
+  onSelectSession: (sourceFile: string) => void;
   onError?: (error: unknown) => void;
 }) {
   const [searchInput, setSearchInput] = useState("");
@@ -243,7 +262,13 @@ export function CursorSessionTable({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={`${row.source_file}-${row.session_id}`}>
+              <tr
+                key={`${row.source_file}-${row.session_id}`}
+                className={
+                  selectedSourceFile === row.source_file ? "clickable selected" : "clickable"
+                }
+                onClick={() => onSelectSession(row.source_file)}
+              >
                 <td>
                   <SessionIdCell sessionId={row.session_id} />
                 </td>
@@ -253,13 +278,21 @@ export function CursorSessionTable({
                     <span className="muted">{row.project}</span>
                   </div>
                 </td>
-                <td title={modelsLabel(row.models)}>{modelsLabel(row.models)}</td>
+                <td title={modelsLabel(row.models)}>
+                  <div className="cell-stack">
+                    <span>{modelsLabel(row.models)}</span>
+                    <span className="muted">{sourcesLabel(row.sources)}</span>
+                  </div>
+                </td>
                 <td
-                  title={`成功 ${row.success_count} · 失败 ${row.error_count} · 中止 ${row.aborted_count}`}
+                  title={`成功 ${row.success_count} · 失败 ${row.error_count} · 中止 ${row.aborted_count} · 提问 ${row.user_prompt_count} · 子代理 ${row.subagent_count}`}
                 >
                   {formatTokens(row.turn_count)}
                   {row.error_count > 0 ? (
                     <span className="muted"> / {formatTokens(row.error_count)} 失败</span>
+                  ) : null}
+                  {row.subagent_count > 0 ? (
+                    <span className="muted"> / {formatTokens(row.subagent_count)} 子代理</span>
                   ) : null}
                 </td>
                 <td>{formatTokens(row.error_count)}</td>
@@ -268,7 +301,11 @@ export function CursorSessionTable({
                 <td
                   title={
                     row.last_seen_at
-                      ? `${formatClock(row.first_seen_at)} → ${formatClock(row.last_seen_at)}`
+                      ? `${formatClock(row.first_seen_at)} → ${formatClock(row.last_seen_at)}${
+                          formatDuration(row.first_seen_at, row.last_seen_at)
+                            ? ` · ${formatDuration(row.first_seen_at, row.last_seen_at)}`
+                            : ""
+                        }`
                       : undefined
                   }
                 >

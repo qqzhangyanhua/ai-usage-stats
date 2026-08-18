@@ -678,6 +678,7 @@ fn cursor_code_volume_stays_outside_usage_records() {
         composer_lines_added: 32,
         human_lines_added: 0,
         ai_percentage: Some(100.0),
+        ..Default::default()
     }]);
     let summary = summarize_code_volume(&commits);
     assert_eq!(summary.commit_count, 1);
@@ -696,19 +697,15 @@ fn cursor_code_volume_stays_outside_usage_records() {
             commit_hash: "a".into(),
             branch: "main".into(),
             scored_at_ms: 1,
-            lines_added: 0,
-            composer_lines_added: 0,
-            human_lines_added: 0,
             ai_percentage: Some(40.0),
+            ..Default::default()
         },
         CursorCommitRow {
             commit_hash: "b".into(),
             branch: "main".into(),
             scored_at_ms: 2,
-            lines_added: 0,
-            composer_lines_added: 0,
-            human_lines_added: 0,
             ai_percentage: Some(60.0),
+            ..Default::default()
         },
     ]));
     assert_eq!(fallback.lines_added, 0);
@@ -731,7 +728,7 @@ fn with_cost_roi_derives_cost_per_thousand_ai_lines() {
         lines_added: 4000,
         composer_lines_added: 2000,
         human_lines_added: 2000,
-        ai_percentage: None,
+        ..Default::default()
     }]));
 
     let priced = with_cost_roi(summary.clone(), Some(30.0), false);
@@ -767,14 +764,20 @@ fn load_code_volume_reads_sqlite_without_writing_usage() {
             commitHash TEXT,
             branchName TEXT,
             scoredAt INTEGER,
+            commitMessage TEXT,
             linesAdded INTEGER,
+            linesDeleted INTEGER,
             composerLinesAdded INTEGER,
+            composerLinesDeleted INTEGER,
             humanLinesAdded INTEGER,
+            humanLinesDeleted INTEGER,
+            tabLinesAdded INTEGER,
+            tabLinesDeleted INTEGER,
             v2AiPercentage TEXT
         );
         INSERT INTO scored_commits VALUES
-            ('abc', 'main', 1771411050440, 156, 32, 0, '100'),
-            ('skip', 'main', 1771411050441, NULL, NULL, NULL, NULL);
+            ('abc', 'main', 1771411050440, 'feat', 156, 20, 32, 4, 0, 0, 10, 1, '100'),
+            ('skip', 'main', 1771411050441, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
         "#,
     )
     .unwrap();
@@ -788,7 +791,13 @@ fn load_code_volume_reads_sqlite_without_writing_usage() {
     let volume = ingest::load_code_volume(home).unwrap();
     assert_eq!(volume.commit_count, 1);
     assert_eq!(volume.lines_added, 156);
+    assert_eq!(volume.lines_deleted, 20);
+    assert_eq!(volume.net_lines, 136);
     assert_eq!(volume.composer_lines_added, 32);
+    assert_eq!(volume.tab_lines_added, 10);
+    assert_eq!(volume.commits.len(), 1);
+    assert_eq!(volume.by_branch.len(), 1);
+    assert_eq!(volume.by_branch[0].name, "main");
     assert!((volume.ai_percentage.unwrap() - 20.51282051282051).abs() < 1e-9);
 }
 
@@ -4965,12 +4974,31 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
 }
 
 fn seed_ai_code_hashes(home: &std::path::Path, rows: &[(&str, &str, i64, &str)]) {
+    seed_ai_code_hash_details(
+        home,
+        &rows
+            .iter()
+            .map(|(conversation_id, model, timestamp, file_name)| {
+                (
+                    *conversation_id,
+                    *model,
+                    *timestamp,
+                    *file_name,
+                    "composer",
+                    "rs",
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+}
+
+fn seed_ai_code_hash_details(home: &std::path::Path, rows: &[(&str, &str, i64, &str, &str, &str)]) {
     let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
     std::fs::create_dir_all(db_path.parent().expect("parent")).expect("create dirs");
     let conn = rusqlite::Connection::open(&db_path).expect("open tracking db");
     conn.execute_batch(
         r#"
-        CREATE TABLE ai_code_hashes (
+        CREATE TABLE IF NOT EXISTS ai_code_hashes (
             hash TEXT,
             source TEXT,
             fileExtension TEXT,
@@ -4984,16 +5012,18 @@ fn seed_ai_code_hashes(home: &std::path::Path, rows: &[(&str, &str, i64, &str)])
         "#,
     )
     .expect("create table");
-    for (conversation_id, model, timestamp, file_name) in rows {
+    for (conversation_id, model, timestamp, file_name, source, extension) in rows {
         conn.execute(
             r#"
             INSERT INTO ai_code_hashes(
                 hash, source, fileExtension, fileName, requestId,
                 conversationId, timestamp, createdAt, model
-            ) VALUES (?1, 'composer', 'rs', ?2, 'req', ?3, ?4, ?4, ?5)
+            ) VALUES (?1, ?2, ?3, ?4, 'req', ?5, ?6, ?6, ?7)
             "#,
             rusqlite::params![
-                format!("hash-{conversation_id}-{file_name}"),
+                format!("hash-{conversation_id}-{file_name}-{source}"),
+                source,
+                extension,
                 file_name,
                 conversation_id,
                 timestamp,
@@ -5002,6 +5032,21 @@ fn seed_ai_code_hashes(home: &std::path::Path, rows: &[(&str, &str, i64, &str)])
         )
         .expect("insert hash");
     }
+}
+
+fn seed_cursor_subagent(
+    home: &std::path::Path,
+    project_slug: &str,
+    session_id: &str,
+    child_id: &str,
+    content: &str,
+) -> std::path::PathBuf {
+    let path = home.join(format!(
+        ".cursor/projects/{project_slug}/agent-transcripts/{session_id}/subagents/{child_id}.jsonl"
+    ));
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
+    std::fs::write(&path, content).expect("write subagent");
+    path
 }
 
 #[test]
@@ -5505,4 +5550,406 @@ fn cursor_sessions_page_supports_search_sort_and_pagination() {
         .models
         .iter()
         .any(|name| name == "grok-4.6"));
+}
+
+#[test]
+fn cursor_session_rolls_subagents_into_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_cursor_subagent(
+        home,
+        "Users-test-project",
+        "sess-1",
+        "child-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_id, "sess-1");
+    assert_eq!(sessions[0].subagent_count, 1);
+    assert_eq!(sessions[0].turn_count, 4);
+    assert_eq!(sessions[0].user_prompt_count, 2);
+    assert_eq!(sessions[0].error_count, 2);
+
+    let summary = crate::cursor_session::load_summary(&conn).unwrap();
+    assert_eq!(summary.session_count, 1);
+    assert_eq!(summary.subagent_count, 1);
+    assert_eq!(summary.turn_count, 4);
+}
+
+#[test]
+fn cursor_session_dropping_subagent_updates_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    let child = seed_cursor_subagent(
+        home,
+        "Users-test-project",
+        "sess-1",
+        "child-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(
+        store::load_cursor_sessions(&conn).unwrap()[0].subagent_count,
+        1
+    );
+
+    std::fs::remove_file(child).expect("remove subagent");
+    let mut again = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut again);
+    let session = &store::load_cursor_sessions(&conn).unwrap()[0];
+    assert_eq!(session.subagent_count, 0);
+    assert_eq!(session.turn_count, 2);
+}
+
+#[test]
+fn cursor_session_orphan_subagent_does_not_create_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_subagent(
+        home,
+        "Users-test-project",
+        "sess-missing",
+        "child-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert!(store::load_cursor_sessions(&conn).unwrap().is_empty());
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        0
+    );
+}
+
+#[test]
+fn cursor_session_reconcile_drops_legacy_subagent_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    let child = seed_cursor_subagent(
+        home,
+        "Users-test-project",
+        "sess-1",
+        "child-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let legacy = crate::domain::CursorSessionRecord {
+        session_id: "child-1".into(),
+        project: "/Users/test/project".into(),
+        turn_count: 2,
+        success_count: 1,
+        error_count: 1,
+        aborted_count: 0,
+        user_prompt_count: 1,
+        subagent_count: 0,
+        tool_calls_json: "{}".into(),
+        models_json: "[]".into(),
+        sources_json: "[]".into(),
+        extensions_json: "{}".into(),
+        first_seen_at: None,
+        last_seen_at: None,
+        files_touched: 0,
+        source_file: child.to_string_lossy().into_owned(),
+    };
+    store::upsert_cursor_session(&conn, &legacy).unwrap();
+    assert_eq!(store::load_cursor_sessions(&conn).unwrap().len(), 1);
+
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_id, "sess-1");
+    assert_eq!(report.records_removed, 1);
+}
+
+#[test]
+fn cursor_session_schema_bump_reparses_unchanged_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(
+        store::load_cursor_sessions(&conn).unwrap()[0].user_prompt_count,
+        1
+    );
+
+    conn.execute("UPDATE cursor_sessions SET user_prompt_count = 0", [])
+        .unwrap();
+    store::set_cursor_session_schema_version(&conn, "").unwrap();
+
+    let mut again = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut again);
+    assert_eq!(again.files_skipped, 0);
+    assert_eq!(
+        store::load_cursor_sessions(&conn).unwrap()[0].user_prompt_count,
+        1
+    );
+    assert_eq!(
+        store::cursor_session_schema_version(&conn).unwrap(),
+        store::CURSOR_SESSION_SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn cursor_session_parse_counts_user_prompts() {
+    let parsed = crate::adapters::cursor_session::parse_cursor_session_transcript(
+        r#"
+{"role":"user","message":{"content":[{"type":"text","text":"one"}]}}
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}
+{"type":"turn_ended","status":"success"}
+{"role":"user","message":{"content":[{"type":"text","text":"two"}]}}
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Grep"},{"type":"tool_use","name":"StrReplace"},{"type":"tool_use","name":"Shell"}]}}
+{"type":"turn_ended","status":"error"}
+"#,
+    )
+    .unwrap();
+    assert_eq!(parsed.user_prompt_count, 2);
+    assert_eq!(parsed.turn_count, 2);
+    assert_eq!(parsed.error_count, 1);
+    assert_eq!(parsed.tool_calls.get("Read"), Some(&1));
+}
+
+#[test]
+fn cursor_session_enriches_source_and_extension() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_ai_code_hash_details(
+        home,
+        &[
+            (
+                "sess-1",
+                "grok-4.6",
+                1_784_511_794_686,
+                "src/lib.rs",
+                "cli",
+                "rs",
+            ),
+            (
+                "sess-1",
+                "grok-4.6",
+                1_784_511_794_687,
+                "src/main.ts",
+                "cli",
+                "ts",
+            ),
+        ],
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    let session = &store::load_cursor_sessions(&conn).unwrap()[0];
+    assert!(session.sources_json.contains("cli"));
+    assert!(session.extensions_json.contains("rs"));
+    assert!(session.extensions_json.contains("ts"));
+    assert_eq!(session.files_touched, 2);
+
+    let summary = crate::cursor_session::load_summary(&conn).unwrap();
+    assert_eq!(summary.by_source[0].name, "cli");
+    assert_eq!(summary.by_extension.len(), 2);
+}
+
+#[test]
+fn cursor_tool_group_maps_known_names() {
+    assert_eq!(crate::adapters::cursor_session::tool_group("Read"), "read");
+    assert_eq!(
+        crate::adapters::cursor_session::tool_group("StrReplace"),
+        "write"
+    );
+    assert_eq!(
+        crate::adapters::cursor_session::tool_group("Shell"),
+        "shell"
+    );
+    assert_eq!(
+        crate::adapters::cursor_session::tool_group("WebFetch"),
+        "web"
+    );
+    assert_eq!(crate::adapters::cursor_session::tool_group("Task"), "agent");
+    assert_eq!(
+        crate::adapters::cursor_session::tool_group("TodoWrite"),
+        "other"
+    );
+}
+
+#[test]
+fn code_volume_summarize_keeps_composer_percentage_and_adds_deletes() {
+    let summary = summarize_code_volume(&parse_cursor_commits(&[
+        CursorCommitRow {
+            commit_hash: "a".into(),
+            branch: "main".into(),
+            scored_at_ms: 1_784_511_794_686,
+            commit_message: "feat".into(),
+            lines_added: 100,
+            lines_deleted: 40,
+            composer_lines_added: 80,
+            tab_lines_added: 5,
+            human_lines_added: 10,
+            ..Default::default()
+        },
+        CursorCommitRow {
+            commit_hash: "b".into(),
+            branch: "dev".into(),
+            scored_at_ms: 1_784_598_194_686,
+            lines_added: 20,
+            lines_deleted: 5,
+            composer_lines_added: 10,
+            ..Default::default()
+        },
+    ]));
+    assert_eq!(summary.lines_added, 120);
+    assert_eq!(summary.lines_deleted, 45);
+    assert_eq!(summary.net_lines, 75);
+    assert_eq!(summary.tab_lines_added, 5);
+    assert!((summary.ai_percentage.unwrap() - 75.0).abs() < 1e-9);
+    assert_eq!(summary.by_branch[0].name, "main");
+    assert_eq!(summary.daily.len(), 2);
+    assert_eq!(summary.commits.len(), 2);
+}
+
+#[test]
+fn cursor_session_parse_collects_paths_not_command_or_contents() {
+    let parsed = crate::adapters::cursor_session::parse_cursor_session_transcript(
+        r#"
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"path":"src/a.rs"}},{"type":"tool_use","name":"Grep","input":{"paths":["src/b.rs","src/c.rs"],"pattern":"fn"}},{"type":"tool_use","name":"Write","input":{"path":"src/d.rs","contents":"SECRET_BODY"}},{"type":"tool_use","name":"Shell","input":{"command":"rm -rf /"}}]}}
+{"type":"turn_ended","status":"success"}
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        parsed.read_paths.iter().cloned().collect::<Vec<_>>(),
+        vec!["src/a.rs", "src/b.rs", "src/c.rs"]
+    );
+    assert_eq!(
+        parsed.write_paths.iter().cloned().collect::<Vec<_>>(),
+        vec!["src/d.rs"]
+    );
+    assert!(!parsed
+        .write_paths
+        .iter()
+        .any(|path| path.contains("SECRET_BODY")));
+    assert!(!parsed.read_paths.iter().any(|path| path.contains("rm -rf")));
+}
+
+#[test]
+fn cursor_session_detail_reads_tools_files_and_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_cursor_subagent(
+        home,
+        "Users-test-project",
+        "sess-1",
+        "child-1",
+        r#"{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"path":"src/new.rs","contents":"nope"}}]}}
+{"type":"turn_ended","status":"success"}
+"#,
+    );
+    seed_ai_code_hash_details(
+        home,
+        &[("sess-1", "grok-4.6", 1, "src/lib.rs", "cli", "rs")],
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let detail =
+        crate::cursor_session_detail::load_detail(&conn, home, &path.to_string_lossy()).unwrap();
+    assert_eq!(detail.session.session_id, "sess-1");
+    assert!(detail.tools.iter().any(|row| row.name == "Read"));
+    assert_eq!(detail.read_paths, vec!["src/lib.rs"]);
+    assert_eq!(detail.write_paths, vec!["src/new.rs"]);
+    assert_eq!(detail.hash_files.len(), 1);
+    assert_eq!(detail.hash_files[0].path, "src/lib.rs");
+    assert!(!detail.transcript_missing);
+
+    std::fs::remove_file(&path).unwrap();
+    let missing =
+        crate::cursor_session_detail::load_detail(&conn, home, &path.to_string_lossy()).unwrap();
+    assert!(missing.transcript_missing);
+    assert!(missing.tools.iter().any(|row| row.name == "Read"));
+    assert!(missing.read_paths.is_empty());
+}
+
+#[test]
+fn cursor_account_events_page_orders_newest_first() {
+    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+        .expect("parse");
+    let conn = store::open_memory().unwrap();
+    store::upsert_cursor_account_events(&conn, &events).unwrap();
+
+    let page = crate::cursor_account::events_page(
+        &conn,
+        &crate::domain::CursorAccountEventQuery {
+            page: Some(1),
+            page_size: Some(1),
+            sort_dir: Some("desc".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(page.total, 2);
+    assert_eq!(page.rows.len(), 1);
+    let later = page.rows[0].occurred_at.clone();
+
+    let asc = crate::cursor_account::events_page(
+        &conn,
+        &crate::domain::CursorAccountEventQuery {
+            page: Some(1),
+            page_size: Some(20),
+            sort_dir: Some("asc".into()),
+        },
+    )
+    .unwrap();
+    assert_eq!(asc.rows.last().unwrap().occurred_at, later);
 }

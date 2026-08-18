@@ -6,6 +6,8 @@ pub mod budget;
 pub mod cost;
 pub mod cursor_account;
 pub mod cursor_session;
+pub mod cursor_session_detail;
+pub mod cursor_session_query;
 pub mod domain;
 pub mod ingest;
 pub mod litellm;
@@ -24,10 +26,10 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
-    CursorAccountUsageDto, CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter,
-    FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
-    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow,
+    CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
+    CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
+    IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable,
+    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
@@ -455,6 +457,34 @@ async fn get_cursor_sessions_page(
 }
 
 #[tauri::command]
+async fn get_cursor_session_detail(
+    app: tauri::AppHandle,
+    source_file: String,
+) -> Result<CursorSessionDetailDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        cursor_session_detail::load_detail(&conn, &ingest::default_home(), &source_file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_cursor_account_events_page(
+    app: tauri::AppHandle,
+    query: CursorAccountEventQuery,
+) -> Result<CursorAccountEventPage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        cursor_account::events_page(&conn, &query)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn refresh_cursor_account_usage(
     app: tauri::AppHandle,
     token: Option<String>,
@@ -722,8 +752,10 @@ pub fn run() {
             get_code_volume,
             get_cursor_session_summary,
             get_cursor_sessions_page,
+            get_cursor_session_detail,
             refresh_cursor_account_usage,
             get_cursor_account_usage,
+            get_cursor_account_events_page,
             save_cursor_session_token,
             has_cursor_session_token,
             clear_cursor_account_usage,

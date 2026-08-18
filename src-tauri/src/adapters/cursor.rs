@@ -1,13 +1,23 @@
-use crate::domain::{CodeVolumeCommit, CodeVolumeSummary};
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone)]
+use crate::domain::{
+    CodeVolumeBranchRow, CodeVolumeCommit, CodeVolumeDailyPoint, CodeVolumeSummary,
+};
+
+#[derive(Debug, Clone, Default)]
 pub struct CursorCommitRow {
     pub commit_hash: String,
     pub branch: String,
     pub scored_at_ms: i64,
+    pub commit_message: String,
     pub lines_added: i64,
+    pub lines_deleted: i64,
     pub composer_lines_added: i64,
+    pub composer_lines_deleted: i64,
     pub human_lines_added: i64,
+    pub human_lines_deleted: i64,
+    pub tab_lines_added: i64,
+    pub tab_lines_deleted: i64,
     pub ai_percentage: Option<f64>,
 }
 
@@ -19,9 +29,15 @@ pub fn parse_cursor_commits(rows: &[CursorCommitRow]) -> Vec<CodeVolumeCommit> {
             scored_at: chrono::DateTime::from_timestamp_millis(row.scored_at_ms)
                 .map(|dt| dt.to_rfc3339())
                 .unwrap_or_default(),
+            commit_message: row.commit_message.clone(),
             lines_added: row.lines_added,
+            lines_deleted: row.lines_deleted,
             composer_lines_added: row.composer_lines_added,
+            composer_lines_deleted: row.composer_lines_deleted,
             human_lines_added: row.human_lines_added,
+            human_lines_deleted: row.human_lines_deleted,
+            tab_lines_added: row.tab_lines_added,
+            tab_lines_deleted: row.tab_lines_deleted,
             ai_percentage: row.ai_percentage,
         })
         .collect()
@@ -30,8 +46,13 @@ pub fn parse_cursor_commits(rows: &[CursorCommitRow]) -> Vec<CodeVolumeCommit> {
 pub fn summarize_code_volume(commits: &[CodeVolumeCommit]) -> CodeVolumeSummary {
     let commit_count = commits.len() as i64;
     let lines_added = commits.iter().map(|c| c.lines_added).sum();
+    let lines_deleted = commits.iter().map(|c| c.lines_deleted).sum();
     let composer_lines_added = commits.iter().map(|c| c.composer_lines_added).sum();
+    let composer_lines_deleted = commits.iter().map(|c| c.composer_lines_deleted).sum();
     let human_lines_added = commits.iter().map(|c| c.human_lines_added).sum();
+    let human_lines_deleted = commits.iter().map(|c| c.human_lines_deleted).sum();
+    let tab_lines_added = commits.iter().map(|c| c.tab_lines_added).sum();
+    let tab_lines_deleted = commits.iter().map(|c| c.tab_lines_deleted).sum();
     let ai_percentage = if lines_added > 0 {
         Some((composer_lines_added as f64 / lines_added as f64) * 100.0)
     } else {
@@ -42,16 +63,93 @@ pub fn summarize_code_volume(commits: &[CodeVolumeCommit]) -> CodeVolumeSummary 
             Some(scored.iter().sum::<f64>() / scored.len() as f64)
         }
     };
+
+    let mut daily: BTreeMap<String, CodeVolumeDailyPoint> = BTreeMap::new();
+    let mut branches: BTreeMap<String, (i64, i64, i64)> = BTreeMap::new();
+    for commit in commits {
+        let bucket = local_day(&commit.scored_at);
+        if !bucket.is_empty() {
+            let point = daily.entry(bucket.clone()).or_insert(CodeVolumeDailyPoint {
+                bucket,
+                lines_added: 0,
+                lines_deleted: 0,
+                composer_lines_added: 0,
+                tab_lines_added: 0,
+                human_lines_added: 0,
+            });
+            point.lines_added += commit.lines_added;
+            point.lines_deleted += commit.lines_deleted;
+            point.composer_lines_added += commit.composer_lines_added;
+            point.tab_lines_added += commit.tab_lines_added;
+            point.human_lines_added += commit.human_lines_added;
+        }
+
+        let branch = if commit.branch.is_empty() {
+            "未知分支".to_string()
+        } else {
+            commit.branch.clone()
+        };
+        let entry = branches.entry(branch).or_insert((0, 0, 0));
+        entry.0 += 1;
+        entry.1 += commit.lines_added;
+        entry.2 += commit.composer_lines_added;
+    }
+
+    let mut by_branch: Vec<CodeVolumeBranchRow> = branches
+        .into_iter()
+        .map(
+            |(name, (commit_count, lines_added, composer_lines_added))| CodeVolumeBranchRow {
+                name,
+                commit_count,
+                lines_added,
+                composer_lines_added,
+            },
+        )
+        .collect();
+    by_branch.sort_by(|a, b| {
+        b.commit_count
+            .cmp(&a.commit_count)
+            .then_with(|| b.lines_added.cmp(&a.lines_added))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    by_branch.truncate(12);
+
+    let mut listed = commits.to_vec();
+    listed.sort_by(|a, b| {
+        b.scored_at
+            .cmp(&a.scored_at)
+            .then_with(|| a.commit_hash.cmp(&b.commit_hash))
+    });
+
     CodeVolumeSummary {
         commit_count,
         lines_added,
+        lines_deleted,
+        net_lines: lines_added - lines_deleted,
         composer_lines_added,
+        composer_lines_deleted,
         human_lines_added,
+        human_lines_deleted,
+        tab_lines_added,
+        tab_lines_deleted,
         ai_percentage,
         total_cost: None,
         cost_unpriced: false,
         cost_per_thousand_ai_lines: None,
+        daily: daily.into_values().collect(),
+        by_branch,
+        commits: listed,
     }
+}
+
+fn local_day(occurred_at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(occurred_at)
+        .map(|dt| {
+            dt.with_timezone(&chrono::Local)
+                .format("%Y-%m-%d")
+                .to_string()
+        })
+        .unwrap_or_else(|_| occurred_at.get(..10).unwrap_or(occurred_at).to_string())
 }
 
 /// 把「全部时间、全部来源」的消耗记录费用叠加到代码量摘要上，算出粗略的 ROI 交叉指标。

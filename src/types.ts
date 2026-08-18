@@ -241,15 +241,56 @@ export type PriceSnapshotMeta = {
   bundled: boolean;
 };
 
-export type CodeVolumeSummary = {
+export type CodeVolumeCommit = {
+  commit_hash: string;
+  branch: string;
+  scored_at: string;
+  commit_message: string;
+  lines_added: number;
+  lines_deleted: number;
+  composer_lines_added: number;
+  composer_lines_deleted: number;
+  human_lines_added: number;
+  human_lines_deleted: number;
+  tab_lines_added: number;
+  tab_lines_deleted: number;
+  ai_percentage: number | null;
+};
+
+export type CodeVolumeDailyPoint = {
+  bucket: string;
+  lines_added: number;
+  lines_deleted: number;
+  composer_lines_added: number;
+  tab_lines_added: number;
+  human_lines_added: number;
+};
+
+export type CodeVolumeBranchRow = {
+  name: string;
   commit_count: number;
   lines_added: number;
   composer_lines_added: number;
+};
+
+export type CodeVolumeSummary = {
+  commit_count: number;
+  lines_added: number;
+  lines_deleted: number;
+  net_lines: number;
+  composer_lines_added: number;
+  composer_lines_deleted: number;
   human_lines_added: number;
+  human_lines_deleted: number;
+  tab_lines_added: number;
+  tab_lines_deleted: number;
   ai_percentage: number | null;
   total_cost: number | null;
   cost_unpriced: boolean;
   cost_per_thousand_ai_lines: number | null;
+  daily: CodeVolumeDailyPoint[];
+  by_branch: CodeVolumeBranchRow[];
+  commits: CodeVolumeCommit[];
 };
 
 export type CursorAccountUsageDto = {
@@ -284,7 +325,10 @@ export type CursorSessionListRow = {
   success_count: number;
   error_count: number;
   aborted_count: number;
+  user_prompt_count: number;
+  subagent_count: number;
   models: string[];
+  sources: string[];
   tool_call_count: number;
   first_seen_at: string | null;
   last_seen_at: string | null;
@@ -317,15 +361,34 @@ export type CursorSessionToolRow = {
   call_count: number;
 };
 
+export type CursorSessionSourceRow = {
+  name: string;
+  session_count: number;
+};
+
+export type CursorSessionExtensionRow = {
+  name: string;
+  file_count: number;
+};
+
 export type CursorSessionSummaryDto = {
   as_of: string | null;
   session_count: number;
   turn_count: number;
+  aborted_count: number;
+  user_prompt_count: number;
+  subagent_count: number;
   error_rate: number | null;
+  average_turns: number | null;
+  average_tools_per_turn: number | null;
+  write_read_ratio: number | null;
   active_project_count: number;
   by_project: CursorSessionProjectRow[];
   by_model: CursorSessionModelRow[];
+  by_source: CursorSessionSourceRow[];
+  by_extension: CursorSessionExtensionRow[];
   top_tools: CursorSessionToolRow[];
+  tool_groups: CursorSessionToolRow[];
   daily: CursorSessionDailyPoint[];
 };
 
@@ -340,6 +403,43 @@ export type CursorSessionQuery = {
 
 export type CursorSessionPage = {
   rows: CursorSessionListRow[];
+  total: number;
+};
+
+export type CursorSessionHashFile = {
+  path: string;
+  extension: string;
+  source: string;
+};
+
+export type CursorSessionDetailDto = {
+  session: CursorSessionListRow;
+  tools: CursorSessionToolRow[];
+  hash_files: CursorSessionHashFile[];
+  read_paths: string[];
+  write_paths: string[];
+  transcript_missing: boolean;
+};
+
+export type CursorAccountEventQuery = {
+  page?: number | null;
+  pageSize?: number | null;
+  sortDir?: SortDir | null;
+};
+
+export type CursorAccountEventRow = {
+  occurred_at: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  total_tokens: number;
+  is_headless: boolean;
+};
+
+export type CursorAccountEventPage = {
+  rows: CursorAccountEventRow[];
   total: number;
 };
 
