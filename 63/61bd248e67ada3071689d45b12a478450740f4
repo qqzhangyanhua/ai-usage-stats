@@ -1,0 +1,26 @@
+src/hooks/useUsageData.ts
+  s_b75c220731311e::t_8611d4385ffdb0 246
+src/App.tsx
+  s_b75c220731311e::t_bd91df582663b9 49-51
+src-tauri/src/tests.rs
+  s_b75c220731311e::t_207f4f8e807c69 5206-5320
+src-tauri/src/query.rs
+  s_b75c220731311e::t_a9e585ab0b3ba4 65-66,700,712-714,716-721,723-734,737-749,753-756,758,760-763
+  s_b75c220731311e::t_477f7eab2a6332 715
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "6361bd248e67ada3071689d45b12a478450740f4",
+  "prompts": {},
+  "sessions": {
+    "s_b75c220731311e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a013c5-f92e-7d63-b1a8-89fc8493c4c2",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
