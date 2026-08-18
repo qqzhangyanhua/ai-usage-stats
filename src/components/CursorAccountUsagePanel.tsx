@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { areaTrendOption, donutOption, modelSlices } from "../lib/chartTheme";
 import { formatClock, formatCompact, formatTokens, humanStatus } from "../lib/format";
+import { cursorAccountDailyTable, cursorAccountModelTable } from "../lib/exportRows";
 import type { CursorAccountUsageDto } from "../types";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
 import { KpiCard, LegendRow } from "./Kpi";
 import { Button } from "./ui/Button";
@@ -201,6 +203,11 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
           <section className="panel partition">
             <div className="panel-head">
               <h2>按天趋势</h2>
+              <ExportButton
+                filename="Cursor账号按天"
+                headers={cursorAccountDailyTable(data).headers}
+                rows={cursorAccountDailyTable(data).rows}
+              />
             </div>
             <ExportableChart
               option={trendOption}
@@ -212,6 +219,11 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
             <section className="panel partition">
               <div className="panel-head">
                 <h2>按模型</h2>
+                <ExportButton
+                  filename="Cursor账号按模型"
+                  headers={cursorAccountModelTable(data).headers}
+                  rows={cursorAccountModelTable(data).rows}
+                />
               </div>
               <div className="donut-wrap">
                 <DonutChart

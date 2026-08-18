@@ -2,6 +2,7 @@ import { useState } from "react";
 import { applicationLabel, formatTokens } from "../lib/format";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { BackupPanel } from "./BackupPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
@@ -179,6 +180,8 @@ export function Settings({
       </section>
 
       <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
+
+      <BackupPanel onRestored={onSnapshotRefreshed} />
 
       <CursorAccountSettingsPanel />
 

@@ -1,0 +1,70 @@
+import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
+import { Button } from "./ui/Button";
+
+type Busy = "idle" | "backup" | "restore";
+
+export function BackupPanel({ onRestored }: { onRestored?: () => void }) {
+  const [busy, setBusy] = useState<Busy>("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleBackup() {
+    setBusy("backup");
+    setMessage(null);
+    setError(null);
+    try {
+      const saved = await invoke<boolean>("backup_data");
+      setMessage(saved ? "已写入备份目录" : null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  async function handleRestore() {
+    setBusy("restore");
+    setMessage(null);
+    setError(null);
+    try {
+      const restored = await invoke<boolean>("restore_data");
+      if (restored) {
+        setMessage("已恢复备份，当前缓存与单价/预算已被覆盖");
+        onRestored?.();
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>数据备份与恢复</h2>
+          <p className="panel-note">
+            备份本机用量缓存（sqlite）、单价表、月度预算和 LiteLLM 价目快照。不含 Cursor
+            钥匙串里的会话 token。恢复会覆盖当前缓存。
+          </p>
+        </div>
+        <div className="row-actions">
+          <Button disabled={busy !== "idle"} onClick={() => void handleBackup()}>
+            {busy === "backup" ? "备份中…" : "备份"}
+          </Button>
+          <Button variant="accent" disabled={busy !== "idle"} onClick={() => void handleRestore()}>
+            {busy === "restore" ? "恢复中…" : "恢复"}
+          </Button>
+        </div>
+      </div>
+      {message ? <p className="panel-note">{message}</p> : null}
+      {error ? (
+        <p className="panel-note snapshot-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}

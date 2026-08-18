@@ -7,9 +7,11 @@ import {
 } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { formatCompact, formatTokens, projectLabel } from "../lib/format";
+import { cursorSessionProjectTable, cursorSessionToolTable } from "../lib/exportRows";
 import type { CursorSessionSummaryDto } from "../types";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
 import { KpiCard, LegendRow } from "./Kpi";
 
@@ -141,6 +143,11 @@ export function CursorSessionPanel({
         <section className="panel partition">
           <div className="panel-head">
             <h2>工具调用 Top N</h2>
+            <ExportButton
+              filename="Cursor会话工具"
+              headers={cursorSessionToolTable(data).headers}
+              rows={cursorSessionToolTable(data).rows}
+            />
           </div>
           {data.top_tools.length > 0 ? (
             <ExportableChart
@@ -157,6 +164,11 @@ export function CursorSessionPanel({
       <section className="panel partition">
         <div className="panel-head">
           <h2>按项目</h2>
+          <ExportButton
+            filename="Cursor会话项目"
+            headers={cursorSessionProjectTable(data).headers}
+            rows={cursorSessionProjectTable(data).rows}
+          />
         </div>
         {data.by_project.length > 0 ? (
           <>

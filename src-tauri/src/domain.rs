@@ -473,6 +473,13 @@ pub struct CodeVolumeSummary {
     pub composer_lines_added: i64,
     pub human_lines_added: i64,
     pub ai_percentage: Option<f64>,
+    /// 全部时间、全部来源的消耗记录费用估算；与代码量一样按「至今累计」口径，不受总览筛选影响。
+    /// 只用于下面的粗略 ROI 交叉指标，不代表 Cursor 单一来源的花费。
+    pub total_cost: Option<f64>,
+    pub cost_unpriced: bool,
+    /// = total_cost ÷ (composer_lines_added / 1000)。跨来源粗略口径：分子是全部 AI CLI 的费用，
+    /// 分母只是 Cursor 记录到的 AI 生成行数，两者不是同一统计边界，仅供参考，不做精确归因。
+    pub cost_per_thousand_ai_lines: Option<f64>,
 }
 
 /// 单条 Cursor 会话聚合（本机 agent-transcripts，不含正文）。

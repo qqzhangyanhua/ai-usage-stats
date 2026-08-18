@@ -234,6 +234,9 @@ export type CodeVolumeSummary = {
   composer_lines_added: number;
   human_lines_added: number;
   ai_percentage: number | null;
+  total_cost: number | null;
+  cost_unpriced: boolean;
+  cost_per_thousand_ai_lines: number | null;
 };
 
 export type CursorAccountUsageDto = {
