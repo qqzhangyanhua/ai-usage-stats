@@ -1,4 +1,6 @@
-use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
+use crate::adapters::cursor::{
+    parse_cursor_commits, summarize_code_volume, with_cost_roi, CursorCommitRow,
+};
 use crate::adapters::cursor_account;
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
 use crate::adapters::{
@@ -716,6 +718,35 @@ fn cursor_code_volume_stays_outside_usage_records() {
     let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
     assert_eq!(dto.total_tokens, 450);
     assert_eq!(stored.len(), 3);
+}
+
+#[test]
+fn with_cost_roi_derives_cost_per_thousand_ai_lines() {
+    let summary = summarize_code_volume(&parse_cursor_commits(&[CursorCommitRow {
+        commit_hash: "abc".into(),
+        branch: "main".into(),
+        scored_at_ms: 1,
+        lines_added: 4000,
+        composer_lines_added: 2000,
+        human_lines_added: 2000,
+        ai_percentage: None,
+    }]));
+
+    let priced = with_cost_roi(summary.clone(), Some(30.0), false);
+    assert_eq!(priced.total_cost, Some(30.0));
+    assert!(!priced.cost_unpriced);
+    // 2000 行 AI 代码花了 $30，即每千行 $15。
+    assert!((priced.cost_per_thousand_ai_lines.unwrap() - 15.0).abs() < 1e-9);
+
+    // 未配置任何单价时 cost 为 None，ROI 也应为 None，而不是被当成 0 处理。
+    let unpriced = with_cost_roi(summary.clone(), None, true);
+    assert_eq!(unpriced.cost_per_thousand_ai_lines, None);
+    assert!(unpriced.cost_unpriced);
+
+    // 没有任何 AI 生成行时分母为 0，即使有费用也不应该算出 ROI。
+    let no_lines = summarize_code_volume(&[]);
+    let no_lines_priced = with_cost_roi(no_lines, Some(10.0), false);
+    assert_eq!(no_lines_priced.cost_per_thousand_ai_lines, None);
 }
 
 #[test]
