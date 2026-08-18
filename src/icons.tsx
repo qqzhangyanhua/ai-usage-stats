@@ -10,6 +10,7 @@ export type IconName =
   | "sessions"
   | "cursor"
   | "settings"
+  | "instruction"
   | "refresh"
   | "calendar"
   | "filter"
@@ -84,6 +85,12 @@ const strokes: Record<Exclude<IconName, "logo">, ReactElement> = {
     <>
       <path d="M8 5h8l3 5-3 5H8L5 10l3-5Z" />
       <path d="M9 15v4l3-2 3 2v-4" />
+    </>
+  ),
+  instruction: (
+    <>
+      <path d="M7 4h10v16H7z" />
+      <path d="M10 8h4M10 12h4M10 16h2" />
     </>
   ),
   settings: (

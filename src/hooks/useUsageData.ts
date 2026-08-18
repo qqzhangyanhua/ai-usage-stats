@@ -136,7 +136,11 @@ export function useUsageData() {
     async (nextFilter = filter, nextPreset = preset) => {
       const generation = ++requestGeneration.current;
       const localOnly =
-        view === "sessions" || view === "cursor" || view === "cursor-sessions" || view === "settings";
+        view === "sessions" ||
+        view === "cursor" ||
+        view === "cursor-sessions" ||
+        view === "instructions" ||
+        view === "settings";
       if (!localOnly && !hydratedViews.has(view)) {
         setLoading(true);
       }

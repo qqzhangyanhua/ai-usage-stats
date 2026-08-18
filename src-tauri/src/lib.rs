@@ -10,6 +10,7 @@ pub mod cursor_session_detail;
 pub mod cursor_session_query;
 pub mod domain;
 pub mod ingest;
+pub mod instructions;
 pub mod litellm;
 pub mod official_quota;
 pub mod query;
@@ -29,9 +30,10 @@ use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
     CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
     CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
-    IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto, OfficialQuotaHookDto,
-    OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage,
-    SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
+    GlobalInstructionDto, IngestReport, InstructionUsageSummary, NamedAmount, OfficialQuotaConfig,
+    OfficialQuotaDto, OfficialQuotaHookDto, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
+    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
+    TurnRow,
 };
 
 pub struct AppState {
@@ -573,6 +575,20 @@ fn official_quota_snapshot(app: &tauri::AppHandle) -> Result<OfficialQuotaDto, S
 }
 
 #[tauri::command]
+async fn get_global_instructions() -> Result<GlobalInstructionDto, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let home = dirs::home_dir().ok_or_else(|| "无法确定用户主目录".to_string())?;
+        Ok(instructions::scan(
+            &home,
+            None,
+            &InstructionUsageSummary::default(),
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn get_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         {
@@ -827,6 +843,7 @@ pub fn run() {
             save_price_table,
             get_budget_status,
             save_budget,
+            get_global_instructions,
             get_official_quota,
             refresh_official_quota,
             get_official_quota_hook,

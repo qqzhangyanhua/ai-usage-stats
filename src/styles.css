@@ -3132,3 +3132,105 @@ td.row-actions {
   border-color: rgba(139, 108, 255, 0.28);
   background: rgba(139, 108, 255, 0.08);
 }
+
+.instruction-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.instruction-panel .muted,
+.instruction-body .muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.instruction-source {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-source h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.instruction-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-row {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--overlay-1);
+  overflow: hidden;
+}
+
+.instruction-row-head {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.instruction-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.instruction-row-title strong {
+  font-size: 13px;
+}
+
+.instruction-row-title em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--green-fg);
+}
+
+.instruction-row.status-not_created .instruction-row-title em,
+.instruction-row.status-present_unloaded .instruction-row-title em,
+.instruction-row.status-locally_invisible .instruction-row-title em {
+  color: var(--orange-fg);
+}
+
+.instruction-row-meta {
+  display: flex;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.instruction-body {
+  padding: 0 12px 12px;
+}
+
+.instruction-body pre {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--input-bg);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.instruction-error {
+  margin: 0 0 8px;
+  color: var(--red-fg);
+  font-size: 12px;
+}

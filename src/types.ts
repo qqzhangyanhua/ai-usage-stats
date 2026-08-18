@@ -116,6 +116,32 @@ export type OfficialQuotaHookDto = {
   conflict_command: string | null;
 };
 
+export type InstructionLoadStatus =
+  | "loaded"
+  | "present_unloaded"
+  | "locally_invisible"
+  | "not_created";
+
+export type GlobalInstructionFile = {
+  display_path: string;
+  abs_path: string;
+  byte_size: number;
+  modified_at: string | null;
+  load_status: InstructionLoadStatus;
+  content: string;
+  error: string | null;
+};
+
+export type GlobalInstructionSourceRow = {
+  source: string;
+  application: string;
+  files: GlobalInstructionFile[];
+};
+
+export type GlobalInstructionDto = {
+  sources: GlobalInstructionSourceRow[];
+};
+
 export type BudgetConfig = {
   monthly_usd: number | null;
 };
@@ -145,6 +171,7 @@ export type View =
   | "sessions"
   | "cursor"
   | "cursor-sessions"
+  | "instructions"
   | "settings";
 
 export type SeriesPoint = {

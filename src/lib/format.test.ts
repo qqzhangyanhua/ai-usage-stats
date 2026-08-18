@@ -4,6 +4,7 @@ import {
   applicationLabel,
   customRangeFilter,
   deltaPct,
+  formatBytes,
   formatClock,
   formatCompact,
   formatCost,
@@ -139,6 +140,13 @@ describe("shortId", () => {
 describe("relativeTime", () => {
   it("returns the input as-is for unparsable dates", () => {
     expect(relativeTime("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("formatBytes", () => {
+  it("formats a byte count with a unit suffix", () => {
+    expect(formatBytes(15)).toBe("15 B");
+    expect(formatBytes(0)).toBe("0 B");
   });
 });
 

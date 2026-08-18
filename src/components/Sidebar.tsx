@@ -24,6 +24,7 @@ const nav: { id: View; label: string; icon: IconName }[] = [
   { id: "provider", label: "Provider", icon: "provider" },
   { id: "cursor", label: "Cursor 代码量", icon: "cursor" },
   { id: "cursor-sessions", label: "Cursor 会话", icon: "sessions" },
+  { id: "instructions", label: "全局指令", icon: "instruction" },
   { id: "settings", label: "设置", icon: "settings" },
 ];
 
@@ -185,6 +186,8 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
       return { title: "Cursor 代码量", subtitle: "独立口径，不计入 Token" };
     case "cursor-sessions":
       return { title: "Cursor 会话", subtitle: "Agent 行为统计，不计入 Token" };
+    case "instructions":
+      return { title: "全局指令", subtitle: "跨来源的全局指令与体检" };
     case "settings":
       return { title: "设置", subtitle: "模型单价配置" };
   }

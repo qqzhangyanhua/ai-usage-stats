@@ -6202,3 +6202,86 @@ fn apply_fetch_results_isolates_provider_failures() {
     assert_eq!(codex.2.as_deref(), Some("Codex 不可用"));
     assert!(codex.0.is_empty());
 }
+
+#[test]
+fn scan_lists_claude_main_file_and_user_instruction_files() {
+    let home = tempfile::tempdir().unwrap();
+    let claude = home.path().join(".claude");
+    let user_dir = claude.join("rules");
+    std::fs::create_dir_all(&user_dir).unwrap();
+    std::fs::write(claude.join("CLAUDE.md"), "prefer-chinese\n").unwrap();
+    std::fs::write(user_dir.join("routing.md"), "# routing\n").unwrap();
+    std::fs::write(user_dir.join("skills.md"), "# skills\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        Some(home.path().join("proj").as_path()),
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+
+    assert_eq!(dto.sources.len(), 1);
+    assert_eq!(dto.sources[0].source, "claude");
+    assert_eq!(dto.sources[0].application, "Claude");
+    let files = &dto.sources[0].files;
+    assert_eq!(files.len(), 3);
+    assert_eq!(files[0].display_path, "~/.claude/CLAUDE.md");
+    assert_eq!(files[0].byte_size, 15);
+    assert_eq!(files[0].content, "prefer-chinese\n");
+    assert_eq!(
+        files[0].load_status,
+        crate::domain::InstructionLoadStatus::Loaded
+    );
+    assert!(files[0]
+        .modified_at
+        .as_deref()
+        .is_some_and(|t| !t.is_empty()));
+    assert_eq!(files[1].display_path, "~/.claude/rules/routing.md");
+    assert_eq!(files[1].content, "# routing\n");
+    assert_eq!(
+        files[1].load_status,
+        crate::domain::InstructionLoadStatus::Loaded
+    );
+    assert_eq!(files[2].display_path, "~/.claude/rules/skills.md");
+    assert_eq!(files[2].content, "# skills\n");
+}
+
+#[test]
+fn scan_marks_missing_claude_main_file_not_created() {
+    let home = tempfile::tempdir().unwrap();
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let files = &dto.sources[0].files;
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].display_path, "~/.claude/CLAUDE.md");
+    assert_eq!(
+        files[0].load_status,
+        crate::domain::InstructionLoadStatus::NotCreated
+    );
+    assert_eq!(files[0].byte_size, 0);
+    assert_eq!(files[0].content, "");
+    assert!(files[0].modified_at.is_none());
+}
+
+#[test]
+fn scan_ignores_reserved_project_and_usage_for_now() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "same\n").unwrap();
+    let empty = crate::domain::InstructionUsageSummary::default();
+    let populated = crate::domain::InstructionUsageSummary {
+        sources: vec![crate::domain::InstructionSourceUsage {
+            source: "claude".into(),
+            total_tokens: 99_000,
+        }],
+    };
+    let without_project = crate::instructions::scan(home.path(), None, &empty);
+    let with_both = crate::instructions::scan(
+        home.path(),
+        Some(home.path().join("other-project").as_path()),
+        &populated,
+    );
+    assert_eq!(without_project, with_both);
+}

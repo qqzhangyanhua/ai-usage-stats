@@ -164,6 +164,10 @@ export function formatRatio(value: number | null, digits = 1): string {
   return value.toFixed(digits);
 }
 
+export function formatBytes(n: number): string {
+  return `${n.toLocaleString("zh-CN")} B`;
+}
+
 export function formatClock(iso: string | null): string {
   if (!iso) {
     return "—";

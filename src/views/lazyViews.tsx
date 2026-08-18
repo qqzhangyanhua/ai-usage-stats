@@ -32,3 +32,7 @@ export const LazyCursorSessionPanel = namedLazy(
   () => import("../components/CursorSessionPanel"),
   "CursorSessionPanel",
 );
+export const LazyGlobalInstructionPanel = namedLazy(
+  () => import("../components/GlobalInstructionPanel"),
+  "GlobalInstructionPanel",
+);

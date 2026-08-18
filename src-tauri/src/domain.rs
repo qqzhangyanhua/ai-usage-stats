@@ -246,6 +246,51 @@ pub struct OfficialQuotaHookDto {
     pub conflict_command: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstructionLoadStatus {
+    Loaded,
+    PresentUnloaded,
+    LocallyInvisible,
+    NotCreated,
+}
+
+/// 各 Source 的消耗摘要，扫描接缝预留给用量交叉洞察，本维度不写入 sqlite。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct InstructionUsageSummary {
+    pub sources: Vec<InstructionSourceUsage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstructionSourceUsage {
+    pub source: String,
+    pub total_tokens: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlobalInstructionFile {
+    pub display_path: String,
+    pub abs_path: String,
+    pub byte_size: u64,
+    pub modified_at: Option<String>,
+    pub load_status: InstructionLoadStatus,
+    pub content: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlobalInstructionSourceRow {
+    pub source: String,
+    pub application: String,
+    pub files: Vec<GlobalInstructionFile>,
+}
+
+/// 全局指令快照：不进消耗记录，不进 Token KPI，不写 sqlite。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlobalInstructionDto {
+    pub sources: Vec<GlobalInstructionSourceRow>,
+}
+
 /// 当前自然月的预算执行情况：仅本地估算，非官方账单，用于阈值提醒与设置页展示。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BudgetStatusDto {

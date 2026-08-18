@@ -12,6 +12,7 @@ import {
   LazyCursorAccountUsagePanel,
   LazyCursorPanel,
   LazyCursorSessionPanel,
+  LazyGlobalInstructionPanel,
   LazyOverview,
   LazySessions,
   LazySettings,
@@ -57,7 +58,8 @@ export default function App() {
               !data.viewHasData &&
               view !== "sessions" &&
               view !== "cursor" &&
-              view !== "cursor-sessions"
+              view !== "cursor-sessions" &&
+              view !== "instructions"
             }
           >
             <ErrorBoundary fullscreen={false}>
@@ -131,6 +133,7 @@ export default function App() {
                     onError={data.reportError}
                   />
                 ) : null}
+                {view === "instructions" ? <LazyGlobalInstructionPanel /> : null}
                 {view === "settings" ? (
                   <LazySettings
                     prices={data.prices}
