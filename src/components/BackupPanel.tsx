@@ -47,7 +47,7 @@ export function BackupPanel({ onRestored }: { onRestored?: () => void }) {
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-backup">
       <div className="panel-head">
         <div>
           <h2>数据备份与恢复</h2>

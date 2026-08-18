@@ -55,7 +55,7 @@ export function BudgetPanel({
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-budget">
       <div className="panel-head">
         <div>
           <h2>预算与提醒</h2>

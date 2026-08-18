@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Filter, View } from "../types";
-import { isViewFresh, viewStamp, viewsWarmedBy } from "./viewCache";
+import { isViewFresh, parseViewHash, viewStamp, viewsWarmedBy } from "./viewCache";
 
 const filter: Filter = {
   from: null,
@@ -10,6 +10,23 @@ const filter: Filter = {
   projects: [],
   providers: [],
 };
+
+describe("parseViewHash", () => {
+  it("maps known view hashes", () => {
+    expect(parseViewHash("#sessions")).toBe("sessions");
+    expect(parseViewHash("source")).toBe("application");
+  });
+
+  it("keeps settings panel anchors on the settings view", () => {
+    expect(parseViewHash("#settings")).toBe("settings");
+    expect(parseViewHash("#settings-budget")).toBe("settings");
+    expect(parseViewHash("settings-diagnostics")).toBe("settings");
+  });
+
+  it("falls back to overview for unknown hashes", () => {
+    expect(parseViewHash("#nope")).toBe("overview");
+  });
+});
 
 describe("viewStamp", () => {
   it("keeps model/provider/project stamps stable across grain changes", () => {
@@ -43,8 +60,8 @@ describe("isViewFresh", () => {
     }
     expect(isViewFresh(loaded, "trend", filter, "all", "day", 1)).toBe(true);
     expect(isViewFresh(loaded, "model", filter, "all", "week", 1)).toBe(true);
-    expect(
-      isViewFresh(loaded, "trend", { ...filter, from: "2026-08-01" }, "all", "day", 1),
-    ).toBe(false);
+    expect(isViewFresh(loaded, "trend", { ...filter, from: "2026-08-01" }, "all", "day", 1)).toBe(
+      false,
+    );
   });
 });

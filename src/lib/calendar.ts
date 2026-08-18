@@ -1,4 +1,4 @@
-import type { Filter } from "../types";
+import type { Filter, Grain } from "../types";
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"] as const;
 const HEATMAP_WEEKS = 53;
@@ -228,4 +228,66 @@ export function tokenHeatmapLevel(value: number, cuts: number[]): number {
     prev = upper;
   }
   return Math.min(Math.max(level, 1), 4);
+}
+
+/**
+ * 把趋势 bucket（与后端 `strftime` / `substr` 口径一致）换成自定义区间用的起止日。
+ * hour/day 落到当天；week 为该 ISO 周周一至周日；month 为该月 1 号至月末。
+ */
+export function bucketToDateRange(
+  grain: Grain,
+  bucket: string,
+): { from: string; to: string } | null {
+  if (grain === "hour") {
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2})$/.exec(bucket);
+    if (!match) {
+      return null;
+    }
+    const day = match[1];
+    const hour = Number(match[2]);
+    if (hour > 23 || !parseDateValue(day)) {
+      return null;
+    }
+    return { from: day, to: day };
+  }
+  if (grain === "day") {
+    if (!parseDateValue(bucket)) {
+      return null;
+    }
+    return { from: bucket, to: bucket };
+  }
+  if (grain === "week") {
+    const match = /^(\d{4})-W(\d{2})$/.exec(bucket);
+    if (!match) {
+      return null;
+    }
+    const week = Number(match[2]);
+    if (week < 1 || week > 53) {
+      return null;
+    }
+    return isoWeekDateRange(Number(match[1]), week);
+  }
+  const match = /^(\d{4})-(\d{2})$/.exec(bucket);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) {
+    return null;
+  }
+  const last = new Date(year, month, 0);
+  return { from: `${year}-${pad2(month)}-01`, to: toDateValue(last) };
+}
+
+/** ISO 周年的第 1 周包含 1 月 4 日；周一起始。 */
+function isoWeekDateRange(isoYear: number, week: number): { from: string; to: string } {
+  const jan4 = new Date(isoYear, 0, 4);
+  const jan4Dow = jan4.getDay() || 7;
+  const week1Monday = new Date(isoYear, 0, 4 - (jan4Dow - 1));
+  const monday = new Date(week1Monday);
+  monday.setDate(week1Monday.getDate() + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { from: toDateValue(monday), to: toDateValue(sunday) };
 }
