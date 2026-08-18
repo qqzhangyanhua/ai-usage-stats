@@ -338,9 +338,12 @@ pub fn top_sessions(
         let entry = map.entry(key).or_insert_with(|| SessionAcc {
             source: record.source.as_str().to_string(),
             session_id: record.session_id.clone(),
-            project: record.project.clone(),
-            model: record.model.clone(),
-            source_file: record.source_file.clone(),
+            project: String::new(),
+            model: String::new(),
+            source_file: String::new(),
+            project_at: None,
+            model_at: None,
+            source_file_at: None,
             total_tokens: 0,
             started_at: record.occurred_at.clone(),
             ended_at: record.occurred_at.clone(),
@@ -354,9 +357,24 @@ pub fn top_sessions(
         if record.occurred_at > entry.ended_at {
             entry.ended_at = record.occurred_at.clone();
         }
-        if !record.model.is_empty() {
-            entry.model = record.model.clone();
-        }
+        assign_latest(
+            &mut entry.project,
+            &mut entry.project_at,
+            &record.project,
+            &record.occurred_at,
+        );
+        assign_latest(
+            &mut entry.model,
+            &mut entry.model_at,
+            &record.model,
+            &record.occurred_at,
+        );
+        assign_latest(
+            &mut entry.source_file,
+            &mut entry.source_file_at,
+            &record.source_file,
+            &record.occurred_at,
+        );
         let derived = derive_cost(record, prices);
         if let Some(amount) = derived.amount {
             entry.cost = Some(entry.cost.unwrap_or(0.0) + amount);
@@ -391,11 +409,33 @@ struct SessionAcc {
     project: String,
     model: String,
     source_file: String,
+    project_at: Option<String>,
+    model_at: Option<String>,
+    source_file_at: Option<String>,
     total_tokens: i64,
     started_at: String,
     ended_at: String,
     cost: Option<f64>,
     unpriced: bool,
+}
+
+fn assign_latest(
+    field: &mut String,
+    field_at: &mut Option<String>,
+    value: &str,
+    occurred_at: &str,
+) {
+    if value.is_empty() {
+        return;
+    }
+    let newer = match field_at.as_deref() {
+        None => true,
+        Some(prev) => occurred_at > prev || (occurred_at == prev && value > field.as_str()),
+    };
+    if newer {
+        *field = value.to_string();
+        *field_at = Some(occurred_at.to_string());
+    }
 }
 
 pub fn session_turns(

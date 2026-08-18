@@ -33,16 +33,19 @@ function emptySummary(): CursorSessionSummaryDto {
     by_model: [],
     top_tools: [],
     daily: [],
-    sessions: [],
   };
 }
 
 export function CursorSessionPanel({
   summary,
   theme,
+  revision,
+  onError,
 }: {
   summary: CursorSessionSummaryDto | null;
   theme: ResolvedTheme;
+  revision: number;
+  onError?: (error: unknown) => void;
 }) {
   const data = summary ?? emptySummary();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -114,9 +117,11 @@ export function CursorSessionPanel({
       </section>
 
       <CursorSessionTable
-        sessions={data.sessions}
+        revision={revision}
+        projectNames={data.by_project.map((row) => row.name)}
         selectedProject={selectedProject}
         onSelectProject={setSelectedProject}
+        onError={onError}
       />
 
       <section className="panel partition">

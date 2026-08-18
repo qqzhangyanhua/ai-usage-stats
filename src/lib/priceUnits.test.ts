@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatPerMillionInput, fromPerMillion, toPerMillion } from "./priceUnits";
+import {
+  formatPerMillionInput,
+  fromPerMillion,
+  parsePerMillionInput,
+  toPerMillion,
+} from "./priceUnits";
 
 describe("priceUnits", () => {
   it("round-trips common USD/1M prices back to per-token storage", () => {
@@ -10,7 +15,15 @@ describe("priceUnits", () => {
 
   it("formats tiny per-token values without float noise in the input box", () => {
     expect(formatPerMillionInput(0)).toBe("0");
+    expect(formatPerMillionInput(Number.NaN)).toBe("0");
     expect(formatPerMillionInput(5 / 1_000_000)).toBe("5");
     expect(formatPerMillionInput(0.22 / 1_000_000)).toBe("0.22");
+  });
+
+  it("rejects invalid USD/1M edits instead of writing NaN", () => {
+    expect(parsePerMillionInput("")).toBe(0);
+    expect(parsePerMillionInput("3")).toBeCloseTo(0.000003, 12);
+    expect(parsePerMillionInput("abc")).toBeNull();
+    expect(parsePerMillionInput("-1")).toBeNull();
   });
 });

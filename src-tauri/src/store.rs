@@ -597,6 +597,19 @@ pub fn cursor_session_has_source_file(conn: &Connection, path: &str) -> Result<b
     .map_err(|e| e.to_string())
 }
 
+pub fn cached_cursor_session_file_stats(
+    conn: &Connection,
+) -> Result<Vec<(String, i64, i64)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT path, mtime_ms, size FROM cursor_session_files")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn cursor_session_file_fingerprint(
     conn: &Connection,
     path: &str,
@@ -752,5 +765,28 @@ pub fn cursor_session_as_of(conn: &Connection) -> Result<Option<String>, String>
         |row| row.get(0),
     )
     .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn set_cursor_tracking_fingerprint(conn: &Connection, fingerprint: &str) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_session_meta(key, value) VALUES('tracking_fingerprint', ?1)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![fingerprint],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn cursor_tracking_fingerprint(conn: &Connection) -> Result<String, String> {
+    conn.query_row(
+        "SELECT value FROM cursor_session_meta WHERE key = 'tracking_fingerprint'",
+        [],
+        |row| row.get(0),
+    )
+    .optional()
+    .map(|value| value.unwrap_or_default())
     .map_err(|e| e.to_string())
 }
