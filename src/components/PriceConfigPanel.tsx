@@ -18,7 +18,7 @@ export function PriceConfigPanel({
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-prices">
       <div className="panel-head">
         <div>
           <h2>单价配置</h2>

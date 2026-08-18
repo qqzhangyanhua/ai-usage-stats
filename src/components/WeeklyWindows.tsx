@@ -13,22 +13,16 @@ export const WeeklyWindows = memo(function WeeklyWindows({
 }) {
   const maxTokens = Math.max(1, ...windows.map((w) => w.total_tokens));
 
+  if (windows.length === 0) {
+    return <EmptyState compact icon="clock" title={`最近 ${windowDays} 天没有用量记录`} />;
+  }
+
   return (
-    <article className="panel weekly-panel">
-      <div className="panel-head">
-        <h2>{windowDays} 天滚动用量</h2>
-        <span className="muted">按来源统计最近 {windowDays} 天的累计消耗，非官方配额</span>
-      </div>
-      {windows.length === 0 ? (
-        <EmptyState compact icon="clock" title={`最近 ${windowDays} 天没有用量记录`} />
-      ) : (
-        <ul className="weekly-list">
-          {windows.map((window) => (
-            <WeeklyRow key={window.source} window={window} maxTokens={maxTokens} />
-          ))}
-        </ul>
-      )}
-    </article>
+    <ul className="weekly-list">
+      {windows.map((window) => (
+        <WeeklyRow key={window.source} window={window} maxTokens={maxTokens} />
+      ))}
+    </ul>
   );
 });
 

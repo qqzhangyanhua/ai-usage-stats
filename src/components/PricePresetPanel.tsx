@@ -41,7 +41,7 @@ export function PricePresetPanel({
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-presets">
       <div className="panel-head">
         <div>
           <h2>从预设导入单价</h2>

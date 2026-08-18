@@ -4,6 +4,7 @@ import {
   filterChips,
   hasDimensionFilters,
   removeFilterChip,
+  withModelFilter,
 } from "./filterChips";
 import type { Filter } from "../types";
 
@@ -30,6 +31,11 @@ describe("filterChips", () => {
     const next = clearDimensionFilters({ ...filter, from: "2026-08-01" });
     expect(next.from).toBe("2026-08-01");
     expect(hasDimensionFilters(next)).toBe(false);
+  });
+
+  it("replaces the model dimension when merging a chart click", () => {
+    expect(withModelFilter(filter, "claude-opus").models).toEqual(["claude-opus"]);
+    expect(withModelFilter(filter, "claude-opus").sources).toEqual(["claude"]);
   });
 
   it("removes a single chip", () => {

@@ -27,6 +27,10 @@ export function clearDimensionFilters(filter: Filter): Filter {
   return { ...filter, projects: [], sources: [], models: [], providers: [] };
 }
 
+export function withModelFilter(filter: Filter, model: string): Filter {
+  return { ...filter, models: [model] };
+}
+
 export function removeFilterChip(filter: Filter, chip: FilterChip): Filter {
   if (chip.kind === "project") {
     return { ...filter, projects: filter.projects.filter((item) => item !== chip.value) };

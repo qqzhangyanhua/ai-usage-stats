@@ -1,26 +1,22 @@
-import { memo, useMemo } from "react";
-import { Icon, sourceTone } from "../icons";
-import { ModelLabel, VendorIcon } from "./VendorIcon";
-import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/chartTheme";
+import { memo } from "react";
+import { Icon } from "../icons";
+import { heatmapGrid } from "../lib/calendar";
+import { chartPalette } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { BillingWindows } from "./BillingWindows";
-import { WeeklyWindows } from "./WeeklyWindows";
-import { DonutChart } from "./DonutChart";
-import { ExportableChart } from "./ExportableChart";
+import { CollapsibleSection } from "./CollapsibleSection";
 import { EmptyState } from "./EmptyState";
-import { KpiCard, LegendRow, Spark } from "./Kpi";
-import { Button } from "./ui/Button";
-import { GrainSwitch } from "./ui/GrainSwitch";
+import { KpiCard, Spark } from "./Kpi";
+import { OverviewDetail } from "./OverviewDetail";
+import { OverviewTrend } from "./OverviewTrend";
+import { WeeklyWindows } from "./WeeklyWindows";
 import {
-  applicationLabel,
   deltaPct,
   formatClock,
   formatCompact,
   formatDelta,
   formatUsd,
-  projectLabel,
-  relativeTime,
 } from "../lib/format";
 import type {
   BillingWindowsDto,
@@ -70,6 +66,8 @@ export const Overview = memo(function Overview({
   onOpenSessions,
   onProjectClick,
   onSessionClick,
+  onRangeSelect,
+  onModelClick,
 }: {
   overview: OverviewDto | null;
   billingWindows: BillingWindowsDto | null;
@@ -89,6 +87,8 @@ export const Overview = memo(function Overview({
   onOpenSessions: () => void;
   onProjectClick?: (project: string) => void;
   onSessionClick?: (session: { id: string; source: string }) => void;
+  onRangeSelect?: (from: string, to: string) => void;
+  onModelClick?: (model: string) => void;
 }) {
   const data = overview ?? emptyOverview;
   const palette = chartPalette(theme);
@@ -96,32 +96,15 @@ export const Overview = memo(function Overview({
   const dailyAvg = data.total_tokens / days;
   const last = trend[trend.length - 1];
   const rate = last ? Math.round(last.total_tokens / BUCKET_MINUTES[grain]) : 0;
-  const spark = trend.map((p) => p.total_tokens);
-  const recent = useMemo(
-    () => [...sessions].sort((a, b) => b.ended_at.localeCompare(a.ended_at)).slice(0, 8),
-    [sessions],
-  );
-  const topProjects = projects.slice(0, 5);
-  const maxProject = topProjects[0]?.total_tokens ?? 1;
-  const modelItems = modelSlices(models);
-  const inputShare = data.total_tokens === 0 ? 0 : (data.input_tokens / data.total_tokens) * 100;
-  const outputShare = data.total_tokens === 0 ? 0 : (data.output_tokens / data.total_tokens) * 100;
-  const trendOption = useMemo(() => areaTrendOption(trend, theme), [trend, theme]);
-  const modelOption = useMemo(() => donutOption(modelItems, theme), [modelItems, theme]);
-  const tokenTotal = formatCompact(data.total_tokens);
-  // cost 为 null 代表「本期完全未定价」，不能当 0 参与涨跌百分比计算，否则会给出误导性的涨跌提示。
+  const spark = trend.map((point) => point.total_tokens);
+  const activeWindows = (billingWindows?.current ?? []).filter((window) => window.is_active).length;
+  const weeklyDays = billingWindows?.weekly_window_days ?? 7;
+  const weeklyCount = billingWindows?.weekly.length ?? 0;
+  const heatmapWeeks = heatmapGrid(heatmapRange.from, heatmapRange.to).length;
+  const tokenDelta = formatDelta(deltaPct(data.total_tokens, previous?.total_tokens ?? null));
   const costDelta =
     data.cost == null ? null : formatDelta(deltaPct(data.cost, previous?.cost ?? null));
-  const tokenOption = useMemo(() => {
-    const tokenItems = [
-      { name: "输入 Token", value: data.input_tokens, color: palette.input },
-      { name: "输出 Token", value: data.output_tokens, color: palette.output },
-    ];
-    return donutOption(tokenItems, theme);
-  }, [data.input_tokens, data.output_tokens, theme, palette]);
 
-  // 首次加载完成前 overview 为 null；不要用 emptyOverview 的全零占位渲染完整仪表盘，
-  // 避免用户看到一闪而过的假 $0.00 / 0 会话数。
   if (!overview) {
     return (
       <div className="dash">
@@ -138,7 +121,7 @@ export const Overview = memo(function Overview({
           tone="purple"
           label="总 Token 使用量"
           value={formatCompact(data.total_tokens)}
-          delta={formatDelta(deltaPct(data.total_tokens, previous?.total_tokens ?? null))}
+          delta={tokenDelta}
           spark={spark}
         />
         <KpiCard
@@ -147,7 +130,7 @@ export const Overview = memo(function Overview({
           label="总会话数"
           value={data.session_count.toLocaleString("zh-CN")}
           delta={formatDelta(deltaPct(data.session_count, previous?.session_count ?? null))}
-          spark={trend.map((p) => p.total_tokens)}
+          spark={spark}
         />
         <KpiCard
           icon="cost"
@@ -155,7 +138,7 @@ export const Overview = memo(function Overview({
           label="总费用估算"
           value={formatUsd(data.cost, data.unpriced)}
           delta={costDelta}
-          spark={trend.map((p) => p.cost ?? 0)}
+          spark={trend.map((point) => point.cost ?? 0)}
         />
         <KpiCard
           icon="daily"
@@ -171,161 +154,78 @@ export const Overview = memo(function Overview({
         />
       </section>
 
-      <BillingWindows data={billingWindows} />
+      <CollapsibleSection
+        sectionId="billing"
+        title="5 小时计费窗"
+        className="panel billing-panel"
+        extra={<span className="muted">由本地时间戳估计，非官方配额 · 始终展示最近窗口，不受时间范围筛选影响</span>}
+        collapsedSummary={
+          activeWindows > 0 ? `${activeWindows} 个进行中窗口` : "当前没有进行中的窗口"
+        }
+      >
+        <BillingWindows data={billingWindows} />
+      </CollapsibleSection>
 
-      <WeeklyWindows
-        windows={billingWindows?.weekly ?? []}
-        windowDays={billingWindows?.weekly_window_days ?? 7}
-      />
+      <CollapsibleSection
+        sectionId="weekly"
+        title={`${weeklyDays} 天滚动用量`}
+        className="panel weekly-panel"
+        extra={<span className="muted">按来源统计最近 {weeklyDays} 天的累计消耗，非官方配额</span>}
+        collapsedSummary={`${weeklyCount} 个 ${weeklyDays} 天窗口`}
+      >
+        <WeeklyWindows windows={billingWindows?.weekly ?? []} windowDays={weeklyDays} />
+      </CollapsibleSection>
 
-      <section className="dash-mid">
-        <article className="panel trend-panel">
-          <div className="panel-head">
-            <h2>Token 使用趋势</h2>
-            <GrainSwitch value={grain} onChange={onGrain} />
-          </div>
-          <div className="chart-fill">
-            <ExportableChart
-              option={trendOption}
-              style={{ height: "100%", width: "100%" }}
-              filename="总览趋势图"
-            />
-          </div>
-        </article>
-        <div className="dash-side">
-          <div className="current-strip">
-            <div className="cs-main">
-              <span className="cs-label">当前 Token 使用量</span>
-              <strong className="cs-value">{formatCompact(last?.total_tokens ?? 0)}</strong>
-            </div>
-            <div className="cs-split">
-              <span>
-                输入 <em>{formatCompact(last?.input_tokens ?? 0)}</em>
-              </span>
-              <span>
-                输出 <em>{formatCompact(last?.output_tokens ?? 0)}</em>
-              </span>
-            </div>
-          </div>
-          <article className="panel">
-            <div className="panel-head">
-              <h2>模型使用分布</h2>
-            </div>
-            <div className="donut-wrap">
-              <DonutChart option={modelOption} centerValue={tokenTotal} />
-              <div className="legend-col">
-                {modelItems.map((item) => (
-                  <LegendRow
-                    key={item.name}
-                    color={item.color}
-                    icon={<VendorIcon name={item.name} size={16} />}
-                    label={item.name}
-                    value={`${((item.value / Math.max(data.total_tokens, 1)) * 100).toFixed(1)}%`}
-                    extra={formatCompact(item.value)}
-                  />
-                ))}
-              </div>
-            </div>
-          </article>
-        </div>
-      </section>
+      <CollapsibleSection
+        sectionId="trend"
+        title="趋势与模型"
+        className="collapsible-trend"
+        collapsedSummary={`趋势 ${trend.length} 点 · 模型 ${models.length} 个`}
+      >
+        <OverviewTrend
+          trend={trend}
+          models={models}
+          totalTokens={data.total_tokens}
+          grain={grain}
+          theme={theme}
+          onGrain={onGrain}
+          onRangeSelect={onRangeSelect}
+          onModelClick={onModelClick}
+        />
+      </CollapsibleSection>
 
-      <ActivityHeatmap points={heatmap} range={heatmapRange} />
+      <CollapsibleSection
+        sectionId="heatmap"
+        title="活跃热力图"
+        className="panel heatmap-panel"
+        extra={
+          <span className="muted">
+            {heatmap.some((point) => point.total_tokens > 0)
+              ? "近 53 周 · 按日 Token"
+              : "近 53 周暂无 Token"}
+          </span>
+        }
+        collapsedSummary={`${heatmapWeeks} 周热力图`}
+      >
+        <ActivityHeatmap points={heatmap} range={heatmapRange} onDayClick={onRangeSelect} />
+      </CollapsibleSection>
 
-      <section className="dash-bottom">
-        <article className="panel">
-          <div className="panel-head">
-            <h2>Token 使用统计</h2>
-          </div>
-          <div className="donut-wrap">
-            <DonutChart option={tokenOption} centerValue={tokenTotal} />
-            <div className="legend-col">
-              <LegendRow
-                color={palette.input}
-                label="输入 Token"
-                value={formatCompact(data.input_tokens)}
-                extra={`${inputShare.toFixed(1)}%`}
-              />
-              <LegendRow
-                color={palette.output}
-                label="输出 Token"
-                value={formatCompact(data.output_tokens)}
-                extra={`${outputShare.toFixed(1)}%`}
-              />
-            </div>
-          </div>
-        </article>
-        <article className="panel">
-          <div className="panel-head">
-            <h2>Top 5 项目</h2>
-            <span className="muted">按 Token 使用量</span>
-          </div>
-          <ol className="rank-list">
-            {topProjects.map((row, index) => (
-              <li key={row.name}>
-                <span className="rank">{index + 1}</span>
-                <button
-                  type="button"
-                  className="rank-name rank-link"
-                  title={`筛选项目 ${projectLabel(row.name)}`}
-                  onClick={() => onProjectClick?.(row.name)}
-                >
-                  {projectLabel(row.name)}
-                </button>
-                <span className="rank-bar">
-                  <i style={{ width: `${(row.total_tokens / maxProject) * 100}%` }} />
-                </span>
-                <span className="rank-val">{formatCompact(row.total_tokens)}</span>
-              </li>
-            ))}
-            {topProjects.length === 0 ? (
-              <li className="empty">
-                <EmptyState compact icon="project" title="暂无项目数据" />
-              </li>
-            ) : null}
-          </ol>
-        </article>
-        <article className="panel">
-          <div className="panel-head">
-            <h2>最近会话</h2>
-            <Button variant="text" onClick={onOpenSessions}>
-              查看全部
-            </Button>
-          </div>
-          <ul className="session-list">
-            {recent.map((row) => (
-              <li key={`${row.source}-${row.session_id}`}>
-                <button
-                  type="button"
-                  className="sess-open"
-                  onClick={() => onSessionClick?.({ id: row.session_id, source: row.source })}
-                >
-                <span className={`src-ico ${sourceTone[row.source] ?? "tone-other"}`}>
-                  {applicationLabel(row.source).slice(0, 1).toUpperCase()}
-                </span>
-                <div className="sess-main">
-                  <div className="sess-title">{projectLabel(row.project)}</div>
-                  <div className="sess-sub">
-                    {row.model ? (
-                      <ModelLabel name={row.model} size={14} />
-                    ) : (
-                      applicationLabel(row.source)
-                    )}
-                  </div>
-                </div>
-                <span className="sess-time">{relativeTime(row.ended_at)}</span>
-                <span className="sess-tokens">{formatCompact(row.total_tokens)}</span>
-                </button>
-              </li>
-            ))}
-            {recent.length === 0 ? (
-              <li className="empty">
-                <EmptyState compact icon="sessions" title="暂无会话" />
-              </li>
-            ) : null}
-          </ul>
-        </article>
-      </section>
+      <CollapsibleSection
+        sectionId="detail"
+        title="明细"
+        className="collapsible-detail"
+        collapsedSummary="Token 统计 · Top 项目 · 最近会话"
+      >
+        <OverviewDetail
+          data={data}
+          projects={projects}
+          sessions={sessions}
+          theme={theme}
+          onOpenSessions={onOpenSessions}
+          onProjectClick={onProjectClick}
+          onSessionClick={onSessionClick}
+        />
+      </CollapsibleSection>
 
       <footer className="status-bar">
         <div className="stat-block">

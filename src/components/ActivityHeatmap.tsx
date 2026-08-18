@@ -22,9 +22,11 @@ type HoverTip = {
 export const ActivityHeatmap = memo(function ActivityHeatmap({
   points,
   range,
+  onDayClick,
 }: {
   points: SeriesPoint[];
   range: { from: string; to: string };
+  onDayClick?: (from: string, to: string) => void;
 }) {
   const weeks = useMemo(() => heatmapGrid(range.from, range.to), [range.from, range.to]);
   const months = useMemo(() => heatmapMonthLabels(weeks), [weeks]);
@@ -33,7 +35,6 @@ export const ActivityHeatmap = memo(function ActivityHeatmap({
     () => quantileCuts(points.map((point) => point.total_tokens).filter((value) => value > 0)),
     [points],
   );
-  const hasTokens = points.some((point) => point.total_tokens > 0);
   const [hover, setHover] = useState<HoverTip | null>(null);
   const monthByWeek = useMemo(() => {
     const labels = new Map<number, string>();
@@ -43,7 +44,7 @@ export const ActivityHeatmap = memo(function ActivityHeatmap({
     return labels;
   }, [months]);
 
-  function showTip(event: MouseEvent<HTMLSpanElement>, date: string) {
+  function showTip(event: MouseEvent<HTMLElement>, date: string) {
     const host = event.currentTarget.closest(".heatmap");
     if (!(host instanceof HTMLElement)) {
       return;
@@ -61,12 +62,7 @@ export const ActivityHeatmap = memo(function ActivityHeatmap({
   }
 
   return (
-    <article className="panel heatmap-panel">
-      <div className="panel-head">
-        <h2>活跃热力图</h2>
-        <span className="muted">{hasTokens ? "近 53 周 · 按日 Token" : "近 53 周暂无 Token"}</span>
-      </div>
-      <div className="heatmap" style={{ "--heat-weeks": weeks.length } as CSSProperties}>
+    <div className="heatmap" style={{ "--heat-weeks": weeks.length } as CSSProperties}>
         <div className="heatmap-body">
           <div className="heatmap-months" aria-hidden="true">
             {weeks.map((week, weekIndex) => (
@@ -87,15 +83,18 @@ export const ActivityHeatmap = memo(function ActivityHeatmap({
                 }
                 const tokens = byDay.get(cell.date)?.total_tokens ?? 0;
                 const level = cell.future ? 0 : tokenHeatmapLevel(tokens, cuts);
+                const className = `heat-cell heat-${level}${cell.future ? " is-future" : ""}`;
+                if (cell.future) {
+                  return <span key={cell.date} className={className} aria-hidden />;
+                }
                 return (
-                  <span
+                  <button
                     key={cell.date}
-                    className={`heat-cell heat-${level}${cell.future ? " is-future" : ""}`}
-                    aria-hidden={cell.future ? true : undefined}
-                    aria-label={
-                      cell.future ? undefined : `${cell.date} · ${formatCompact(tokens)} Token`
-                    }
-                    onMouseEnter={cell.future ? undefined : (event) => showTip(event, cell.date)}
+                    type="button"
+                    className={className}
+                    aria-label={`${cell.date} · ${formatCompact(tokens)} Token`}
+                    onMouseEnter={(event) => showTip(event, cell.date)}
+                    onClick={() => onDayClick?.(cell.date, cell.date)}
                   />
                 );
               }),
@@ -127,7 +126,6 @@ export const ActivityHeatmap = memo(function ActivityHeatmap({
             {hover.cost != null ? <div>{formatUsd(hover.cost, false)}</div> : null}
           </div>
         ) : null}
-      </div>
-    </article>
+    </div>
   );
 });

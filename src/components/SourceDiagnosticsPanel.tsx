@@ -22,7 +22,7 @@ export function SourceDiagnosticsPanel({
   const totalArchived = diagnostics.reduce((sum, row) => sum + row.archived_record_count, 0);
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-diagnostics">
       <div className="panel-head">
         <div>
           <h2>数据源健康</h2>
