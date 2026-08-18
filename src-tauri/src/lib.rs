@@ -535,15 +535,17 @@ async fn restore_data(app: tauri::AppHandle) -> Result<bool, String> {
         };
         let state = app.state::<AppState>();
         let paths = app_data_paths(&state);
+        backup::validate_restore(&src)?;
         {
             let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
             *conn = store::open_memory()?;
         }
-        backup::restore_from(&src, &paths)?;
+        let restored = backup::restore_from(&src, &paths);
         {
             let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
             *conn = store::open_db(paths.db_path.to_string_lossy().as_ref())?;
         }
+        restored?;
         let (snapshot, _) = litellm::load_snapshot(&paths.snapshot_path);
         *state.snapshot.lock().map_err(|e| e.to_string())? = snapshot;
         let _ = tray::refresh(&app);

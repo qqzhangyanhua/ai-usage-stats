@@ -12,7 +12,8 @@ use crate::billing_window;
 use crate::budget;
 use crate::cost::derive_cost;
 use crate::domain::{
-    BudgetConfig, Filter, PriceEntry, PriceTable, SessionQuery, Source, UsageRecord,
+    BudgetConfig, CostSource, Filter, PriceEntry, PriceOrigin, PriceTable, SessionQuery, Source,
+    UsageRecord,
 };
 use crate::ingest;
 use crate::query;
@@ -1758,6 +1759,7 @@ fn sessions_page_computes_cost_only_when_requested() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
 
@@ -1806,6 +1808,7 @@ fn cost_prefers_native_and_marks_unpriced() {
             output: 0.002,
             cache_read: 0.0005,
             cache_creation: 0.003,
+            origin: PriceOrigin::User,
         }],
     };
     let derived = derive_cost(&priced, &table);
@@ -1856,6 +1859,7 @@ fn cost_prefers_native_and_marks_unpriced() {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "gpt-5.5".into(),
@@ -1864,6 +1868,7 @@ fn cost_prefers_native_and_marks_unpriced() {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
         ],
     };
@@ -1897,6 +1902,7 @@ fn cost_matches_model_and_provider_case_insensitively() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     let derived = derive_cost(&record, &table);
@@ -1912,10 +1918,51 @@ fn cost_matches_model_and_provider_case_insensitively() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     let derived_bare = derive_cost(&record, &table_bare);
     assert_eq!(derived_bare.amount, Some(2.0));
+}
+
+#[test]
+fn sql_overview_matches_memory_when_price_table_case_differs() {
+    let mut record = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "GPT-4o",
+        "OpenAI",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    record.input_tokens = 100;
+    record.total_tokens = 100;
+    let prices = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-4o".into(),
+            provider: Some("openai".into()),
+            input: 0.01,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            origin: PriceOrigin::User,
+        }],
+    };
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &[record.clone()]).unwrap();
+    let sql = query::overview(&conn, &Filter::default(), &prices).unwrap();
+    let mem = aggregate::overview(&[record.clone()], &Filter::default(), &prices);
+    assert_eq!(sql.cost, mem.cost);
+    assert_eq!(sql.cost, Some(1.0));
+    assert!(!sql.unpriced);
+    assert!(!mem.unpriced);
+
+    let turns = query::session_turns(&conn, "s1", None, &Filter::default(), &prices).unwrap();
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].cost, Some(1.0));
+    assert!(!turns[0].unpriced);
+    assert_eq!(turns[0].cost_source, CostSource::User);
 }
 
 #[test]
@@ -1961,6 +2008,7 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
 
@@ -1971,16 +2019,19 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
     let priced_turns =
         aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &table);
     assert_eq!(priced_turns[0].cost, Some(1.0));
-    assert_eq!(priced_turns[0].cost_note, None);
+    assert_eq!(priced_turns[0].cost_source, CostSource::User);
+    assert_eq!(priced_turns[0].cost_note.as_deref(), Some("用户单价"));
     let unpriced_turns =
         aggregate::session_turns(&stored, "s2", Some("claude"), &Filter::default(), &table);
     assert_eq!(unpriced_turns[0].cost, None);
     assert!(unpriced_turns[0].unpriced);
+    assert_eq!(unpriced_turns[0].cost_source, CostSource::None);
     assert_eq!(unpriced_turns[0].cost_note.as_deref(), Some("单价未配置"));
     let native_turns =
         aggregate::session_turns(&stored, "s3", Some("pi"), &Filter::default(), &table);
     assert_eq!(native_turns[0].cost, Some(0.5));
-    assert_eq!(native_turns[0].cost_note, None);
+    assert_eq!(native_turns[0].cost_source, CostSource::Native);
+    assert_eq!(native_turns[0].cost_note.as_deref(), Some("来源自带"));
 
     let by_source = aggregate::by_name(&stored, &Filter::default(), &table, |r| {
         r.source.as_str().to_string()
@@ -2857,6 +2908,72 @@ fn scan_is_stale_detects_new_changed_and_deleted_source_files() {
     );
 }
 
+#[test]
+fn scan_is_stale_detects_kimi_and_grok_sidecar_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    let wire = home.join(".kimi/sessions/hash/sess/wire.jsonl");
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[]}").unwrap();
+
+    let updates = home.join(".grok/sessions/proj/sid/updates.jsonl");
+    std::fs::create_dir_all(updates.parent().unwrap()).unwrap();
+    std::fs::write(&updates, fixture("grok-updates.jsonl")).unwrap();
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\"}",
+    )
+    .unwrap();
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[],\"x\":1}").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "kimi.json content change should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\",\"note\":\"x\"}",
+    )
+    .unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "grok summary.json change should be stale"
+    );
+}
+
+#[test]
+fn scan_is_stale_detects_opencode_wal_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db_path = home.join(".local/share/opencode/opencode.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let db = rusqlite::Connection::open(&db_path).unwrap();
+    db.execute_batch("CREATE TABLE message (session_id TEXT, data TEXT);")
+        .unwrap();
+    drop(db);
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    let wal = PathBuf::from(format!("{}-wal", db_path.to_string_lossy()));
+    std::fs::write(&wal, b"wal").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "opencode.db-wal change should be stale"
+    );
+}
+
 #[ignore]
 #[test]
 fn ingest_real_home_rollups_match_overview() {
@@ -3034,6 +3151,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.002,
                 cache_read: 0.0005,
                 cache_creation: 0.003,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "claude-sonnet-5".into(),
@@ -3042,6 +3160,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.015,
                 cache_read: 0.001,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "gpt-5.5".into(),
@@ -3050,6 +3169,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "gpt-5.5".into(),
@@ -3058,6 +3178,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
         ],
     }
@@ -3452,6 +3573,7 @@ fn litellm_merge_lets_user_prices_win_and_fills_the_rest() {
             output: 9.9,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     let merged = crate::litellm::merge(&user, &snapshot);
@@ -3464,8 +3586,14 @@ fn litellm_merge_lets_user_prices_win_and_fills_the_rest() {
         .collect();
     assert_eq!(gpt.len(), 1);
     assert_eq!(gpt[0].input, 9.9);
-    // 用户没配的模型由快照补齐。
-    assert!(merged.prices.iter().any(|e| e.model == "claude-3-5-sonnet"));
+    assert_eq!(gpt[0].origin, PriceOrigin::User);
+    // 用户没配的模型由快照补齐，并打上 snapshot 来源。
+    let claude = merged
+        .prices
+        .iter()
+        .find(|e| e.model == "claude-3-5-sonnet")
+        .expect("snapshot fills missing model");
+    assert_eq!(claude.origin, PriceOrigin::Snapshot);
 }
 
 #[test]
@@ -3490,6 +3618,7 @@ fn litellm_snapshot_fills_cost_for_models_without_native_or_user_price() {
     let derived = derive_cost(&record, &effective);
     assert!(!derived.unpriced, "快照应把该模型标记为已定价");
     assert!(!derived.source_native, "快照兜底不是来源自带费用");
+    assert_eq!(derived.cost_source, CostSource::Snapshot);
     assert_eq!(derived.amount, Some(2.5 + 10.0));
 
     // 有来源自带费用时优先 native。
@@ -3497,7 +3626,9 @@ fn litellm_snapshot_fills_cost_for_models_without_native_or_user_price() {
         native_cost: Some(4.2),
         ..record.clone()
     };
-    assert_eq!(derive_cost(&native, &effective).amount, Some(4.2));
+    let native_derived = derive_cost(&native, &effective);
+    assert_eq!(native_derived.amount, Some(4.2));
+    assert_eq!(native_derived.cost_source, CostSource::Native);
 
     // 快照没有的模型仍然是未定价。
     let unknown = rec(
@@ -3509,7 +3640,126 @@ fn litellm_snapshot_fills_cost_for_models_without_native_or_user_price() {
         "s2",
         100,
     );
-    assert!(derive_cost(&unknown, &effective).unpriced);
+    let unknown_derived = derive_cost(&unknown, &effective);
+    assert!(unknown_derived.unpriced);
+    assert_eq!(unknown_derived.cost_source, CostSource::None);
+}
+
+#[test]
+fn cost_source_labels_native_user_snapshot_and_none_on_sql_and_memory() {
+    let snapshot = crate::litellm::parse_litellm_raw(LITELLM_RAW_SAMPLE, "2026-08-17").unwrap();
+    let user = PriceTable {
+        prices: vec![PriceEntry {
+            model: "user-only-model".into(),
+            provider: None,
+            input: 0.001,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            origin: PriceOrigin::User,
+        }],
+    };
+    let prices = crate::litellm::merge(&user, &snapshot);
+
+    let mut native = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-4o",
+        "",
+        "/proj/a",
+        "s-native",
+        0,
+    );
+    native.native_cost = Some(1.25);
+    native.input_tokens = 10;
+
+    let mut user_priced = rec(
+        "2026-08-01T10:01:00Z",
+        Source::Codex,
+        "user-only-model",
+        "",
+        "/proj/a",
+        "s-user",
+        0,
+    );
+    user_priced.input_tokens = 1000;
+
+    let mut snapshot_priced = rec(
+        "2026-08-01T10:02:00Z",
+        Source::Codex,
+        "gpt-4o",
+        "",
+        "/proj/a",
+        "s-snapshot",
+        0,
+    );
+    snapshot_priced.input_tokens = 1_000_000;
+
+    let unpriced = rec(
+        "2026-08-01T10:03:00Z",
+        Source::Codex,
+        "totally-unknown-model",
+        "",
+        "/proj/a",
+        "s-none",
+        0,
+    );
+
+    let records = vec![
+        native.clone(),
+        user_priced.clone(),
+        snapshot_priced.clone(),
+        unpriced.clone(),
+    ];
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+
+    let cases = [
+        ("s-native", CostSource::Native, "来源自带", Some(1.25)),
+        ("s-user", CostSource::User, "用户单价", Some(1.0)),
+        (
+            "s-snapshot",
+            CostSource::Snapshot,
+            "LiteLLM 快照",
+            Some(2.5),
+        ),
+        ("s-none", CostSource::None, "单价未配置", None),
+    ];
+    for (session_id, source, note, cost) in cases {
+        let mem = aggregate::session_turns(
+            &records,
+            session_id,
+            Some("codex"),
+            &Filter::default(),
+            &prices,
+        );
+        let sql = query::session_turns(
+            &conn,
+            session_id,
+            Some("codex"),
+            &Filter::default(),
+            &prices,
+        )
+        .unwrap();
+        assert_eq!(mem, sql, "session_turns cost_source 不一致：{session_id}");
+        assert_eq!(mem[0].cost_source, source);
+        assert_eq!(mem[0].cost_note.as_deref(), Some(note));
+        assert_eq!(mem[0].cost, cost);
+    }
+}
+
+#[test]
+fn price_entry_origin_defaults_to_user_for_legacy_json() {
+    let table: PriceTable = serde_json::from_str(
+        r#"{"prices":[{"model":"gpt-4o","provider":null,"input":1.0,"output":2.0,"cache_read":0.0,"cache_creation":0.0}]}"#,
+    )
+    .unwrap();
+    assert_eq!(table.prices[0].origin, PriceOrigin::User);
+    let encoded = serde_json::to_string(&table).unwrap();
+    assert!(
+        !encoded.contains("origin"),
+        "用户单价序列化不应写出默认 origin：{encoded}"
+    );
 }
 
 #[test]
@@ -3694,6 +3944,7 @@ fn backup_and_restore_round_trips_records_and_user_config() {
             output: 0.015,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     std::fs::write(&prices_path, serde_json::to_string_pretty(&prices).unwrap()).unwrap();
@@ -3732,6 +3983,115 @@ fn backup_and_restore_round_trips_records_and_user_config() {
     let restored_prices: PriceTable =
         serde_json::from_str(&std::fs::read_to_string(&prices_path).unwrap()).unwrap();
     assert_eq!(restored_prices.prices[0].model, "claude-sonnet-5");
+}
+
+#[test]
+fn restore_rejects_invalid_backup_without_touching_live_files() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path,
+        budget_path,
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+    drop(conn);
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+
+    assert!(backup::validate_restore(&dest).is_err());
+    assert!(backup::restore_from(&dest, &paths).is_err());
+
+    std::fs::write(
+        dest.join("manifest.json"),
+        "{\"created_at\":\"x\",\"files\":[],\"note\":\"\"}",
+    )
+    .unwrap();
+    assert!(
+        backup::restore_from(&dest, &paths)
+            .unwrap_err()
+            .contains("usage.sqlite"),
+        "missing sqlite should fail before overwrite"
+    );
+
+    let still = store::open_db(db_path.to_str().unwrap()).unwrap();
+    assert_eq!(store::load_all(&still).unwrap()[0].total_tokens, 42);
+    assert_eq!(
+        std::fs::read_to_string(&prices_path).unwrap(),
+        "{\"prices\":[]}"
+    );
+}
+
+#[test]
+fn restore_rolls_back_live_files_when_a_later_replace_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path,
+        budget_path,
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+    backup::backup_to(&conn, &dest, &paths).unwrap();
+    drop(conn);
+
+    std::fs::remove_file(&prices_path).unwrap();
+    std::fs::create_dir(&prices_path).unwrap();
+
+    let error = backup::restore_from(&dest, &paths).unwrap_err();
+    assert!(error.contains("写入") || error.contains("失败"), "{error}");
+
+    let still = store::open_db(db_path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        store::load_all(&still).unwrap()[0].total_tokens,
+        42,
+        "db should roll back when a later file cannot be replaced"
+    );
 }
 
 #[test]
