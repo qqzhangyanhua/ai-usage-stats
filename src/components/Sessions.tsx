@@ -77,6 +77,7 @@ export function Sessions({
   selected,
   onSelect,
   onFilterChange,
+  onError,
 }: {
   filter: Filter;
   options: FilterOptions;
@@ -88,6 +89,7 @@ export function Sessions({
   selected: { id: string; source: string } | null;
   onSelect: (session: { id: string; source: string }) => void;
   onFilterChange: (filter: Filter) => void;
+  onError?: (error: unknown) => void;
 }) {
   const [sortKey, setSortKey] = useState<SessionSortKey>("time");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -134,8 +136,11 @@ export function Sessions({
           setPageData(result);
         }
       })
-      .catch(() => {
-        // 忽略单次请求失败，保留上一次成功的数据
+      .catch((error) => {
+        // 保留上一次成功的数据，但仍需要把失败告知用户，而不是完全静默
+        if (generation === requestGeneration.current) {
+          onError?.(error);
+        }
       })
       .finally(() => {
         if (generation === requestGeneration.current) {
@@ -143,7 +148,7 @@ export function Sessions({
         }
       });
     // revision 变化即代表底层数据可能已更新，需要重新拉取
-  }, [filter, revision, search, sortKey, sortDir, page]);
+  }, [filter, revision, search, sortKey, sortDir, page, onError]);
 
   const { rows, total, totalTokens, lastEnded } = pageData;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
