@@ -1000,6 +1000,37 @@ fn overview_from_qwen_fixture_contributes_no_tokens() {
 }
 
 #[test]
+fn overview_from_copilot_fixture_uses_last_shutdown_snapshot() {
+    let records = copilot::parse_copilot_jsonl(
+        &fixture("copilot-events.jsonl"),
+        "/Users/dev/.copilot/session-state/c0ffee11-2222-4333-8444-555566667777/events.jsonl",
+    );
+    assert_eq!(records.len(), 2);
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let stored = store::load_all(&conn).unwrap();
+    let dto = aggregate::overview(&stored, &Filter::default(), &PriceTable::default());
+
+    assert_eq!(dto.input_tokens, 21583 + 244120);
+    assert_eq!(dto.output_tokens, 1064 + 2383);
+    assert_eq!(dto.cache_read_tokens, 21187 + 202112);
+    assert_eq!(dto.cache_creation_tokens, 0);
+    assert_eq!(dto.reasoning_tokens, 0);
+    assert_eq!(dto.session_count, 1);
+    assert_eq!(
+        dto.total_tokens,
+        records
+            .iter()
+            .map(|record| record.total_tokens)
+            .sum::<i64>()
+    );
+    assert_eq!(
+        dto.total_tokens,
+        (21583 + 1064 + 21187) + records[1].total_tokens
+    );
+}
+
+#[test]
 fn overview_from_factory_fixture_uses_session_token_usage() {
     let records = factory::parse_factory_settings(
         &fixture("factory.settings.json"),
