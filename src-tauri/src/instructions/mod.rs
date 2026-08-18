@@ -1,4 +1,8 @@
 pub mod claude;
+pub mod codex;
+pub mod cursor;
+mod file;
+pub mod gemini;
 
 use std::path::Path;
 
@@ -10,6 +14,11 @@ pub fn scan(
     _usage: &InstructionUsageSummary,
 ) -> GlobalInstructionDto {
     GlobalInstructionDto {
-        sources: vec![claude::scan(home)],
+        sources: vec![
+            claude::scan(home),
+            codex::scan(home),
+            gemini::scan(home),
+            cursor::scan(),
+        ],
     }
 }

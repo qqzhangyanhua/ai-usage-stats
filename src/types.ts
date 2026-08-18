@@ -122,14 +122,19 @@ export type InstructionLoadStatus =
   | "locally_invisible"
   | "not_created";
 
+export type InstructionEvidence = "verified" | "inferred" | "no_mechanism";
+
 export type GlobalInstructionFile = {
   display_path: string;
   abs_path: string;
   byte_size: number;
   modified_at: string | null;
   load_status: InstructionLoadStatus;
+  evidence: InstructionEvidence;
   content: string;
   error: string | null;
+  note: string | null;
+  action: string | null;
 };
 
 export type GlobalInstructionSourceRow = {

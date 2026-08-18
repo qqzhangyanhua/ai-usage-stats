@@ -589,6 +589,13 @@ async fn get_global_instructions() -> Result<GlobalInstructionDto, String> {
 }
 
 #[tauri::command]
+async fn open_cursor_instruction_settings() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(instructions::cursor::open_settings)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn get_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         {
@@ -844,6 +851,7 @@ pub fn run() {
             get_budget_status,
             save_budget,
             get_global_instructions,
+            open_cursor_instruction_settings,
             get_official_quota,
             refresh_official_quota,
             get_official_quota_hook,

@@ -3193,16 +3193,54 @@ td.row-actions {
   font-size: 13px;
 }
 
-.instruction-row-title em {
+.instruction-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.instruction-status,
+.instruction-evidence {
   font-style: normal;
   font-size: 12px;
+}
+
+.instruction-row.status-loaded .instruction-status {
   color: var(--green-fg);
 }
 
-.instruction-row.status-not_created .instruction-row-title em,
-.instruction-row.status-present_unloaded .instruction-row-title em,
-.instruction-row.status-locally_invisible .instruction-row-title em {
+.instruction-row.status-present_unloaded .instruction-status {
   color: var(--orange-fg);
+}
+
+.instruction-row.status-locally_invisible .instruction-status {
+  color: var(--cyan-fg);
+}
+
+.instruction-row.status-not_created .instruction-status {
+  color: var(--text-faint);
+}
+
+.instruction-evidence {
+  color: var(--muted);
+}
+
+.instruction-row.evidence-inferred {
+  opacity: 0.62;
+}
+
+.instruction-row.evidence-inferred .instruction-evidence {
+  color: var(--orange-fg);
+}
+
+.instruction-row.evidence-no_mechanism .instruction-evidence {
+  color: var(--text-faint);
+}
+
+.instruction-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .instruction-row-meta {

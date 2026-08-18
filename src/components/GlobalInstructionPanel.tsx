@@ -4,6 +4,7 @@ import { formatBytes, formatClock, humanStatus } from "../lib/format";
 import type {
   GlobalInstructionDto,
   GlobalInstructionFile,
+  InstructionEvidence,
   InstructionLoadStatus,
 } from "../types";
 import { EmptyState } from "./EmptyState";
@@ -11,9 +12,15 @@ import { Button } from "./ui/Button";
 
 const STATUS_LABEL: Record<InstructionLoadStatus, string> = {
   loaded: "已加载",
-  present_unloaded: "存在但未加载",
+  present_unloaded: "存在但未被加载",
   locally_invisible: "本地不可见",
   not_created: "未创建",
+};
+
+const EVIDENCE_LABEL: Record<InstructionEvidence, string> = {
+  verified: "已验证",
+  inferred: "推测",
+  no_mechanism: "无机制",
 };
 
 export function GlobalInstructionPanel() {
@@ -21,6 +28,7 @@ export function GlobalInstructionPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [openPath, setOpenPath] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setBusy(true);
@@ -55,9 +63,16 @@ export function GlobalInstructionPanel() {
     };
   }, [load]);
 
-  const files = data?.sources.flatMap((row) =>
-    row.files.map((file) => ({ source: row.application, file })),
-  );
+  const files = data?.sources.flatMap((row) => row.files) ?? [];
+
+  async function openCursorSettings() {
+    setActionError(null);
+    try {
+      await invoke("open_cursor_instruction_settings");
+    } catch (err: unknown) {
+      setActionError(humanStatus(err));
+    }
+  }
 
   return (
     <article className="panel instruction-panel">
@@ -71,8 +86,9 @@ export function GlobalInstructionPanel() {
         </Button>
       </div>
       {error ? <EmptyState tone="warn" title="读取失败" hint={error} /> : null}
-      {!error && !files?.length && !busy ? (
-        <EmptyState title="尚未发现全局指令" hint="当前只扫描 Claude 的主文件与用户级指令目录。" />
+      {actionError ? <EmptyState tone="warn" title="无法跳转" hint={actionError} /> : null}
+      {!error && !files.length && !busy ? (
+        <EmptyState title="尚未发现全局指令" hint="当前扫描 Claude、Codex、Gemini 与 Cursor。" />
       ) : null}
       {data
         ? data.sources.map((row) => (
@@ -81,14 +97,16 @@ export function GlobalInstructionPanel() {
               <ul className="instruction-list">
                 {row.files.map((file) => (
                   <InstructionRow
-                    key={file.display_path}
+                    key={`${row.source}:${file.display_path}`}
                     file={file}
-                    open={openPath === file.display_path}
+                    open={openPath === `${row.source}:${file.display_path}`}
                     onToggle={() =>
-                      setOpenPath((current) =>
-                        current === file.display_path ? null : file.display_path,
-                      )
+                      setOpenPath((current) => {
+                        const id = `${row.source}:${file.display_path}`;
+                        return current === id ? null : id;
+                      })
                     }
+                    onCursorSettings={openCursorSettings}
                   />
                 ))}
               </ul>
@@ -103,31 +121,48 @@ function InstructionRow({
   file,
   open,
   onToggle,
+  onCursorSettings,
 }: {
   file: GlobalInstructionFile;
   open: boolean;
   onToggle: () => void;
+  onCursorSettings: () => void;
 }) {
   return (
-    <li className={`instruction-row status-${file.load_status}`}>
+    <li
+      className={`instruction-row status-${file.load_status} evidence-${file.evidence}`}
+    >
       <button type="button" className="instruction-row-head" onClick={onToggle}>
         <div className="instruction-row-title">
           <strong>{file.display_path}</strong>
-          <em>{STATUS_LABEL[file.load_status]}</em>
+          <span className="instruction-badges">
+            <em className="instruction-status">{STATUS_LABEL[file.load_status]}</em>
+            <em className="instruction-evidence">{EVIDENCE_LABEL[file.evidence]}</em>
+          </span>
         </div>
         <div className="instruction-row-meta">
           <span>{formatBytes(file.byte_size)}</span>
           <span>{formatClock(file.modified_at)}</span>
         </div>
+        {file.note ? <p className="instruction-note">{file.note}</p> : null}
       </button>
       {open ? (
         <div className="instruction-body">
           {file.error ? <p className="instruction-error">{file.error}</p> : null}
+          {file.action === "cursor_settings" ? (
+            <Button type="button" variant="ghost" onClick={onCursorSettings}>
+              在 Cursor 中打开设置
+            </Button>
+          ) : null}
           {file.load_status === "not_created" ? (
             <p className="muted">文件尚未创建。</p>
-          ) : (
+          ) : null}
+          {file.load_status === "locally_invisible" ? (
+            <p className="muted">内容在账号服务端，本机无法展示。</p>
+          ) : null}
+          {file.load_status === "loaded" || file.load_status === "present_unloaded" ? (
             <pre>{file.content || "（空文件）"}</pre>
-          )}
+          ) : null}
         </div>
       ) : null}
     </li>

@@ -6203,6 +6203,26 @@ fn apply_fetch_results_isolates_provider_failures() {
     assert!(codex.0.is_empty());
 }
 
+fn instruction_source<'a>(
+    dto: &'a crate::domain::GlobalInstructionDto,
+    source: &str,
+) -> &'a crate::domain::GlobalInstructionSourceRow {
+    dto.sources
+        .iter()
+        .find(|row| row.source == source)
+        .unwrap_or_else(|| panic!("missing source {source}"))
+}
+
+fn file_named<'a>(
+    row: &'a crate::domain::GlobalInstructionSourceRow,
+    display_path: &str,
+) -> &'a crate::domain::GlobalInstructionFile {
+    row.files
+        .iter()
+        .find(|file| file.display_path == display_path)
+        .unwrap_or_else(|| panic!("missing file {display_path}"))
+}
+
 #[test]
 fn scan_lists_claude_main_file_and_user_instruction_files() {
     let home = tempfile::tempdir().unwrap();
@@ -6219,10 +6239,9 @@ fn scan_lists_claude_main_file_and_user_instruction_files() {
         &crate::domain::InstructionUsageSummary::default(),
     );
 
-    assert_eq!(dto.sources.len(), 1);
-    assert_eq!(dto.sources[0].source, "claude");
-    assert_eq!(dto.sources[0].application, "Claude");
-    let files = &dto.sources[0].files;
+    let claude = instruction_source(&dto, "claude");
+    assert_eq!(claude.application, "Claude");
+    let files = &claude.files;
     assert_eq!(files.len(), 3);
     assert_eq!(files[0].display_path, "~/.claude/CLAUDE.md");
     assert_eq!(files[0].byte_size, 15);
@@ -6253,7 +6272,7 @@ fn scan_marks_missing_claude_main_file_not_created() {
         None,
         &crate::domain::InstructionUsageSummary::default(),
     );
-    let files = &dto.sources[0].files;
+    let files = &instruction_source(&dto, "claude").files;
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].display_path, "~/.claude/CLAUDE.md");
     assert_eq!(
@@ -6284,4 +6303,120 @@ fn scan_ignores_reserved_project_and_usage_for_now() {
         &populated,
     );
     assert_eq!(without_project, with_both);
+}
+
+#[test]
+fn scan_codex_override_shields_base_agents_file() {
+    let home = tempfile::tempdir().unwrap();
+    let codex = home.path().join(".codex");
+    std::fs::create_dir_all(&codex).unwrap();
+    std::fs::write(codex.join("AGENTS.md"), "base-instruction\n").unwrap();
+    std::fs::write(codex.join("AGENTS.override.md"), "override-instruction\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let row = instruction_source(&dto, "codex");
+    let base = file_named(row, "~/.codex/AGENTS.md");
+    let over = file_named(row, "~/.codex/AGENTS.override.md");
+    assert_eq!(
+        over.load_status,
+        crate::domain::InstructionLoadStatus::Loaded
+    );
+    assert_eq!(over.content, "override-instruction\n");
+    assert_eq!(
+        base.load_status,
+        crate::domain::InstructionLoadStatus::PresentUnloaded
+    );
+    assert_eq!(base.content, "base-instruction\n");
+    assert!(base
+        .note
+        .as_deref()
+        .is_some_and(|note| note.contains("AGENTS.override.md")));
+}
+
+#[test]
+fn scan_codex_rules_dir_is_present_unloaded() {
+    let home = tempfile::tempdir().unwrap();
+    let rules = home.path().join(".codex/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("default.rules"), "third-party\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let extra = file_named(
+        instruction_source(&dto, "codex"),
+        "~/.codex/rules/default.rules",
+    );
+    assert_eq!(
+        extra.load_status,
+        crate::domain::InstructionLoadStatus::PresentUnloaded
+    );
+    assert_eq!(extra.content, "third-party\n");
+    assert!(extra
+        .note
+        .as_deref()
+        .is_some_and(|note| note.contains("第三方")));
+}
+
+#[test]
+fn scan_gemini_missing_file_is_not_created_not_absent() {
+    let home = tempfile::tempdir().unwrap();
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let files = &instruction_source(&dto, "gemini").files;
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].display_path, "~/.gemini/GEMINI.md");
+    assert_eq!(
+        files[0].load_status,
+        crate::domain::InstructionLoadStatus::NotCreated
+    );
+}
+
+#[test]
+fn scan_cursor_account_preference_is_locally_invisible() {
+    let home = tempfile::tempdir().unwrap();
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let files = &instruction_source(&dto, "cursor").files;
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[0].load_status,
+        crate::domain::InstructionLoadStatus::LocallyInvisible
+    );
+    assert!(files[0]
+        .note
+        .as_deref()
+        .is_some_and(|note| note.contains("账号服务端")));
+    assert_eq!(files[0].action.as_deref(), Some("cursor_settings"));
+}
+
+#[test]
+fn scan_always_emits_four_verified_sources() {
+    let home = tempfile::tempdir().unwrap();
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let names: Vec<&str> = dto.sources.iter().map(|row| row.source.as_str()).collect();
+    assert_eq!(names, ["claude", "codex", "gemini", "cursor"]);
+    for row in &dto.sources {
+        assert!(!row.files.is_empty(), "{} should not be absent", row.source);
+        assert!(row
+            .files
+            .iter()
+            .all(|file| { file.evidence == crate::domain::InstructionEvidence::Verified }));
+    }
 }
