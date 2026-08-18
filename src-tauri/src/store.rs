@@ -74,7 +74,8 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         );
 
         CREATE TABLE IF NOT EXISTS cursor_sessions (
-            session_id TEXT PRIMARY KEY,
+            source_file TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
             project TEXT NOT NULL,
             turn_count INTEGER NOT NULL,
             success_count INTEGER NOT NULL,
@@ -84,8 +85,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             models_json TEXT NOT NULL DEFAULT '[]',
             first_seen_at TEXT,
             last_seen_at TEXT,
-            files_touched INTEGER NOT NULL DEFAULT 0,
-            source_file TEXT NOT NULL UNIQUE
+            files_touched INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_cursor_sessions_project ON cursor_sessions(project);
         CREATE INDEX IF NOT EXISTS idx_cursor_sessions_last_seen ON cursor_sessions(last_seen_at);
@@ -509,10 +509,11 @@ pub fn upsert_cursor_session(conn: &Connection, record: &CursorSessionRecord) ->
     conn.execute(
         r#"
         INSERT INTO cursor_sessions (
-            session_id, project, turn_count, success_count, error_count, aborted_count,
-            tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched, source_file
+            source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
+            tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched
         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
-        ON CONFLICT(session_id) DO UPDATE SET
+        ON CONFLICT(source_file) DO UPDATE SET
+            session_id = excluded.session_id,
             project = excluded.project,
             turn_count = excluded.turn_count,
             success_count = excluded.success_count,
@@ -520,12 +521,12 @@ pub fn upsert_cursor_session(conn: &Connection, record: &CursorSessionRecord) ->
             aborted_count = excluded.aborted_count,
             tool_calls_json = excluded.tool_calls_json,
             models_json = excluded.models_json,
-            first_seen_at = excluded.first_seen_at,
+            first_seen_at = COALESCE(cursor_sessions.first_seen_at, excluded.first_seen_at),
             last_seen_at = excluded.last_seen_at,
-            files_touched = excluded.files_touched,
-            source_file = excluded.source_file
+            files_touched = excluded.files_touched
         "#,
         params![
+            record.source_file,
             record.session_id,
             record.project,
             record.turn_count,
@@ -537,7 +538,6 @@ pub fn upsert_cursor_session(conn: &Connection, record: &CursorSessionRecord) ->
             record.first_seen_at,
             record.last_seen_at,
             record.files_touched,
-            record.source_file,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -565,28 +565,28 @@ pub fn load_cursor_sessions(conn: &Connection) -> Result<Vec<CursorSessionRecord
     let mut stmt = conn
         .prepare(
             r#"
-            SELECT session_id, project, turn_count, success_count, error_count, aborted_count,
-                   tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched, source_file
+            SELECT source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
+                   tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched
             FROM cursor_sessions
-            ORDER BY last_seen_at ASC, session_id ASC
+            ORDER BY last_seen_at ASC, source_file ASC
             "#,
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
             Ok(CursorSessionRecord {
-                session_id: row.get(0)?,
-                project: row.get(1)?,
-                turn_count: row.get(2)?,
-                success_count: row.get(3)?,
-                error_count: row.get(4)?,
-                aborted_count: row.get(5)?,
-                tool_calls_json: row.get(6)?,
-                models_json: row.get(7)?,
-                first_seen_at: row.get(8)?,
-                last_seen_at: row.get(9)?,
-                files_touched: row.get(10)?,
-                source_file: row.get(11)?,
+                source_file: row.get(0)?,
+                session_id: row.get(1)?,
+                project: row.get(2)?,
+                turn_count: row.get(3)?,
+                success_count: row.get(4)?,
+                error_count: row.get(5)?,
+                aborted_count: row.get(6)?,
+                tool_calls_json: row.get(7)?,
+                models_json: row.get(8)?,
+                first_seen_at: row.get(9)?,
+                last_seen_at: row.get(10)?,
+                files_touched: row.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?;

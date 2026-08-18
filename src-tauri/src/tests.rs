@@ -3523,6 +3523,53 @@ fn cursor_session_ingest_reconciles_deleted_transcripts() {
 }
 
 #[test]
+fn cursor_session_ingest_skips_reconcile_when_parse_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path_one = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    let path_two = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-2",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        2
+    );
+
+    std::fs::remove_file(path_one).expect("remove first transcript");
+    std::fs::write(&path_two, "{not-json").expect("corrupt second transcript");
+    let mut failed = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut failed);
+    assert_eq!(failed.files_failed, 1);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        2,
+        "reconcile should be skipped while a transcript parse fails"
+    );
+
+    std::fs::write(&path_two, &fixture("cursor-session-transcript.jsonl")).expect("fix transcript");
+    let mut clean = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut clean);
+    assert_eq!(clean.files_failed, 0);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        1
+    );
+    assert_eq!(clean.records_removed, 1);
+}
+
+#[test]
 fn cursor_session_parse_failure_keeps_last_good_cache() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
