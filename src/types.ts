@@ -182,6 +182,13 @@ export type PriceTable = {
   prices: PriceEntry[];
 };
 
+export type PriceSnapshotMeta = {
+  as_of: string;
+  source: string;
+  count: number;
+  bundled: boolean;
+};
+
 export type CodeVolumeSummary = {
   commit_count: number;
   lines_added: number;

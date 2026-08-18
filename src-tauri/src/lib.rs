@@ -4,6 +4,7 @@ pub mod billing_window;
 pub mod cost;
 pub mod domain;
 pub mod ingest;
+pub mod litellm;
 pub mod query;
 pub mod store;
 pub mod tray;
@@ -19,14 +20,46 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, Filter, FilterOptions,
-    IngestReport, NamedAmount, OverviewDto, PriceTable, SeriesPoint, SessionPage, SessionQuery,
-    SessionRow, Source, SourceDiagnostic, TurnRow,
+    IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable,
+    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
     pub db_path: PathBuf,
     pub prices_path: PathBuf,
+    pub snapshot_path: PathBuf,
     pub conn: Mutex<Connection>,
+    pub snapshot: Mutex<PriceSnapshot>,
+}
+
+impl AppState {
+    /// 生效单价表 = 用户配置的单价 + LiteLLM 快照兜底（用户已配置的模型不被兜底覆盖）。
+    /// 所有涉及费用的查询都应经由此方法取价，保证兜底语义在各处一致。
+    pub(crate) fn effective_prices(&self) -> PriceTable {
+        let user = load_prices(&self.prices_path);
+        match self.snapshot.lock() {
+            Ok(snapshot) => litellm::merge(&user, &snapshot),
+            Err(_) => user,
+        }
+    }
+
+    fn snapshot_meta(&self) -> PriceSnapshotMeta {
+        let bundled = !self.snapshot_path.exists();
+        match self.snapshot.lock() {
+            Ok(snapshot) => PriceSnapshotMeta {
+                as_of: snapshot.as_of.clone(),
+                source: snapshot.source.clone(),
+                count: snapshot.entries.len(),
+                bundled,
+            },
+            Err(_) => PriceSnapshotMeta {
+                as_of: String::new(),
+                source: litellm::SOURCE_NAME.to_string(),
+                count: 0,
+                bundled,
+            },
+        }
+    }
 }
 
 fn cache_dir() -> PathBuf {
@@ -76,7 +109,7 @@ async fn get_overview(app: tauri::AppHandle, filter: Filter) -> Result<OverviewD
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::overview(&conn, &filter, &prices)
     })
     .await
@@ -91,7 +124,7 @@ async fn get_billing_windows(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::billing_windows(&conn, &filter, &prices, chrono::Utc::now())
     })
     .await
@@ -107,7 +140,7 @@ async fn get_trend(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::trend(&conn, &filter, &prices, &grain)
     })
     .await
@@ -143,7 +176,7 @@ async fn get_breakdown(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::breakdown(&conn, &query.filter, &prices, &query.dimension)
     })
     .await
@@ -159,7 +192,7 @@ async fn get_top_sessions(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::top_sessions(&conn, &filter, &prices, limit.unwrap_or(20))
     })
     .await
@@ -174,7 +207,7 @@ async fn get_sessions_page(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::sessions_page(&conn, &prices, &query)
     })
     .await
@@ -191,7 +224,7 @@ async fn get_session_turns(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let prices = load_prices(&state.prices_path);
+        let prices = state.effective_prices();
         query::session_turns(&conn, &session_id, source.as_deref(), &filter, &prices)
     })
     .await
@@ -217,6 +250,73 @@ fn get_prices(state: tauri::State<AppState>) -> PriceTable {
 #[tauri::command]
 fn save_price_table(state: tauri::State<AppState>, prices: PriceTable) -> Result<(), String> {
     save_prices(&state.prices_path, &prices)
+}
+
+/// 当前生效的 LiteLLM 价目快照元信息（内置或已刷新）。
+#[tauri::command]
+fn get_price_snapshot(state: tauri::State<AppState>) -> PriceSnapshotMeta {
+    state.snapshot_meta()
+}
+
+/// 可选刷新：webview 拉取上游原始 JSON 后交给这里解析、落盘并热更新内存快照。
+#[tauri::command]
+async fn refresh_price_snapshot(
+    app: tauri::AppHandle,
+    raw: String,
+) -> Result<PriceSnapshotMeta, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let as_of = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let snapshot = litellm::parse_litellm_raw(&raw, &as_of)?;
+        if snapshot.entries.is_empty() {
+            return Err("解析 LiteLLM 价目失败：未找到任何有效模型单价".to_string());
+        }
+        litellm::save_snapshot(&state.snapshot_path, &snapshot)?;
+        let count = snapshot.entries.len();
+        {
+            let mut guard = state.snapshot.lock().map_err(|e| e.to_string())?;
+            *guard = snapshot;
+        }
+        Ok(PriceSnapshotMeta {
+            as_of,
+            source: litellm::SOURCE_NAME.to_string(),
+            count,
+            bundled: false,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 恢复为内置快照：删除本地缓存并重载内置数据。
+#[tauri::command]
+async fn reset_price_snapshot(app: tauri::AppHandle) -> Result<PriceSnapshotMeta, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        if state.snapshot_path.exists() {
+            std::fs::remove_file(&state.snapshot_path).map_err(|e| e.to_string())?;
+        }
+        let bundled = litellm::bundled_snapshot();
+        let meta = PriceSnapshotMeta {
+            as_of: bundled.as_of.clone(),
+            source: bundled.source.clone(),
+            count: bundled.entries.len(),
+            bundled: true,
+        };
+        {
+            let mut guard = state.snapshot.lock().map_err(|e| e.to_string())?;
+            *guard = bundled;
+        }
+        Ok(meta)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 供 webview 拉取上游价目使用的固定地址。
+#[tauri::command]
+fn get_price_snapshot_url() -> String {
+    litellm::SOURCE_URL.to_string()
 }
 
 #[tauri::command]
@@ -335,12 +435,16 @@ pub fn run() {
             let dir = cache_dir();
             let db_path = dir.join("usage.sqlite");
             let prices_path = dir.join("prices.json");
+            let snapshot_path = dir.join("litellm_prices.json");
             let conn = store::open_db(db_path.to_string_lossy().as_ref())
                 .map_err(std::io::Error::other)?;
+            let (snapshot, _bundled) = litellm::load_snapshot(&snapshot_path);
             app.manage(AppState {
                 db_path,
                 prices_path,
+                snapshot_path,
                 conn: Mutex::new(conn),
+                snapshot: Mutex::new(snapshot),
             });
             tray::setup(app.handle()).map_err(std::io::Error::other)?;
             Ok(())
@@ -365,6 +469,10 @@ pub fn run() {
             get_filter_options,
             get_prices,
             save_price_table,
+            get_price_snapshot,
+            get_price_snapshot_url,
+            refresh_price_snapshot,
+            reset_price_snapshot,
             get_source_diagnostics,
             rebuild_cache,
             get_code_volume,

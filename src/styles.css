@@ -2295,6 +2295,34 @@ tr.selected {
   color: var(--green-fg);
 }
 
+.snapshot-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.snapshot-meta strong {
+  color: var(--text);
+}
+
+.snapshot-badge {
+  padding: 2px 10px;
+  border: 1px solid rgba(139, 108, 255, 0.4);
+  border-radius: 999px;
+  background: var(--tone-codex-bg);
+  color: var(--purple-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.snapshot-error {
+  color: var(--red-fg);
+}
+
 .preset-groups {
   display: grid;
   gap: 14px;
