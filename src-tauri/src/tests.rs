@@ -12,7 +12,8 @@ use crate::billing_window;
 use crate::budget;
 use crate::cost::derive_cost;
 use crate::domain::{
-    BudgetConfig, Filter, PriceEntry, PriceTable, SessionQuery, Source, UsageRecord,
+    BudgetConfig, CostSource, Filter, PriceEntry, PriceOrigin, PriceTable, SessionQuery, Source,
+    UsageRecord,
 };
 use crate::ingest;
 use crate::query;
@@ -1758,6 +1759,7 @@ fn sessions_page_computes_cost_only_when_requested() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
 
@@ -1806,6 +1808,7 @@ fn cost_prefers_native_and_marks_unpriced() {
             output: 0.002,
             cache_read: 0.0005,
             cache_creation: 0.003,
+            origin: PriceOrigin::User,
         }],
     };
     let derived = derive_cost(&priced, &table);
@@ -1856,6 +1859,7 @@ fn cost_prefers_native_and_marks_unpriced() {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "gpt-5.5".into(),
@@ -1864,6 +1868,7 @@ fn cost_prefers_native_and_marks_unpriced() {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
         ],
     };
@@ -1897,6 +1902,7 @@ fn cost_matches_model_and_provider_case_insensitively() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     let derived = derive_cost(&record, &table);
@@ -1912,6 +1918,7 @@ fn cost_matches_model_and_provider_case_insensitively() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     let derived_bare = derive_cost(&record, &table_bare);
@@ -1961,6 +1968,7 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
             output: 0.0,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
 
@@ -1971,16 +1979,19 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
     let priced_turns =
         aggregate::session_turns(&stored, "s1", Some("codex"), &Filter::default(), &table);
     assert_eq!(priced_turns[0].cost, Some(1.0));
-    assert_eq!(priced_turns[0].cost_note, None);
+    assert_eq!(priced_turns[0].cost_source, CostSource::User);
+    assert_eq!(priced_turns[0].cost_note.as_deref(), Some("用户单价"));
     let unpriced_turns =
         aggregate::session_turns(&stored, "s2", Some("claude"), &Filter::default(), &table);
     assert_eq!(unpriced_turns[0].cost, None);
     assert!(unpriced_turns[0].unpriced);
+    assert_eq!(unpriced_turns[0].cost_source, CostSource::None);
     assert_eq!(unpriced_turns[0].cost_note.as_deref(), Some("单价未配置"));
     let native_turns =
         aggregate::session_turns(&stored, "s3", Some("pi"), &Filter::default(), &table);
     assert_eq!(native_turns[0].cost, Some(0.5));
-    assert_eq!(native_turns[0].cost_note, None);
+    assert_eq!(native_turns[0].cost_source, CostSource::Native);
+    assert_eq!(native_turns[0].cost_note.as_deref(), Some("来源自带"));
 
     let by_source = aggregate::by_name(&stored, &Filter::default(), &table, |r| {
         r.source.as_str().to_string()
@@ -3034,6 +3045,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.002,
                 cache_read: 0.0005,
                 cache_creation: 0.003,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "claude-sonnet-5".into(),
@@ -3042,6 +3054,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.015,
                 cache_read: 0.001,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "gpt-5.5".into(),
@@ -3050,6 +3063,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
             PriceEntry {
                 model: "gpt-5.5".into(),
@@ -3058,6 +3072,7 @@ fn diverse_prices() -> PriceTable {
                 output: 0.0,
                 cache_read: 0.0,
                 cache_creation: 0.0,
+                origin: PriceOrigin::User,
             },
         ],
     }
@@ -3452,6 +3467,7 @@ fn litellm_merge_lets_user_prices_win_and_fills_the_rest() {
             output: 9.9,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     let merged = crate::litellm::merge(&user, &snapshot);
@@ -3464,8 +3480,14 @@ fn litellm_merge_lets_user_prices_win_and_fills_the_rest() {
         .collect();
     assert_eq!(gpt.len(), 1);
     assert_eq!(gpt[0].input, 9.9);
-    // 用户没配的模型由快照补齐。
-    assert!(merged.prices.iter().any(|e| e.model == "claude-3-5-sonnet"));
+    assert_eq!(gpt[0].origin, PriceOrigin::User);
+    // 用户没配的模型由快照补齐，并打上 snapshot 来源。
+    let claude = merged
+        .prices
+        .iter()
+        .find(|e| e.model == "claude-3-5-sonnet")
+        .expect("snapshot fills missing model");
+    assert_eq!(claude.origin, PriceOrigin::Snapshot);
 }
 
 #[test]
@@ -3490,6 +3512,7 @@ fn litellm_snapshot_fills_cost_for_models_without_native_or_user_price() {
     let derived = derive_cost(&record, &effective);
     assert!(!derived.unpriced, "快照应把该模型标记为已定价");
     assert!(!derived.source_native, "快照兜底不是来源自带费用");
+    assert_eq!(derived.cost_source, CostSource::Snapshot);
     assert_eq!(derived.amount, Some(2.5 + 10.0));
 
     // 有来源自带费用时优先 native。
@@ -3497,7 +3520,9 @@ fn litellm_snapshot_fills_cost_for_models_without_native_or_user_price() {
         native_cost: Some(4.2),
         ..record.clone()
     };
-    assert_eq!(derive_cost(&native, &effective).amount, Some(4.2));
+    let native_derived = derive_cost(&native, &effective);
+    assert_eq!(native_derived.amount, Some(4.2));
+    assert_eq!(native_derived.cost_source, CostSource::Native);
 
     // 快照没有的模型仍然是未定价。
     let unknown = rec(
@@ -3509,7 +3534,126 @@ fn litellm_snapshot_fills_cost_for_models_without_native_or_user_price() {
         "s2",
         100,
     );
-    assert!(derive_cost(&unknown, &effective).unpriced);
+    let unknown_derived = derive_cost(&unknown, &effective);
+    assert!(unknown_derived.unpriced);
+    assert_eq!(unknown_derived.cost_source, CostSource::None);
+}
+
+#[test]
+fn cost_source_labels_native_user_snapshot_and_none_on_sql_and_memory() {
+    let snapshot = crate::litellm::parse_litellm_raw(LITELLM_RAW_SAMPLE, "2026-08-17").unwrap();
+    let user = PriceTable {
+        prices: vec![PriceEntry {
+            model: "user-only-model".into(),
+            provider: None,
+            input: 0.001,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            origin: PriceOrigin::User,
+        }],
+    };
+    let prices = crate::litellm::merge(&user, &snapshot);
+
+    let mut native = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-4o",
+        "",
+        "/proj/a",
+        "s-native",
+        0,
+    );
+    native.native_cost = Some(1.25);
+    native.input_tokens = 10;
+
+    let mut user_priced = rec(
+        "2026-08-01T10:01:00Z",
+        Source::Codex,
+        "user-only-model",
+        "",
+        "/proj/a",
+        "s-user",
+        0,
+    );
+    user_priced.input_tokens = 1000;
+
+    let mut snapshot_priced = rec(
+        "2026-08-01T10:02:00Z",
+        Source::Codex,
+        "gpt-4o",
+        "",
+        "/proj/a",
+        "s-snapshot",
+        0,
+    );
+    snapshot_priced.input_tokens = 1_000_000;
+
+    let unpriced = rec(
+        "2026-08-01T10:03:00Z",
+        Source::Codex,
+        "totally-unknown-model",
+        "",
+        "/proj/a",
+        "s-none",
+        0,
+    );
+
+    let records = vec![
+        native.clone(),
+        user_priced.clone(),
+        snapshot_priced.clone(),
+        unpriced.clone(),
+    ];
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+
+    let cases = [
+        ("s-native", CostSource::Native, "来源自带", Some(1.25)),
+        ("s-user", CostSource::User, "用户单价", Some(1.0)),
+        (
+            "s-snapshot",
+            CostSource::Snapshot,
+            "LiteLLM 快照",
+            Some(2.5),
+        ),
+        ("s-none", CostSource::None, "单价未配置", None),
+    ];
+    for (session_id, source, note, cost) in cases {
+        let mem = aggregate::session_turns(
+            &records,
+            session_id,
+            Some("codex"),
+            &Filter::default(),
+            &prices,
+        );
+        let sql = query::session_turns(
+            &conn,
+            session_id,
+            Some("codex"),
+            &Filter::default(),
+            &prices,
+        )
+        .unwrap();
+        assert_eq!(mem, sql, "session_turns cost_source 不一致：{session_id}");
+        assert_eq!(mem[0].cost_source, source);
+        assert_eq!(mem[0].cost_note.as_deref(), Some(note));
+        assert_eq!(mem[0].cost, cost);
+    }
+}
+
+#[test]
+fn price_entry_origin_defaults_to_user_for_legacy_json() {
+    let table: PriceTable = serde_json::from_str(
+        r#"{"prices":[{"model":"gpt-4o","provider":null,"input":1.0,"output":2.0,"cache_read":0.0,"cache_creation":0.0}]}"#,
+    )
+    .unwrap();
+    assert_eq!(table.prices[0].origin, PriceOrigin::User);
+    let encoded = serde_json::to_string(&table).unwrap();
+    assert!(
+        !encoded.contains("origin"),
+        "用户单价序列化不应写出默认 origin：{encoded}"
+    );
 }
 
 #[test]
@@ -3694,6 +3838,7 @@ fn backup_and_restore_round_trips_records_and_user_config() {
             output: 0.015,
             cache_read: 0.0,
             cache_creation: 0.0,
+            origin: PriceOrigin::User,
         }],
     };
     std::fs::write(&prices_path, serde_json::to_string_pretty(&prices).unwrap()).unwrap();

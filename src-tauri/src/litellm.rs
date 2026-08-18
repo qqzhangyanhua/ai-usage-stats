@@ -11,7 +11,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::domain::{PriceEntry, PriceSnapshot, PriceTable};
+use crate::domain::{PriceEntry, PriceOrigin, PriceSnapshot, PriceTable};
 
 /// 上游原始价目文件地址（webview 刷新时拉取）。
 pub const SOURCE_URL: &str =
@@ -101,6 +101,7 @@ pub fn parse_litellm_raw(raw: &str, as_of: &str) -> Result<PriceSnapshot, String
             output: output.unwrap_or(0.0),
             cache_read: num(obj, "cache_read_input_token_cost").unwrap_or(0.0),
             cache_creation: num(obj, "cache_creation_input_token_cost").unwrap_or(0.0),
+            origin: PriceOrigin::Snapshot,
         };
         match chosen.get(&model) {
             // 已有裸键条目、当前是带前缀的：保留已有。
@@ -124,10 +125,20 @@ pub fn parse_litellm_raw(raw: &str, as_of: &str) -> Result<PriceSnapshot, String
 /// 只要用户为某模型配置了任意单价（精确或按模型），该模型就完全交给用户，不再引入快照兜底。
 pub fn merge(user: &PriceTable, snapshot: &PriceSnapshot) -> PriceTable {
     let priced: HashSet<&str> = user.prices.iter().map(|p| p.model.as_str()).collect();
-    let mut prices = user.prices.clone();
+    let mut prices: Vec<PriceEntry> = user
+        .prices
+        .iter()
+        .cloned()
+        .map(|mut entry| {
+            entry.origin = PriceOrigin::User;
+            entry
+        })
+        .collect();
     for entry in &snapshot.entries {
         if !priced.contains(entry.model.as_str()) {
-            prices.push(entry.clone());
+            let mut fallback = entry.clone();
+            fallback.origin = PriceOrigin::Snapshot;
+            prices.push(fallback);
         }
     }
     PriceTable { prices }
