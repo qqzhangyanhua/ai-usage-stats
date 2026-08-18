@@ -1919,6 +1919,44 @@ fn cost_matches_model_and_provider_case_insensitively() {
 }
 
 #[test]
+fn sql_overview_matches_memory_when_price_table_case_differs() {
+    let mut record = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "GPT-4o",
+        "OpenAI",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    record.input_tokens = 100;
+    record.total_tokens = 100;
+    let prices = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-4o".into(),
+            provider: Some("openai".into()),
+            input: 0.01,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &[record.clone()]).unwrap();
+    let sql = query::overview(&conn, &Filter::default(), &prices).unwrap();
+    let mem = aggregate::overview(&[record.clone()], &Filter::default(), &prices);
+    assert_eq!(sql.cost, mem.cost);
+    assert_eq!(sql.cost, Some(1.0));
+    assert!(!sql.unpriced);
+    assert!(!mem.unpriced);
+
+    let turns = query::session_turns(&conn, "s1", None, &Filter::default(), &prices).unwrap();
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0].cost, Some(1.0));
+    assert!(!turns[0].unpriced);
+}
+
+#[test]
 fn overview_and_turns_use_price_table_and_flag_unpriced() {
     let mut priced = rec(
         "2026-08-01T10:00:00Z",
