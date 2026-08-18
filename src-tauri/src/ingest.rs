@@ -806,6 +806,9 @@ pub fn load_code_volume(home: &Path) -> Result<CodeVolumeSummary, String> {
             composer_lines_added: 0,
             human_lines_added: 0,
             ai_percentage: None,
+            total_cost: None,
+            cost_unpriced: false,
+            cost_per_thousand_ai_lines: None,
         });
     }
     let source_db = open_readonly(&db_path)?;
