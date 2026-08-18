@@ -592,15 +592,18 @@ pub fn top_sessions(
             SUM(r.total_tokens),
             MIN(r.occurred_at),
             MAX(r.occurred_at),
-            COALESCE(MAX(NULLIF(r.project, '')), ''),
-            COALESCE(MAX(NULLIF(r.model, '')), ''),
-            MAX(r.source_file),
+            {},
+            {},
+            {},
             SUM({COST_EXPR}),
             COALESCE(SUM({UNPRICED_EXPR}), 0)
         FROM usage_records r
         {PRICE_JOINS}
         {}
         GROUP BY r.source, r.session_id",
+        latest_nonempty_sql("project"),
+        latest_nonempty_sql("model"),
+        latest_nonempty_sql("source_file"),
         where_sql(&clauses),
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -661,16 +664,31 @@ pub fn top_sessions(
     Ok(rows)
 }
 
+/// 取该会话中 `occurred_at` 最晚的非空字段；时间并列时取字典序更大的值（与内存实现一致）。
+fn latest_nonempty_sql(column: &str) -> String {
+    format!(
+        "COALESCE((\
+            SELECT r2.{column} FROM usage_records r2 \
+            WHERE r2.source = r.source AND r2.session_id = r.session_id AND r2.{column} != '' \
+            ORDER BY r2.occurred_at DESC, r2.{column} DESC \
+            LIMIT 1\
+        ), '')"
+    )
+}
+
 fn session_rollup_sql(clauses: &[String], include_cost: bool) -> String {
+    let project = latest_nonempty_sql("project");
+    let model = latest_nonempty_sql("model");
+    let source_file = latest_nonempty_sql("source_file");
     if include_cost {
         format!(
             "SELECT r.source AS source, r.session_id AS session_id,
                 SUM(r.total_tokens) AS total_tokens,
                 MIN(r.occurred_at) AS started_at,
                 MAX(r.occurred_at) AS ended_at,
-                COALESCE(MAX(NULLIF(r.project, '')), '') AS project,
-                COALESCE(MAX(NULLIF(r.model, '')), '') AS model,
-                MAX(r.source_file) AS source_file,
+                {project} AS project,
+                {model} AS model,
+                {source_file} AS source_file,
                 SUM({COST_EXPR}) AS cost,
                 COALESCE(SUM({UNPRICED_EXPR}), 0) AS unpriced_count
             FROM usage_records r
@@ -685,9 +703,9 @@ fn session_rollup_sql(clauses: &[String], include_cost: bool) -> String {
                 SUM(r.total_tokens) AS total_tokens,
                 MIN(r.occurred_at) AS started_at,
                 MAX(r.occurred_at) AS ended_at,
-                COALESCE(MAX(NULLIF(r.project, '')), '') AS project,
-                COALESCE(MAX(NULLIF(r.model, '')), '') AS model,
-                MAX(r.source_file) AS source_file,
+                {project} AS project,
+                {model} AS model,
+                {source_file} AS source_file,
                 CAST(NULL AS REAL) AS cost,
                 0 AS unpriced_count
             FROM usage_records r

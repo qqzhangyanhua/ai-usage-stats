@@ -3960,11 +3960,13 @@ fn backup_and_restore_round_trips_records_and_user_config() {
     let prices_path = live.join("prices.json");
     let snapshot_path = live.join("litellm_prices.json");
     let budget_path = live.join("budget.json");
+    let budget_notify_path = live.join("budget_notify_state.json");
     let paths = backup::AppDataPaths {
         db_path: db_path.clone(),
         prices_path: prices_path.clone(),
         snapshot_path: snapshot_path.clone(),
         budget_path: budget_path.clone(),
+        budget_notify_path: budget_notify_path.clone(),
     };
 
     let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
@@ -4001,6 +4003,14 @@ fn backup_and_restore_round_trips_records_and_user_config() {
         },
     )
     .unwrap();
+    budget::save_notify_state(
+        &budget_notify_path,
+        &budget::NotifyState {
+            month: "2026-08".into(),
+            notified: vec![50, 80],
+        },
+    )
+    .unwrap();
     std::fs::write(
         &snapshot_path,
         r#"{"as_of":"2026-01-01","source":"test","entries":[]}"#,
@@ -4011,11 +4021,15 @@ fn backup_and_restore_round_trips_records_and_user_config() {
     assert!(manifest.files.contains(&"usage.sqlite".to_string()));
     assert!(manifest.files.contains(&"prices.json".to_string()));
     assert!(manifest.files.contains(&"budget.json".to_string()));
+    assert!(manifest
+        .files
+        .contains(&"budget_notify_state.json".to_string()));
     assert!(manifest.note.contains("钥匙串"));
     drop(conn);
 
     std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
     budget::save_config(&budget_path, &BudgetConfig { monthly_usd: None }).unwrap();
+    budget::save_notify_state(&budget_notify_path, &budget::NotifyState::default()).unwrap();
     std::fs::remove_file(&db_path).unwrap();
     let _ = std::fs::remove_file(live.join("usage.sqlite-wal"));
     let _ = std::fs::remove_file(live.join("usage.sqlite-shm"));
@@ -4026,6 +4040,13 @@ fn backup_and_restore_round_trips_records_and_user_config() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].total_tokens, 42);
     assert_eq!(budget::load_config(&budget_path).monthly_usd, Some(20.0));
+    assert_eq!(
+        budget::load_notify_state(&budget_notify_path),
+        budget::NotifyState {
+            month: "2026-08".into(),
+            notified: vec![50, 80],
+        }
+    );
     let restored_prices: PriceTable =
         serde_json::from_str(&std::fs::read_to_string(&prices_path).unwrap()).unwrap();
     assert_eq!(restored_prices.prices[0].model, "claude-sonnet-5");
@@ -4048,6 +4069,7 @@ fn restore_rejects_invalid_backup_without_touching_live_files() {
         prices_path: prices_path.clone(),
         snapshot_path,
         budget_path,
+        budget_notify_path: live.join("budget_notify_state.json"),
     };
 
     let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
@@ -4106,6 +4128,7 @@ fn restore_rolls_back_live_files_when_a_later_replace_fails() {
         prices_path: prices_path.clone(),
         snapshot_path,
         budget_path,
+        budget_notify_path: live.join("budget_notify_state.json"),
     };
 
     let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
@@ -4976,4 +4999,124 @@ fn cursor_session_orphan_hash_does_not_create_session() {
             .session_count,
         0
     );
+}
+
+#[test]
+fn cursor_session_hash_db_read_failure_keeps_last_enrichment() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions[0].files_touched, 1);
+    assert!(sessions[0].models_json.contains("grok-4.6"));
+
+    let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    std::fs::write(&db_path, "not-a-sqlite-database").expect("corrupt tracking db");
+    let mut failed = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut failed);
+    assert!(failed.files_failed >= 1 || !failed.issues.is_empty());
+
+    let again = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(
+        again[0].files_touched, 1,
+        "transient hash db failure must not wipe enrichment"
+    );
+    assert!(again[0].models_json.contains("grok-4.6"));
+}
+
+#[test]
+fn scan_is_stale_detects_cursor_transcript_and_tracking_db() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "unseen cursor transcript should be stale"
+    );
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-2",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "new cursor transcript should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "ai-code-tracking.db change should be stale"
+    );
+}
+
+#[test]
+fn session_model_uses_latest_occurred_at_not_lexicographic_max() {
+    let records = vec![
+        rec(
+            "2026-08-01T11:00:00.000Z",
+            Source::Claude,
+            "aaa-new",
+            "anthropic",
+            "/proj-new",
+            "shared",
+            20,
+        ),
+        rec(
+            "2026-08-01T10:00:00.000Z",
+            Source::Claude,
+            "zzz-old",
+            "anthropic",
+            "/proj-old",
+            "shared",
+            10,
+        ),
+    ];
+    let prices = PriceTable::default();
+    let mem = aggregate::top_sessions(&records, &Filter::default(), &prices, 10);
+    assert_eq!(mem.len(), 1);
+    assert_eq!(mem[0].model, "aaa-new");
+    assert_eq!(mem[0].project, "/proj-new");
+
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &records).unwrap();
+    let sql = query::top_sessions(&conn, &Filter::default(), &prices, 10).unwrap();
+    assert_eq!(sql, mem);
+
+    let page = query::sessions_page(
+        &conn,
+        &prices,
+        &SessionQuery {
+            page: Some(1),
+            page_size: Some(20),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(page.rows[0].model, "aaa-new");
+    assert_eq!(page.rows[0].project, "/proj-new");
 }

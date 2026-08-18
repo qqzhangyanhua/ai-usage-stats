@@ -31,10 +31,13 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     };
 
-    let enrichments = load_hash_enrichments(home).unwrap_or_else(|error| {
-        record_issue(report, &root.to_string_lossy(), &error);
-        BTreeMap::new()
-    });
+    let enrichments = match load_hash_enrichments(home) {
+        Ok(map) => Some(map),
+        Err(error) => {
+            record_issue(report, &root.to_string_lossy(), &error);
+            None
+        }
+    };
 
     let mut seen_paths = BTreeSet::new();
     let mut any_failed = false;
@@ -101,7 +104,10 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
                 continue;
             }
         };
-        if let Some(enrichment) = enrichments.get(&record.session_id) {
+        if let Some(enrichment) = enrichments
+            .as_ref()
+            .and_then(|map| map.get(&record.session_id))
+        {
             if let Err(error) = apply_hash_enrichment(&mut record, enrichment) {
                 record_issue(report, &path_key, &error);
                 any_failed = true;
@@ -129,8 +135,17 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     }
 
-    if let Err(error) = refresh_hash_enrichments(conn, &enrichments) {
-        record_issue(report, &root.to_string_lossy(), &error);
+    if let Some(map) = enrichments.as_ref() {
+        match refresh_hash_enrichments(conn, map) {
+            Ok(()) => {
+                if let Err(error) =
+                    store::set_cursor_tracking_fingerprint(conn, &tracking_db_fingerprint(home))
+                {
+                    record_issue(report, &root.to_string_lossy(), &error);
+                }
+            }
+            Err(error) => record_issue(report, &root.to_string_lossy(), &error),
+        }
     }
 
     let _ = store::set_cursor_session_as_of(conn, &chrono::Utc::now().to_rfc3339());
@@ -344,6 +359,51 @@ fn later_ts(current: &Option<String>, candidate: &Option<String>) -> Option<Stri
             };
             Some(if pick_right { right } else { left }.to_string())
         }
+    }
+}
+
+/// 托盘心跳用：transcript 指纹或代码量 sqlite 变化时视为 stale。
+pub(crate) fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
+    let root = home.join(".cursor/projects");
+    let transcripts = if root.exists() {
+        walk_transcripts(&root)?
+    } else {
+        Vec::new()
+    };
+    let cached = store::cached_cursor_session_file_stats(conn)?;
+    if transcripts.is_empty() && cached.is_empty() {
+        return Ok(false);
+    }
+    let seen: BTreeSet<String> = transcripts
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    if cached.len() != seen.len() || cached.iter().any(|(path, _, _)| !seen.contains(path)) {
+        return Ok(true);
+    }
+    for path in transcripts {
+        let loc = path.to_string_lossy().to_string();
+        let meta = match fs::metadata(&path) {
+            Ok(meta) => meta,
+            Err(_) => return Ok(true),
+        };
+        match store::cursor_session_file_fingerprint(conn, &loc)? {
+            Some((mtime, size)) if mtime == modified_millis(&meta) && size == meta.len() as i64 => {
+            }
+            _ => return Ok(true),
+        }
+    }
+
+    let current = tracking_db_fingerprint(home);
+    let stored = store::cursor_tracking_fingerprint(conn)?;
+    Ok(current != stored)
+}
+
+fn tracking_db_fingerprint(home: &Path) -> String {
+    let path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    match fs::metadata(&path) {
+        Ok(meta) => format!("{}|{}", modified_millis(&meta), meta.len()),
+        Err(_) => String::new(),
     }
 }
 

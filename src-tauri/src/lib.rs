@@ -499,6 +499,7 @@ fn app_data_paths(state: &AppState) -> backup::AppDataPaths {
         prices_path: state.prices_path.clone(),
         snapshot_path: state.snapshot_path.clone(),
         budget_path: state.budget_path.clone(),
+        budget_notify_path: state.budget_notify_path.clone(),
     }
 }
 
