@@ -599,7 +599,6 @@ fn ingest_scans_multiple_overridden_directories_for_one_source() {
         .all(|r| r.source_file.contains("codex-root-b")));
 }
 
-
 #[test]
 fn overview_matches_source_model_project_and_session_rollups() {
     let conn = store::open_memory().unwrap();
@@ -615,7 +614,6 @@ fn overview_matches_source_model_project_and_session_rollups() {
     assert_eq!(filtered.total_tokens, 350);
     assert_rollups_match_overview(&records, &from_aug2);
 }
-
 
 #[test]
 fn ingest_all_fixtures_is_stable_on_refresh() {

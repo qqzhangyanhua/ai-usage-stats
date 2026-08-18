@@ -135,4 +135,3 @@ fn weekly_window_excludes_activity_older_than_seven_days_but_within_the_lookback
     // 仍应出现在 recent（5 小时窗）里，证明记录本身被正常摄取，只是不满足 weekly 的时间范围。
     assert_eq!(dto.recent.len(), 1);
 }
-

@@ -268,4 +268,3 @@ fn overview_sums_seeded_sqlite_records() {
     assert_eq!(dto.input_tokens, 450);
     assert_eq!(dto.session_count, 3);
 }
-

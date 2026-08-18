@@ -745,4 +745,3 @@ fn load_code_volume_reads_sqlite_without_writing_usage() {
     assert_eq!(volume.by_branch[0].name, "main");
     assert!((volume.ai_percentage.unwrap() - 20.51282051282051).abs() < 1e-9);
 }
-

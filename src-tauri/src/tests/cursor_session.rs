@@ -14,7 +14,6 @@ fn cursor_session_adapter_counts_turns_tools_and_status() {
     assert_eq!(parsed.tool_calls.get("Shell"), Some(&1));
 }
 
-
 #[test]
 fn cursor_session_ingest_summarize_does_not_touch_usage_records() {
     let dir = tempfile::tempdir().unwrap();
@@ -225,7 +224,6 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
         2
     );
 }
-
 
 #[test]
 fn cursor_session_enriches_from_ai_code_hashes() {
