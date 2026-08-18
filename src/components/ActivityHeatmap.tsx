@@ -1,10 +1,5 @@
 import { memo, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
-import {
-  heatmapGrid,
-  heatmapMonthLabels,
-  quantileCuts,
-  tokenHeatmapLevel,
-} from "../lib/calendar";
+import { heatmapGrid, heatmapMonthLabels, quantileCuts, tokenHeatmapLevel } from "../lib/calendar";
 import { formatCompact, formatUsd } from "../lib/format";
 import type { SeriesPoint } from "../types";
 
@@ -63,69 +58,67 @@ export const ActivityHeatmap = memo(function ActivityHeatmap({
 
   return (
     <div className="heatmap" style={{ "--heat-weeks": weeks.length } as CSSProperties}>
-        <div className="heatmap-body">
-          <div className="heatmap-months" aria-hidden="true">
-            {weeks.map((week, weekIndex) => (
-              <span key={week.days[0]?.date ?? weekIndex}>{monthByWeek.get(weekIndex) ?? ""}</span>
-            ))}
-          </div>
-          <div className="heatmap-weekdays" aria-hidden="true">
-            {WEEKDAY_MARKS.map((label, index) => (
-              <span key={`${label}-${index}`}>{label}</span>
-            ))}
-          </div>
-          <div className="heatmap-grid" onMouseLeave={() => setHover(null)}>
-            {WEEKDAY_MARKS.map((_, row) =>
-              weeks.map((week) => {
-                const cell = week.days[row];
-                if (!cell) {
-                  return null;
-                }
-                const tokens = byDay.get(cell.date)?.total_tokens ?? 0;
-                const level = cell.future ? 0 : tokenHeatmapLevel(tokens, cuts);
-                const className = `heat-cell heat-${level}${cell.future ? " is-future" : ""}`;
-                if (cell.future) {
-                  return <span key={cell.date} className={className} aria-hidden />;
-                }
-                return (
-                  <button
-                    key={cell.date}
-                    type="button"
-                    className={className}
-                    aria-label={`${cell.date} · ${formatCompact(tokens)} Token`}
-                    onMouseEnter={(event) => showTip(event, cell.date)}
-                    onClick={() => onDayClick?.(cell.date, cell.date)}
-                  />
-                );
-              }),
-            )}
-          </div>
-        </div>
-        <div className="heatmap-legend" aria-hidden="true">
-          <span>少</span>
-          {LEVELS.map((level) => (
-            <i key={level} className={`heat-cell heat-${level}`} />
+      <div className="heatmap-body">
+        <div className="heatmap-months" aria-hidden="true">
+          {weeks.map((week, weekIndex) => (
+            <span key={week.days[0]?.date ?? weekIndex}>{monthByWeek.get(weekIndex) ?? ""}</span>
           ))}
-          <span>多</span>
         </div>
-        {hover ? (
-          <div
-            className="heatmap-tip"
-            style={{
-              left: hover.x,
-              top: hover.y,
-              transform:
-                hover.y < 36
-                  ? "translate(-50%, 14px)"
-                  : "translate(-50%, calc(-100% - 8px))",
-            }}
-          >
-            <div>
-              {hover.date} · {formatCompact(hover.tokens)} Token
-            </div>
-            {hover.cost != null ? <div>{formatUsd(hover.cost, false)}</div> : null}
+        <div className="heatmap-weekdays" aria-hidden="true">
+          {WEEKDAY_MARKS.map((label, index) => (
+            <span key={`${label}-${index}`}>{label}</span>
+          ))}
+        </div>
+        <div className="heatmap-grid" onMouseLeave={() => setHover(null)}>
+          {WEEKDAY_MARKS.map((_, row) =>
+            weeks.map((week) => {
+              const cell = week.days[row];
+              if (!cell) {
+                return null;
+              }
+              const tokens = byDay.get(cell.date)?.total_tokens ?? 0;
+              const level = cell.future ? 0 : tokenHeatmapLevel(tokens, cuts);
+              const className = `heat-cell heat-${level}${cell.future ? " is-future" : ""}`;
+              if (cell.future) {
+                return <span key={cell.date} className={className} aria-hidden />;
+              }
+              return (
+                <button
+                  key={cell.date}
+                  type="button"
+                  className={className}
+                  aria-label={`${cell.date} · ${formatCompact(tokens)} Token`}
+                  onMouseEnter={(event) => showTip(event, cell.date)}
+                  onClick={() => onDayClick?.(cell.date, cell.date)}
+                />
+              );
+            }),
+          )}
+        </div>
+      </div>
+      <div className="heatmap-legend" aria-hidden="true">
+        <span>少</span>
+        {LEVELS.map((level) => (
+          <i key={level} className={`heat-cell heat-${level}`} />
+        ))}
+        <span>多</span>
+      </div>
+      {hover ? (
+        <div
+          className="heatmap-tip"
+          style={{
+            left: hover.x,
+            top: hover.y,
+            transform:
+              hover.y < 36 ? "translate(-50%, 14px)" : "translate(-50%, calc(-100% - 8px))",
+          }}
+        >
+          <div>
+            {hover.date} · {formatCompact(hover.tokens)} Token
           </div>
-        ) : null}
+          {hover.cost != null ? <div>{formatUsd(hover.cost, false)}</div> : null}
+        </div>
+      ) : null}
     </div>
   );
 });

@@ -30,7 +30,9 @@ function WeeklyRow({ window, maxTokens }: { window: WeeklyWindowDto; maxTokens: 
   const progress = Math.min(100, (window.total_tokens / maxTokens) * 100);
   const dailyAvgTokens = formatCompact(Math.round(window.daily_average_tokens));
   const dailyAvgCost =
-    window.daily_average_cost != null ? formatUsd(window.daily_average_cost, window.unpriced) : null;
+    window.daily_average_cost != null
+      ? formatUsd(window.daily_average_cost, window.unpriced)
+      : null;
 
   return (
     <li>

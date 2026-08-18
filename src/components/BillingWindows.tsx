@@ -1,11 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import { sourceTone } from "../icons";
-import {
-  applicationLabel,
-  formatCompact,
-  formatHoursMinutes,
-  formatUsd,
-} from "../lib/format";
+import { applicationLabel, formatCompact, formatHoursMinutes, formatUsd } from "../lib/format";
 import type { BillingWindowDto, BillingWindowsDto } from "../types";
 
 const TICK_MS = 60_000;

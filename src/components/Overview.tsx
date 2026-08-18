@@ -11,13 +11,7 @@ import { KpiCard, Spark } from "./Kpi";
 import { OverviewDetail } from "./OverviewDetail";
 import { OverviewTrend } from "./OverviewTrend";
 import { WeeklyWindows } from "./WeeklyWindows";
-import {
-  deltaPct,
-  formatClock,
-  formatCompact,
-  formatDelta,
-  formatUsd,
-} from "../lib/format";
+import { deltaPct, formatClock, formatCompact, formatDelta, formatUsd } from "../lib/format";
 import type {
   BillingWindowsDto,
   Grain,
@@ -158,7 +152,11 @@ export const Overview = memo(function Overview({
         sectionId="billing"
         title="5 小时计费窗"
         className="panel billing-panel"
-        extra={<span className="muted">由本地时间戳估计，非官方配额 · 始终展示最近窗口，不受时间范围筛选影响</span>}
+        extra={
+          <span className="muted">
+            由本地时间戳估计，非官方配额 · 始终展示最近窗口，不受时间范围筛选影响
+          </span>
+        }
         collapsedSummary={
           activeWindows > 0 ? `${activeWindows} 个进行中窗口` : "当前没有进行中的窗口"
         }

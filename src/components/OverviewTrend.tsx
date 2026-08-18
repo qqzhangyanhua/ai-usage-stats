@@ -113,7 +113,9 @@ export function OverviewTrend({
                   label={item.name}
                   value={`${((item.value / Math.max(totalTokens, 1)) * 100).toFixed(1)}%`}
                   extra={formatCompact(item.value)}
-                  onClick={item.name === MODEL_OTHER_SLICE ? undefined : () => selectModel(item.name)}
+                  onClick={
+                    item.name === MODEL_OTHER_SLICE ? undefined : () => selectModel(item.name)
+                  }
                 />
               ))}
             </div>

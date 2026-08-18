@@ -1,12 +1,7 @@
 import { useMemo } from "react";
 import { sourceTone } from "../icons";
 import { chartPalette, donutOption } from "../lib/chartTheme";
-import {
-  applicationLabel,
-  formatCompact,
-  projectLabel,
-  relativeTime,
-} from "../lib/format";
+import { applicationLabel, formatCompact, projectLabel, relativeTime } from "../lib/format";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import type { NamedAmount, OverviewDto, SessionRow } from "../types";
 import { DonutChart } from "./DonutChart";
@@ -126,7 +121,11 @@ export function OverviewDetail({
                 <div className="sess-main">
                   <div className="sess-title">{projectLabel(row.project)}</div>
                   <div className="sess-sub">
-                    {row.model ? <ModelLabel name={row.model} size={14} /> : applicationLabel(row.source)}
+                    {row.model ? (
+                      <ModelLabel name={row.model} size={14} />
+                    ) : (
+                      applicationLabel(row.source)
+                    )}
                   </div>
                 </div>
                 <span className="sess-time">{relativeTime(row.ended_at)}</span>

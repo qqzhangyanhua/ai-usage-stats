@@ -60,8 +60,8 @@ describe("isViewFresh", () => {
     }
     expect(isViewFresh(loaded, "trend", filter, "all", "day", 1)).toBe(true);
     expect(isViewFresh(loaded, "model", filter, "all", "week", 1)).toBe(true);
-    expect(
-      isViewFresh(loaded, "trend", { ...filter, from: "2026-08-01" }, "all", "day", 1),
-    ).toBe(false);
+    expect(isViewFresh(loaded, "trend", { ...filter, from: "2026-08-01" }, "all", "day", 1)).toBe(
+      false,
+    );
   });
 });

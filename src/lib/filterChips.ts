@@ -8,7 +8,11 @@ export type FilterChip = {
 
 export function filterChips(filter: Filter): FilterChip[] {
   return [
-    ...filter.projects.map((value) => ({ id: `project:${value}`, kind: "project" as const, value })),
+    ...filter.projects.map((value) => ({
+      id: `project:${value}`,
+      kind: "project" as const,
+      value,
+    })),
     ...filter.sources.map((value) => ({ id: `source:${value}`, kind: "source" as const, value })),
     ...filter.models.map((value) => ({ id: `model:${value}`, kind: "model" as const, value })),
     ...filter.providers.map((value) => ({
