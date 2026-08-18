@@ -1,0 +1,37 @@
+src/components/BudgetPanel.tsx
+  s_4604467dec6659::t_cefabf8cd8f43d 77
+src/components/ui/type.ts
+  s_4604467dec6659::t_bc221c194ec104 1-11
+src/components/CursorAccountUsagePanel.tsx
+  s_4604467dec6659::t_3ef190c2a9269a 233
+  s_4604467dec6659::t_d74e1bbd74a278 148-152
+src/components/CursorAccountSettingsPanel.tsx
+  s_4604467dec6659::t_3ef190c2a9269a 81
+  s_4604467dec6659::t_91fefd109dd8de 95
+src/components/ui/Button.tsx
+  s_4604467dec6659::t_f8c2247e180e43 1,5,10,21-22
+src/components/Settings.tsx
+  s_4604467dec6659::t_162f1a933509da 139,148,221-223,368
+src/styles.css
+  s_4604467dec6659::t_017ee5d68c3179 2263,2318-2342,2344-2347,2351-2352,2357-2359,2363-2366,2370-2376,2399-2400,2404-2407
+  s_4604467dec6659::t_de991709e1a8a8 2408
+src/components/BackupPanel.tsx
+  s_4604467dec6659::t_3ef190c2a9269a 55-56
+  s_4604467dec6659::t_0a0c8993a17713 60,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "ddbddf5234a69406545a795426d82488767e78ec",
+  "prompts": {},
+  "sessions": {
+    "s_4604467dec6659": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a013e0-7862-7372-b0a3-368b57c545e5",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
