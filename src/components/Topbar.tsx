@@ -29,6 +29,7 @@ export function Topbar({
   preset,
   options,
   disabled,
+  refreshDisabled = false,
   onPreset,
   onChange,
   onRefresh,
@@ -38,6 +39,7 @@ export function Topbar({
   preset: string;
   options: FilterOptions;
   disabled: boolean;
+  refreshDisabled?: boolean;
   onPreset: (preset: string, range?: { from: string | null; to: string | null }) => void;
   onChange: (filter: Filter) => void;
   onRefresh: () => void;
@@ -109,7 +111,7 @@ export function Topbar({
           ) : null}
           <Button
             variant="icon"
-            disabled={disabled}
+            disabled={disabled || refreshDisabled}
             onClick={onRefresh}
             title="刷新"
             aria-label="刷新数据"

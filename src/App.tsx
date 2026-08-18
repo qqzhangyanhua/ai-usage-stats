@@ -39,13 +39,14 @@ export default function App() {
           filter={data.filter}
           preset={data.preset}
           options={data.options}
-          disabled={data.busy}
+          disabled={data.loading}
+          refreshDisabled={data.busy}
           onPreset={data.applyPreset}
           onChange={data.applyFilter}
           onRefresh={() => data.runIngest("刷新")}
         />
         <main className="main">
-          <LoadingOverlay active={data.loading || data.busy}>
+          <LoadingOverlay active={data.loading && data.overview === null}>
             <ErrorBoundary key={view} fullscreen={false}>
               {view === "overview" ? (
                 <Overview

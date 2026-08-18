@@ -1534,6 +1534,33 @@ fn breakdown_by_project_ranks_and_follows_filter() {
 }
 
 #[test]
+fn top_sessions_returns_highest_token_sessions_first() {
+    let conn = store::open_memory().unwrap();
+    let mut records = Vec::new();
+    for index in 0..20 {
+        records.push(rec(
+            "2026-01-01T00:00:00+00:00",
+            Source::Codex,
+            "gpt",
+            "openai",
+            "/demo",
+            &format!("s{index:02}"),
+            i64::from(index + 1),
+        ));
+    }
+    store::insert_records(&conn, &records).unwrap();
+    let top = query::top_sessions(&conn, &Filter::default(), &PriceTable::default(), 3).unwrap();
+    assert_eq!(
+        top.iter()
+            .map(|row| (row.session_id.as_str(), row.total_tokens))
+            .collect::<Vec<_>>(),
+        vec![("s19", 20), ("s18", 19), ("s17", 18)]
+    );
+    assert_eq!(top[0].project, "/demo");
+    assert_eq!(top[0].model, "gpt");
+}
+
+#[test]
 fn top_sessions_and_turns_preserve_source_file() {
     let mut records = seed_records();
     records.push(rec(
@@ -2185,6 +2212,60 @@ fn open_db_enables_wal_and_normal_synchronous() {
         .query_row("PRAGMA synchronous", [], |row| row.get(0))
         .unwrap();
     assert_eq!(synchronous, 1, "synchronous should be NORMAL (1)");
+}
+
+#[test]
+fn readonly_query_does_not_block_on_open_write_transaction() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("usage.sqlite");
+    let path = path.to_str().unwrap();
+    let write = store::open_db(path).unwrap();
+    store::insert_records(
+        &write,
+        &[rec(
+            "2026-01-01T00:00:00+00:00",
+            Source::Codex,
+            "gpt",
+            "openai",
+            "demo",
+            "s1",
+            10,
+        )],
+    )
+    .unwrap();
+    let tx = write.unchecked_transaction().unwrap();
+    store::insert_records(
+        &tx,
+        &[rec(
+            "2026-01-02T00:00:00+00:00",
+            Source::Codex,
+            "gpt",
+            "openai",
+            "demo",
+            "s2",
+            20,
+        )],
+    )
+    .unwrap();
+
+    let started = std::time::Instant::now();
+    let read = store::open_readonly(path).unwrap();
+    let count: i64 = read
+        .query_row("SELECT COUNT(*) FROM usage_records", [], |row| row.get(0))
+        .unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "readonly query must not wait for the uncommitted writer"
+    );
+    assert_eq!(
+        count, 1,
+        "reader should see last committed snapshot, not the open txn"
+    );
+    tx.commit().unwrap();
+    let count: i64 = read
+        .query_row("SELECT COUNT(*) FROM usage_records", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 2);
 }
 
 #[test]

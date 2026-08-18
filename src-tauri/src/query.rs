@@ -585,27 +585,29 @@ pub fn top_sessions(
     prices: &PriceTable,
     limit: usize,
 ) -> Result<Vec<SessionRow>, String> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
     install_prices(conn, prices)?;
-    let (clauses, params) = filter_clauses(filter);
+    let (clauses, mut params) = filter_clauses(filter);
+    // 先按 token 取出 Top N。相关子查询不能放进全表 GROUP BY：
+    // 17 万行 × 3 次会话回表会把首屏卡死。
     let sql = format!(
         "SELECT r.source, r.session_id,
             SUM(r.total_tokens),
             MIN(r.occurred_at),
             MAX(r.occurred_at),
-            {},
-            {},
-            {},
             SUM({COST_EXPR}),
             COALESCE(SUM({UNPRICED_EXPR}), 0)
         FROM usage_records r
         {PRICE_JOINS}
         {}
-        GROUP BY r.source, r.session_id",
-        latest_nonempty_sql("project"),
-        latest_nonempty_sql("model"),
-        latest_nonempty_sql("source_file"),
+        GROUP BY r.source, r.session_id
+        ORDER BY SUM(r.total_tokens) DESC, r.source ASC, r.session_id ASC
+        LIMIT ?",
         where_sql(&clauses),
     );
+    params.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let raw = stmt
         .query_map(params_from_iter(params.iter()), |row| {
@@ -615,11 +617,8 @@ pub fn top_sessions(
                 row.get::<_, i64>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, String>(7)?,
-                row.get::<_, Option<f64>>(8)?,
-                row.get::<_, i64>(9)?,
+                row.get::<_, Option<f64>>(5)?,
+                row.get::<_, i64>(6)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -628,40 +627,72 @@ pub fn top_sessions(
     let mut rows: Vec<SessionRow> = raw
         .into_iter()
         .map(
-            |(
-                source,
-                session_id,
-                total_tokens,
-                started_at,
-                ended_at,
-                project,
-                model,
-                source_file,
-                cost,
-                unpriced_count,
-            )| SessionRow {
-                session_id,
-                source,
-                project,
-                model,
-                total_tokens,
-                started_at,
-                ended_at,
-                source_file,
-                cost,
-                unpriced: unpriced_count > 0,
+            |(source, session_id, total_tokens, started_at, ended_at, cost, unpriced_count)| {
+                SessionRow {
+                    session_id,
+                    source,
+                    project: String::new(),
+                    model: String::new(),
+                    total_tokens,
+                    started_at,
+                    ended_at,
+                    source_file: String::new(),
+                    cost,
+                    unpriced: unpriced_count > 0,
+                }
             },
         )
         .collect();
-    rows.sort_by(|a, b| {
-        b.total_tokens.cmp(&a.total_tokens).then_with(|| {
-            a.source
-                .cmp(&b.source)
-                .then_with(|| a.session_id.cmp(&b.session_id))
-        })
-    });
-    rows.truncate(limit);
+    hydrate_session_labels(conn, &mut rows)?;
     Ok(rows)
+}
+
+fn hydrate_session_labels(conn: &Connection, rows: &mut [SessionRow]) -> Result<(), String> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut clauses = Vec::with_capacity(rows.len());
+    let mut params: Vec<Value> = Vec::with_capacity(rows.len() * 2);
+    for row in rows.iter() {
+        clauses.push("(r.source = ? AND r.session_id = ?)".to_string());
+        params.push(Value::Text(row.source.clone()));
+        params.push(Value::Text(row.session_id.clone()));
+    }
+    let sql = format!(
+        "SELECT r.source, r.session_id, {}, {}, {}
+         FROM usage_records r
+         WHERE {}
+         GROUP BY r.source, r.session_id",
+        latest_nonempty_sql("project"),
+        latest_nonempty_sql("model"),
+        latest_nonempty_sql("source_file"),
+        clauses.join(" OR "),
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let labels = stmt
+        .query_map(params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    for (source, session_id, project, model, source_file) in labels {
+        if let Some(row) = rows
+            .iter_mut()
+            .find(|row| row.source == source && row.session_id == session_id)
+        {
+            row.project = project;
+            row.model = model;
+            row.source_file = source_file;
+        }
+    }
+    Ok(())
 }
 
 /// 取该会话中 `occurred_at` 最晚的非空字段；时间并列时取字典序更大的值（与内存实现一致）。

@@ -15,7 +15,7 @@ pub mod tray;
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rusqlite::Connection;
@@ -37,6 +37,7 @@ pub struct AppState {
     pub budget_path: PathBuf,
     pub budget_notify_path: PathBuf,
     pub conn: Mutex<Connection>,
+    pub read_conn: Mutex<Connection>,
     pub snapshot: Mutex<PriceSnapshot>,
 }
 
@@ -49,6 +50,14 @@ impl AppState {
             Ok(snapshot) => litellm::merge(&user, &snapshot),
             Err(_) => user,
         }
+    }
+
+    pub(crate) fn lock_write(&self) -> Result<MutexGuard<'_, Connection>, String> {
+        self.conn.lock().map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn lock_read(&self) -> Result<MutexGuard<'_, Connection>, String> {
+        self.read_conn.lock().map_err(|e| e.to_string())
     }
 
     fn snapshot_meta(&self) -> PriceSnapshotMeta {
@@ -105,7 +114,7 @@ fn ping() -> String {
 async fn ingest(app: tauri::AppHandle) -> Result<IngestReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         let report = ingest::ingest_all(&conn, &ingest::default_home())?;
         let prices = state.effective_prices();
         let _ = budget::check_and_notify(
@@ -125,7 +134,7 @@ async fn ingest(app: tauri::AppHandle) -> Result<IngestReport, String> {
 async fn get_overview(app: tauri::AppHandle, filter: Filter) -> Result<OverviewDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::overview(&conn, &filter, &prices)
     })
@@ -140,7 +149,7 @@ async fn get_billing_windows(
 ) -> Result<BillingWindowsDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::billing_windows(&conn, &filter, &prices, chrono::Utc::now())
     })
@@ -156,7 +165,7 @@ async fn get_trend(
 ) -> Result<Vec<SeriesPoint>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::trend(&conn, &filter, &prices, &grain)
     })
@@ -172,7 +181,7 @@ async fn get_application_analytics(
 ) -> Result<ApplicationAnalyticsDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         query::application_analytics(&conn, &filter, &grain)
     })
     .await
@@ -192,7 +201,7 @@ async fn get_breakdown(
 ) -> Result<Vec<NamedAmount>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::breakdown(&conn, &query.filter, &prices, &query.dimension)
     })
@@ -208,7 +217,7 @@ async fn get_top_sessions(
 ) -> Result<Vec<SessionRow>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::top_sessions(&conn, &filter, &prices, limit.unwrap_or(20))
     })
@@ -223,7 +232,7 @@ async fn get_sessions_page(
 ) -> Result<SessionPage, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::sessions_page(&conn, &prices, &query)
     })
@@ -240,7 +249,7 @@ async fn get_session_turns(
 ) -> Result<Vec<TurnRow>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::session_turns(&conn, &session_id, source.as_deref(), &filter, &prices)
     })
@@ -252,7 +261,7 @@ async fn get_session_turns(
 async fn get_filter_options(app: tauri::AppHandle) -> Result<FilterOptions, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         query::filter_options(&conn)
     })
     .await
@@ -274,7 +283,7 @@ fn save_price_table(state: tauri::State<AppState>, prices: PriceTable) -> Result
 async fn get_budget_status(app: tauri::AppHandle) -> Result<BudgetStatusDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         let config = budget::load_config(&state.budget_path);
         budget::status(&conn, &prices, &config, chrono::Local::now())
@@ -359,7 +368,7 @@ fn get_price_snapshot_url() -> String {
 async fn get_source_diagnostics(app: tauri::AppHandle) -> Result<Vec<SourceDiagnostic>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         ingest::source_diagnostics(&conn, &ingest::default_home())
     })
     .await
@@ -377,7 +386,7 @@ async fn rebuild_cache(
         .transpose()?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         ingest::rebuild_cache(&conn, &ingest::default_home(), source)
     })
     .await
@@ -396,7 +405,7 @@ async fn purge_archived_records(
         .transpose()?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         store::purge_archived(&conn, source)
     })
     .await
@@ -408,7 +417,7 @@ async fn get_code_volume(app: tauri::AppHandle) -> Result<CodeVolumeSummary, Str
     tauri::async_runtime::spawn_blocking(move || {
         let summary = ingest::load_code_volume(&ingest::default_home())?;
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         let prices = state.effective_prices();
         // 代码量本身是「至今累计」口径、不受总览筛选影响，这里用同样不筛选的 Filter 取全量费用，
         // 保证分子分母覆盖同一个时间窗口（都是全部时间）。
@@ -429,7 +438,7 @@ async fn get_cursor_session_summary(
 ) -> Result<CursorSessionSummaryDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         cursor_session::load_summary(&conn)
     })
     .await
@@ -443,7 +452,7 @@ async fn get_cursor_sessions_page(
 ) -> Result<CursorSessionPage, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         cursor_session::sessions_page(&conn, &query)
     })
     .await
@@ -459,11 +468,11 @@ async fn refresh_cursor_account_usage(
         let resolved = cursor_account::resolve_session_token(token)?;
         let state = app.state::<AppState>();
         let start_date_ms = {
-            let conn = state.conn.lock().map_err(|e| e.to_string())?;
+            let conn = state.lock_read()?;
             cursor_account::incremental_start_ms(&conn)?
         };
         let pages = cursor_account::fetch_refresh_pages(&resolved, start_date_ms);
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         cursor_account::apply_fetched_pages(&conn, pages)
     })
     .await
@@ -474,7 +483,7 @@ async fn refresh_cursor_account_usage(
 async fn get_cursor_account_usage(app: tauri::AppHandle) -> Result<CursorAccountUsageDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         cursor_account::load_summary(&conn)
     })
     .await
@@ -501,7 +510,7 @@ async fn clear_cursor_account_usage(
 ) -> Result<CursorAccountUsageDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         cursor_account::clear_cache(&conn)
     })
     .await
@@ -531,7 +540,7 @@ async fn backup_data(app: tauri::AppHandle) -> Result<bool, String> {
         let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
         let dest = base.join(format!("ai-usage-stats-{stamp}"));
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         backup::backup_to(&conn, &dest, &app_data_paths(&state))?;
         Ok(true)
     })
@@ -553,13 +562,22 @@ async fn restore_data(app: tauri::AppHandle) -> Result<bool, String> {
         let paths = app_data_paths(&state);
         backup::validate_restore(&src)?;
         {
-            let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+            let mut conn = state.lock_write()?;
             *conn = store::open_memory()?;
         }
-        let restored = backup::restore_from(&src, &paths);
         {
-            let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
-            *conn = store::open_db(paths.db_path.to_string_lossy().as_ref())?;
+            let mut read = state.lock_read()?;
+            *read = store::open_memory()?;
+        }
+        let restored = backup::restore_from(&src, &paths);
+        let db_path = paths.db_path.to_string_lossy().to_string();
+        {
+            let mut conn = state.lock_write()?;
+            *conn = store::open_db(&db_path)?;
+        }
+        {
+            let mut read = state.lock_read()?;
+            *read = store::open_readonly(&db_path)?;
         }
         restored?;
         let (snapshot, _) = litellm::load_snapshot(&paths.snapshot_path);
@@ -655,8 +673,9 @@ pub fn run() {
             let snapshot_path = dir.join("litellm_prices.json");
             let budget_path = dir.join("budget.json");
             let budget_notify_path = dir.join("budget_notify_state.json");
-            let conn = store::open_db(db_path.to_string_lossy().as_ref())
-                .map_err(std::io::Error::other)?;
+            let db_path_str = db_path.to_string_lossy().to_string();
+            let conn = store::open_db(&db_path_str).map_err(std::io::Error::other)?;
+            let read_conn = store::open_readonly(&db_path_str).map_err(std::io::Error::other)?;
             let (snapshot, _bundled) = litellm::load_snapshot(&snapshot_path);
             app.manage(AppState {
                 db_path,
@@ -665,6 +684,7 @@ pub fn run() {
                 budget_path,
                 budget_notify_path,
                 conn: Mutex::new(conn),
+                read_conn: Mutex::new(read_conn),
                 snapshot: Mutex::new(snapshot),
             });
             tray::setup(app.handle()).map_err(std::io::Error::other)?;

@@ -90,7 +90,6 @@ export function Sidebar({
           <button
             key={item.id}
             className={view === item.id ? "nav-btn active" : "nav-btn"}
-            disabled={busy}
             onClick={() => onNavigate(item.id)}
             title={collapsed ? item.label : undefined}
           >

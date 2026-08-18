@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
 use crate::domain::{CursorSessionRecord, CursorUsageEvent, Source, UsageRecord};
 
@@ -17,6 +17,12 @@ pub fn open_memory() -> Result<Connection, String> {
     let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
     init_schema(&conn)?;
     Ok(conn)
+}
+
+/// 只读连接。摄取会长时间占着写连接和写事务；查询必须走另一条连接，才能用上 WAL
+/// 的「读者不阻塞未提交写者」。这里不能跑 `init_schema` / `journal_mode`，那些是写操作。
+pub fn open_readonly(path: &str) -> Result<Connection, String> {
+    Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())
 }
 
 /// 只对真实文件落盘的连接生效：`:memory:` 数据库本来就没有并发读写者，WAL/NORMAL 这两个

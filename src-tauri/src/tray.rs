@@ -142,7 +142,8 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
 
     let handle = app.clone();
     std::thread::spawn(move || {
-        let _ = refresh_with_ingest(&handle);
+        // 启动只刷菜单栏缓存，全量摄取交给主窗口。两边一起扫盘会把首屏查询拖死。
+        let _ = refresh(&handle);
         loop {
             std::thread::sleep(REFRESH_INTERVAL);
             let _ = refresh_if_stale(&handle);
@@ -169,7 +170,7 @@ pub fn refresh(app: &AppHandle) -> Result<(), String> {
 pub fn refresh_if_stale(app: &AppHandle) -> Result<(), String> {
     let stale = {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_read()?;
         ingest::scan_is_stale(&conn, &ingest::default_home())?
     };
     if stale {
@@ -182,7 +183,7 @@ pub fn refresh_if_stale(app: &AppHandle) -> Result<(), String> {
 pub fn refresh_with_ingest(app: &AppHandle) -> Result<(), String> {
     {
         let state = app.state::<AppState>();
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let conn = state.lock_write()?;
         ingest::ingest_all(&conn, &ingest::default_home())?;
         let prices = state.effective_prices();
         let _ = crate::budget::check_and_notify(
@@ -199,7 +200,7 @@ pub fn refresh_with_ingest(app: &AppHandle) -> Result<(), String> {
 fn query_today(app: &AppHandle) -> Result<OverviewDto, String> {
     let state = app.state::<AppState>();
     let prices = state.effective_prices();
-    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let conn = state.lock_read()?;
     query::overview(&conn, &local_day_filter(Local::now()), &prices)
 }
 

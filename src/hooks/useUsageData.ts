@@ -159,14 +159,15 @@ export function useUsageData() {
             setter(value);
           }
         };
-      const tasks: Array<Promise<void>> = [
+      const paint: Array<Promise<void>> = [
         invoke<FilterOptions>("get_filter_options").then(commit(setOptions)),
       ];
       if (view !== "sessions") {
-        tasks.push(
+        paint.push(
           invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
         );
       }
+      const tasks: Array<Promise<void>> = [];
       if (view === "overview" || view === "trend") {
         tasks.push(
           invoke<SeriesPoint[]>("get_trend", { filter: nextFilter, grain }).then(commit(setTrend)),
@@ -241,7 +242,13 @@ export function useUsageData() {
         );
       }
       try {
-        await Promise.all(tasks);
+        await Promise.all(paint);
+        if (generation === requestGeneration.current) {
+          setLoading(false);
+        }
+        if (tasks.length > 0) {
+          await Promise.all(tasks);
+        }
       } finally {
         if (generation === requestGeneration.current) {
           setLoading(false);
@@ -438,8 +445,16 @@ export function useUsageData() {
 
   useEffect(() => {
     invoke<string>("ping")
-      .then(() => {
+      .then(async () => {
         setConnected(true);
+        setStatus("正在加载缓存…");
+        try {
+          // 先画已有缓存。启动摄取可能扫数 GB 源文件，不能挡住首屏。
+          await refreshViews();
+        } catch (error: unknown) {
+          reportError(error);
+          setLoading(false);
+        }
         return runIngestRef.current("启动摄取");
       })
       .catch((error: unknown) => {
@@ -447,6 +462,7 @@ export function useUsageData() {
         setStatus(humanStatus(error));
         setLoading(false);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在启动时拉一次缓存并后台摄取
   }, []);
 
   useEffect(() => {
