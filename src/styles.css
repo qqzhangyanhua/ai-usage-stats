@@ -2855,6 +2855,12 @@ td.row-actions {
   flex-direction: column;
 }
 
+/* 嵌在 panel 里时不要撑满父级高度，否则 overflow:hidden 会裁掉下面的分页。 */
+.panel > .loading-overlay-wrap {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
 .loading-overlay {
   position: absolute;
   inset: 0;

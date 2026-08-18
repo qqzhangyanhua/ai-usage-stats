@@ -278,6 +278,7 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
           </div>
           <CursorAccountEventTable
             revision={data.as_of ?? data.event_count}
+            eventCount={data.event_count}
             onError={(err) => setError(humanStatus(err))}
           />
         </>

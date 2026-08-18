@@ -15,9 +15,11 @@ const EXPORT_ROW_LIMIT = 20_000;
 
 export function CursorAccountEventTable({
   revision,
+  eventCount = 0,
   onError,
 }: {
   revision: number | string;
+  eventCount?: number;
   onError?: (error: unknown) => void;
 }) {
   const [page, setPage] = useState(1);
@@ -55,13 +57,14 @@ export function CursorAccountEventTable({
       });
   }, [page, sortDir, revision, onError]);
 
-  const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const total = data.total > 0 ? data.total : eventCount;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   async function fetchAllRows(): Promise<(string | number)[][]> {
     const result = await invoke<CursorAccountEventPage>("get_cursor_account_events_page", {
       query: {
         page: 1,
-        pageSize: Math.min(Math.max(data.total, 1), EXPORT_ROW_LIMIT),
+        pageSize: Math.min(Math.max(total, 1), EXPORT_ROW_LIMIT),
         sortDir,
       },
     });
@@ -73,7 +76,7 @@ export function CursorAccountEventTable({
       <div className="panel-head">
         <h2>账号事件</h2>
         <span className="muted">
-          云端账号事件，对不上本机会话
+          共 {formatTokens(total)} 条，每页 {PAGE_SIZE} 条 · 云端账号事件，对不上本机会话
           {loading ? (
             <span className="inline-loading">
               <Spinner size={12} />
@@ -87,7 +90,11 @@ export function CursorAccountEventTable({
           getRows={fetchAllRows}
         />
       </div>
-      <LoadingOverlay active={loading && data.rows.length > 0} className="table-scroll">
+      <Pagination page={page} pageCount={pageCount} totalCount={total} onPageChange={setPage} />
+      <LoadingOverlay
+        active={loading && data.rows.length > 0}
+        className="table-scroll cursor-session-table-scroll"
+      >
         <table>
           <thead>
             <tr>
@@ -128,7 +135,6 @@ export function CursorAccountEventTable({
           </tbody>
         </table>
       </LoadingOverlay>
-      <Pagination page={page} pageCount={pageCount} totalCount={data.total} onPageChange={setPage} />
     </section>
   );
 }
