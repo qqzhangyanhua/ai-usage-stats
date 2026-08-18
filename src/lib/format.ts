@@ -88,6 +88,7 @@ const applicationNames: Record<string, string> = {
   grok: "Grok CLI",
   qwen: "Qwen Code",
   cursor_agent: "Cursor Agent",
+  copilot: "GitHub Copilot CLI",
 };
 
 export function applicationLabel(source: string): string {

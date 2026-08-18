@@ -7,7 +7,9 @@ use rusqlite::Connection;
 
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
-use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
+use crate::adapters::{
+    claude, codex, copilot, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen,
+};
 use crate::cursor_session;
 use crate::domain::{
     CodeVolumeSummary, IngestIssue, IngestReport, Source, SourceDiagnostic, SourceIngestReport,
@@ -21,7 +23,7 @@ pub fn default_home() -> PathBuf {
 
 /// 每个 Source 的路径环境变量名，用于整体覆盖默认扫描根目录（逗号分隔多个绝对路径）。
 /// 命名尽量对齐 ccusage 等同类工具的既有约定，方便同时使用多个统计工具的用户复用配置。
-const PATH_ENV_VARS: [&str; 11] = [
+const PATH_ENV_VARS: [&str; 12] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "PI_AGENT_DIR",
@@ -33,6 +35,7 @@ const PATH_ENV_VARS: [&str; 11] = [
     "QWEN_DATA_DIR",
     "FACTORY_SESSIONS_DIR",
     "CURSOR_AGENT_USAGE_DIR",
+    "COPILOT_HOME",
 ];
 
 /// 环境变量覆盖表：键为环境变量名，值为解析后的根目录列表。只在真正设置了变量时才有
@@ -128,6 +131,9 @@ pub(crate) fn source_scan_dirs_with(
             ".cursor-agent-usage",
             "",
         ),
+        Source::Copilot => {
+            resolve_dirs(overrides, home, "COPILOT_HOME", ".copilot", "session-state")
+        }
     }
 }
 
@@ -251,6 +257,7 @@ fn source_coverage(source: Source) -> &'static str {
         Source::Factory => "会话累计 Token（无模型名）",
         Source::Kimi => "轮级 Token（无模型名）",
         Source::CursorAgent => "仅无头调用",
+        Source::Copilot => "仅会话结束时上报（累计）",
         _ => "轮级 Token",
     }
 }
@@ -286,6 +293,11 @@ fn ingest_source(
         Source::CursorAgent => {
             ingest_jsonl_tree(conn, source, &dirs, "jsonl", report, |content, path| {
                 Ok(cursor_agent::parse_cursor_agent_jsonl(content, path))
+            })
+        }
+        Source::Copilot => {
+            ingest_jsonl_tree(conn, source, &dirs, "jsonl", report, |content, path| {
+                Ok(copilot::parse_copilot_jsonl(content, path))
             })
         }
         Source::Opencode => ingest_opencode(conn, &dirs, report),
@@ -397,6 +409,7 @@ fn is_append_log_source(source: Source) -> bool {
             | Source::Dsh
             | Source::Grok
             | Source::CursorAgent
+            | Source::Copilot
     )
 }
 

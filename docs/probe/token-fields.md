@@ -7,7 +7,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `occurred_at` | RFC3339 | 该轮发生时间 |
-| `source` | 文本 | 来源：codex / claude / pi / opencode / kimi / dsh / gemini / grok / qwen / factory |
+| `source` | 文本 | 来源：codex / claude / pi / opencode / kimi / dsh / gemini / grok / qwen / factory / cursor_agent / copilot |
 | `model` | 文本 | 模型 ID |
 | `provider` | 文本 | 官方或中转；未知则为空 |
 | `project` | 文本 | 工作目录（解码后的路径） |
@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS ingested_files (
 | factory | `~/.factory/sessions/**/<id>.settings.json` 的 `tokenUsage` | 是（会话累计） | jsonl 正文无 per-turn usage。`tokenUsage`：inputTokens / outputTokens / cacheCreationTokens / cacheReadTokens / thinkingTokens | provider：`providerLock`；项目：dashed 目录名解码；会话：文件名前缀 uuid | 每会话一条累计记录（本机无轮级口径） |
 | Cursor | `~/.cursor/ai-tracking/ai-code-tracking.db` 的 `scored_commits` | 否（代码量） | `linesAdded` / `composerLinesAdded` / `v2AiPercentage` 等。**不进入 Usage Record** | — | 独立代码量面板 |
 | cursor-agent | 无头 stdout `stream-json`；本机 `store.db` / transcript 无 token | 是（仅 stdout） | `result.usage`：inputTokens / outputTokens / cacheReadTokens / cacheWriteTokens。reasoning / 费用：无 | 模型：`system.model`；项目：`system.cwd`；会话：`session_id` | 只取 `type=result`；`request_id` 去重。hook / 本机文件不可用 |
+| copilot | `~/.copilot/session-state/<session-id>/events.jsonl` | 是（仅会话结束时，按模型累计） | `session.shutdown.data.modelMetrics.<model>.usage`：inputTokens / outputTokens / cacheReadTokens→cache_read、cacheWriteTokens→cache_creation。reasoning：无 | 模型：`modelMetrics` 的键；项目：`session.start.data.context.cwd`；会话：`session.start.data.sessionId`（缺失时退回父目录名） | 只取文件里时间最晚的一次 `session.shutdown`（会话续接会写多次，均为累计值，不能叠加）。详见 `docs/probe/copilot.md` |
 | amp | 本机仅配置 | 否 | 不纳入 | — | — |
 
 ## dsh 解压后结构

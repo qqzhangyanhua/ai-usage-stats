@@ -1938,6 +1938,7 @@ tr:hover .session-id-cell .table-icon-btn,
 .tone-factory,
 .tone-dsh,
 .tone-cursor,
+.tone-copilot,
 .tone-other {
   background: var(--tone-other-bg);
   color: var(--tone-other-fg);
