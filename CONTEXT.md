@@ -36,6 +36,10 @@ _Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混�
 Claude / Codex / Cursor 的账号级订阅限额（已用百分比与重置时间）。独立于消耗记录、本机 5 小时/7 天估计窗、Cursor 账号用量与代码量，不并入本机 token KPI。新鲜度分 official / stale / unavailable；取数失败保留上次正确缓存。Claude 来自 statusline 捕获，Codex 问本机 app-server，Cursor 用已有钥匙串打限额接口。
 _Avoid_: 把它叫成本机计费窗、消耗记录，或与本机 5 小时/7 天估计混成同一根进度条
 
+**全局指令 (Global Instruction)**：
+某个 Source 会跨项目加载的、由用户手写的自定义指令文本。独立于消耗记录、代码量、Cursor 会话与官方额度，不并入本机 token KPI。判定口径是「该 Source 真正会加载的」，不是磁盘上有哪些 markdown。Cursor 遗留 memories、Claude 自动记忆是机器写的残渣，只可作体检项，不进本词条。
+_Avoid_: 规则、rules（会和本仓库的项目规则撞名）；记忆、memory（会和 Claude 自动记忆、Cursor 残留 memories 撞名）；提示词
+
 ## 采集源现状
 
 | Source | 存储 | 本机 token | 本机费用 |
@@ -55,4 +59,4 @@ _Avoid_: 把它叫成本机计费窗、消耗记录，或与本机 5 小时/7 �
 | copilot | jsonl `~/.copilot/session-state/<id>/events.jsonl` | ✅（仅会话结束时，按模型累计） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |
 
-以上是各 Source 的默认扫描路径；每个 Source 都可以用环境变量整体覆盖（逗号分隔可指定多个目录，同时扫描），用于非默认安装位置或多份数据目录。默认路径与对应环境变量见 `docs/adr/0005-configurable-source-paths.md`。Claude Code 默认会同时扫 `~/.claude/projects` 和 XDG 路径 `~/.config/claude/projects`。Cursor 账号用量见 `docs/adr/0006-cursor-account-usage-network-ingest.md`，Cursor 会话见 `docs/adr/0007-cursor-session-local-ingest.md`。
+以上是各 Source 的默认扫描路径；每个 Source 都可以用环境变量整体覆盖（逗号分隔可指定多个目录，同时扫描），用于非默认安装位置或多份数据目录。默认路径与对应环境变量见 `docs/adr/0005-configurable-source-paths.md`。Claude Code 默认会同时扫 `~/.claude/projects` 和 XDG 路径 `~/.config/claude/projects`。Cursor 账号用量见 `docs/adr/0006-cursor-account-usage-network-ingest.md`，Cursor 会话见 `docs/adr/0007-cursor-session-local-ingest.md`。全局指令见 `docs/adr/0009-global-instruction-dimension.md`；写入用户文件的约束见 `docs/adr/0010-writing-user-owned-files.md`。
