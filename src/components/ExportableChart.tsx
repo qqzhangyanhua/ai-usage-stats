@@ -7,14 +7,18 @@ import { exportImage } from "../lib/exportFile";
 /**
  * 包裹 ReactECharts，在图表右上角提供「导出为图片」的悬浮按钮。
  */
+export type ChartEventHandler = (params: unknown) => void;
+
 export function ExportableChart({
   option,
   style,
   filename,
+  onEvents,
 }: {
   option: EChartsOption;
   style?: CSSProperties;
   filename: string;
+  onEvents?: Record<string, ChartEventHandler>;
 }) {
   const chartRef = useRef<ReactECharts | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +53,7 @@ export function ExportableChart({
       >
         <Icon name="download" size={13} />
       </button>
-      <ReactECharts ref={chartRef} option={option} style={style} />
+      <ReactECharts ref={chartRef} option={option} style={style} onEvents={onEvents} />
     </div>
   );
 }

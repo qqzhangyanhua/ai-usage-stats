@@ -7,7 +7,8 @@ import { Topbar } from "./components/Topbar";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
-import { clearDimensionFilters } from "./lib/filterChips";
+import { clearDimensionFilters, withModelFilter } from "./lib/filterChips";
+import { customRangeFilter } from "./lib/format";
 import {
   LazyApplicationAnalytics,
   LazyBreakdown,
@@ -92,6 +93,10 @@ export default function App() {
                     onProjectClick={(project) =>
                       data.applyFilter({ ...data.filter, projects: [project] })
                     }
+                    onRangeSelect={(from, to) =>
+                      data.applyPreset("custom", customRangeFilter(from, to))
+                    }
+                    onModelClick={(model) => data.applyFilter(withModelFilter(data.filter, model))}
                     onSessionClick={(session) => {
                       data.openSessions();
                       data.setSelectedSession(session);

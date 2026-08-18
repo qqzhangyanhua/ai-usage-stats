@@ -66,7 +66,7 @@ export function LiteLlmSnapshotPanel({ onRefreshed }: { onRefreshed?: () => void
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-litellm">
       <div className="panel-head">
         <div>
           <h2>LiteLLM 价目快照</h2>

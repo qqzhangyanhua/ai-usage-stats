@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BackupPanel } from "./BackupPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
@@ -6,6 +7,16 @@ import { PriceConfigPanel } from "./PriceConfigPanel";
 import { PricePresetPanel } from "./PricePresetPanel";
 import { SourceDiagnosticsPanel } from "./SourceDiagnosticsPanel";
 import type { BudgetStatusDto, IngestReport, PriceTable, SourceDiagnostic } from "../types";
+
+const SETTINGS_ANCHORS = [
+  { id: "settings-diagnostics", label: "数据源" },
+  { id: "settings-budget", label: "预算" },
+  { id: "settings-backup", label: "备份" },
+  { id: "settings-cursor-account", label: "Cursor 账号" },
+  { id: "settings-litellm", label: "LiteLLM" },
+  { id: "settings-presets", label: "预设" },
+  { id: "settings-prices", label: "单价" },
+] as const;
 
 export function Settings({
   prices,
@@ -40,8 +51,23 @@ export function Settings({
   onSnapshotRefreshed: () => void;
   onSaveBudget: (monthlyUsd: number | null) => void;
 }) {
+  useEffect(() => {
+    const id = window.location.hash.replace(/^#/, "");
+    if (!id.startsWith("settings-")) {
+      return;
+    }
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }, []);
+
   return (
     <div className="stack">
+      <nav className="settings-toc" aria-label="设置目录">
+        {SETTINGS_ANCHORS.map((anchor) => (
+          <a key={anchor.id} className="filter-chip" href={`#${anchor.id}`}>
+            {anchor.label}
+          </a>
+        ))}
+      </nav>
       <SourceDiagnosticsPanel
         diagnostics={diagnostics}
         ingestReport={ingestReport}
