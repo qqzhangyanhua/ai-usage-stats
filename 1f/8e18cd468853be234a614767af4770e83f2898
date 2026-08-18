@@ -1,0 +1,47 @@
+src-tauri/src/instructions/checkup.rs
+  s_aab3df05781610::t_8fe46df59f48cd 153-162
+  s_aab3df05781610::t_d16f0be902ffd4 1-10,13-24,26-36,38-123,125-136,138-152,163-199
+  s_aab3df05781610::t_2c65735b12fbd8 25
+  s_aab3df05781610::t_ecfcdbd91c0851 11-12
+  s_aab3df05781610::t_bc3953732294a2 37
+  s_aab3df05781610::t_27ba4289d6f30b 124
+  s_aab3df05781610::t_0b8161b222830e 137
+src/components/InstructionCheckup.tsx
+  s_aab3df05781610::t_0d4d89ce30f5c2 1-43
+src-tauri/src/tests.rs
+  s_aab3df05781610::t_dee847cb8a50c9 6872
+  s_aab3df05781610::t_dda835e2212f89 6814-6833
+  s_aab3df05781610::t_5547073703088b 6873
+  s_aab3df05781610::t_7cf540a0812a9c 6660,6683-6745,6747-6813,6834-6871,6874-6891
+  s_aab3df05781610::t_ca9edf6156d865 6609-6659
+  s_aab3df05781610::t_1146cf6a31a849 6661-6682
+  s_aab3df05781610::t_001660dba48897 6746
+src-tauri/src/domain.rs
+  s_aab3df05781610::t_846ce7c5d317f2 307-336,341
+src-tauri/src/instructions/mod.rs
+  s_aab3df05781610::t_2e80d763d57b9d 1
+  s_aab3df05781610::t_7fb4f5b0eca0e9 27-43
+src/types.ts
+  s_aab3df05781610::t_feaf99b812a62a 149-167,170
+src/components/GlobalInstructionPanel.tsx
+  s_aab3df05781610::t_11477a2b55c375 115
+  s_aab3df05781610::t_7ad7db3279a8d9 16
+src/styles.css
+  s_aab3df05781610::t_ba6d8d82f474dc 3320-3393
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "1f8e18cd468853be234a614767af4770e83f2898",
+  "prompts": {},
+  "sessions": {
+    "s_aab3df05781610": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f4d4d20-1457-420b-9020-edca79b04d63",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
