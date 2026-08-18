@@ -7,6 +7,7 @@ use crate::adapters::{
     claude, codex, copilot, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen,
 };
 use crate::aggregate;
+use crate::backup;
 use crate::billing_window;
 use crate::budget;
 use crate::cost::derive_cost;
@@ -3619,6 +3620,87 @@ fn budget_config_round_trips_through_disk() {
     };
     budget::save_config(&path, &config).unwrap();
     assert_eq!(budget::load_config(&path), config);
+}
+
+#[test]
+fn backup_and_restore_round_trips_records_and_user_config() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path: snapshot_path.clone(),
+        budget_path: budget_path.clone(),
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+
+    let prices = PriceTable {
+        prices: vec![PriceEntry {
+            model: "claude-sonnet-5".into(),
+            provider: Some("anthropic".into()),
+            input: 0.003,
+            output: 0.015,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+    std::fs::write(&prices_path, serde_json::to_string_pretty(&prices).unwrap()).unwrap();
+    budget::save_config(
+        &budget_path,
+        &BudgetConfig {
+            monthly_usd: Some(20.0),
+        },
+    )
+    .unwrap();
+    std::fs::write(
+        &snapshot_path,
+        r#"{"as_of":"2026-01-01","source":"test","entries":[]}"#,
+    )
+    .unwrap();
+
+    let manifest = backup::backup_to(&conn, &dest, &paths).unwrap();
+    assert!(manifest.files.contains(&"usage.sqlite".to_string()));
+    assert!(manifest.files.contains(&"prices.json".to_string()));
+    assert!(manifest.files.contains(&"budget.json".to_string()));
+    assert!(manifest.note.contains("钥匙串"));
+    drop(conn);
+
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+    budget::save_config(&budget_path, &BudgetConfig { monthly_usd: None }).unwrap();
+    std::fs::remove_file(&db_path).unwrap();
+    let _ = std::fs::remove_file(live.join("usage.sqlite-wal"));
+    let _ = std::fs::remove_file(live.join("usage.sqlite-shm"));
+
+    backup::restore_from(&dest, &paths).unwrap();
+    let restored = store::open_db(db_path.to_str().unwrap()).unwrap();
+    let rows = store::load_all(&restored).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].total_tokens, 42);
+    assert_eq!(budget::load_config(&budget_path).monthly_usd, Some(20.0));
+    let restored_prices: PriceTable =
+        serde_json::from_str(&std::fs::read_to_string(&prices_path).unwrap()).unwrap();
+    assert_eq!(restored_prices.prices[0].model, "claude-sonnet-5");
 }
 
 #[test]

@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod aggregate;
+pub mod backup;
 pub mod billing_window;
 pub mod budget;
 pub mod cost;
@@ -492,6 +493,66 @@ async fn clear_cursor_account_usage(
     .map_err(|e| e.to_string())?
 }
 
+fn app_data_paths(state: &AppState) -> backup::AppDataPaths {
+    backup::AppDataPaths {
+        db_path: state.db_path.clone(),
+        prices_path: state.prices_path.clone(),
+        snapshot_path: state.snapshot_path.clone(),
+        budget_path: state.budget_path.clone(),
+    }
+}
+
+/// 备份 sqlite 与用户配置到用户选择的目录；不含 Cursor 钥匙串 token。返回 `false` 表示取消。
+#[tauri::command]
+async fn backup_data(app: tauri::AppHandle) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dest = rfd::FileDialog::new()
+            .set_title("选择备份目录")
+            .pick_folder();
+        let Some(base) = dest else {
+            return Ok(false);
+        };
+        let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let dest = base.join(format!("ai-usage-stats-{stamp}"));
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        backup::backup_to(&conn, &dest, &app_data_paths(&state))?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 从备份目录恢复 sqlite 与用户配置，覆盖当前缓存。返回 `false` 表示取消。
+#[tauri::command]
+async fn restore_data(app: tauri::AppHandle) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let src = rfd::FileDialog::new()
+            .set_title("选择备份目录")
+            .pick_folder();
+        let Some(src) = src else {
+            return Ok(false);
+        };
+        let state = app.state::<AppState>();
+        let paths = app_data_paths(&state);
+        {
+            let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+            *conn = store::open_memory()?;
+        }
+        backup::restore_from(&src, &paths)?;
+        {
+            let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+            *conn = store::open_db(paths.db_path.to_string_lossy().as_ref())?;
+        }
+        let (snapshot, _) = litellm::load_snapshot(&paths.snapshot_path);
+        *state.snapshot.lock().map_err(|e| e.to_string())? = snapshot;
+        let _ = tray::refresh(&app);
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// 弹出原生保存对话框并写入 CSV 内容；返回 `false` 表示用户取消。
 #[tauri::command]
 async fn export_csv(default_name: String, content: String) -> Result<bool, String> {
@@ -635,6 +696,8 @@ pub fn run() {
             export_csv,
             export_json,
             export_image,
+            backup_data,
+            restore_data,
             refresh_tray
         ])
         .build(tauri::generate_context!())
