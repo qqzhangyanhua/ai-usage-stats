@@ -1960,6 +1960,59 @@ fn usage_records_source_file_operations_use_an_index() {
 }
 
 #[test]
+fn reconcile_source_lookup_uses_an_index() {
+    let conn = store::open_memory().unwrap();
+    let plan: Vec<String> = conn
+        .prepare("EXPLAIN QUERY PLAN SELECT path FROM ingested_files WHERE source = ?1")
+        .unwrap()
+        .query_map(["codex"], |row| row.get(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        plan.iter()
+            .any(|detail| detail.contains("USING") && detail.contains("INDEX")),
+        "ingested_files(source) lookup must use an index, query plan: {plan:?}"
+    );
+}
+
+#[test]
+fn source_and_occurred_at_filter_uses_composite_index() {
+    let conn = store::open_memory().unwrap();
+    let plan: Vec<String> = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM usage_records \
+             WHERE source = ?1 AND occurred_at >= ?2",
+        )
+        .unwrap()
+        .query_map(["codex", "2026-01-01"], |row| row.get(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        plan.iter().any(|detail| {
+            detail.contains("USING") && detail.contains("INDEX") && detail.contains("source")
+        }),
+        "combined source+occurred_at filter must use an index, query plan: {plan:?}"
+    );
+}
+
+#[test]
+fn open_db_enables_wal_and_normal_synchronous() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("usage.sqlite");
+    let conn = store::open_db(path.to_str().unwrap()).unwrap();
+    let journal_mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(journal_mode.to_lowercase(), "wal");
+    let synchronous: i64 = conn
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(synchronous, 1, "synchronous should be NORMAL (1)");
+}
+
+#[test]
 fn ingest_skips_unchanged_file_on_second_pass() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();

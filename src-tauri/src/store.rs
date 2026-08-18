@@ -8,6 +8,7 @@ pub const ADAPTER_VERSION: i64 = 7;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    configure_connection(&conn)?;
     init_schema(&conn)?;
     Ok(conn)
 }
@@ -16,6 +17,21 @@ pub fn open_memory() -> Result<Connection, String> {
     let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
     init_schema(&conn)?;
     Ok(conn)
+}
+
+/// 只对真实文件落盘的连接生效：`:memory:` 数据库本来就没有并发读写者，WAL/NORMAL 这两个
+/// pragma 在内存模式下会被 SQLite 静默忽略甚至报错，所以不对 `open_memory` 调用。
+///
+/// - `journal_mode=WAL`：托盘后台线程每隔几分钟跑一次完整 ingest，会长时间持有写事务；
+///   WAL 让前端查询（读者）不必等这次写事务提交就能读到旧版本页，避免 UI 卡顿。
+/// - `synchronous=NORMAL`：WAL 模式下官方推荐搭配 NORMAL，牺牲的持久性仅在系统级崩溃
+///   （断电/内核崩溃，而非应用崩溃）时才可能丢最后几条已提交事务，可接受，换来显著更少的 fsync。
+fn configure_connection(conn: &Connection) -> Result<(), String> {
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn init_schema(conn: &Connection) -> Result<(), String> {
@@ -45,6 +61,10 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_records(session_id);
         -- Ingestion replaces records by file; without this index every changed file scans the full cache.
         CREATE INDEX IF NOT EXISTS idx_usage_source_file ON usage_records(source_file);
+        -- Almost every aggregate query in query.rs filters by source and/or occurred_at together
+        -- (overview/trend/billing_windows); a composite index lets those use one index instead of
+        -- a full scan + occurred_at index-only scan.
+        CREATE INDEX IF NOT EXISTS idx_usage_source_occurred ON usage_records(source, occurred_at);
 
         CREATE TABLE IF NOT EXISTS ingested_files (
             path TEXT PRIMARY KEY,
@@ -70,6 +90,15 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "adapter_version",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    // 必须放在上面的 ensure_column 之后：老版本缓存库的 ingested_files 表可能还没有
+    // source 列，若把这条建索引语句挪进最上面的初始 CREATE TABLE batch，会在旧库上先于
+    // ALTER TABLE 执行而报错。
+    // reconcile_source 每个来源每轮 ingest 都要 "SELECT path FROM ingested_files WHERE
+    // source = ?"，没有这个索引就是全表扫描。
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_ingested_files_source ON ingested_files(source);",
+    )
+    .map_err(|e| e.to_string())?;
     conn.execute_batch(
         r#"
         UPDATE ingested_files
