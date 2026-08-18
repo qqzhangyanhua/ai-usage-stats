@@ -2895,6 +2895,72 @@ fn scan_is_stale_detects_new_changed_and_deleted_source_files() {
     );
 }
 
+#[test]
+fn scan_is_stale_detects_kimi_and_grok_sidecar_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    let wire = home.join(".kimi/sessions/hash/sess/wire.jsonl");
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[]}").unwrap();
+
+    let updates = home.join(".grok/sessions/proj/sid/updates.jsonl");
+    std::fs::create_dir_all(updates.parent().unwrap()).unwrap();
+    std::fs::write(&updates, fixture("grok-updates.jsonl")).unwrap();
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\"}",
+    )
+    .unwrap();
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[],\"x\":1}").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "kimi.json content change should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\",\"note\":\"x\"}",
+    )
+    .unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "grok summary.json change should be stale"
+    );
+}
+
+#[test]
+fn scan_is_stale_detects_opencode_wal_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db_path = home.join(".local/share/opencode/opencode.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let db = rusqlite::Connection::open(&db_path).unwrap();
+    db.execute_batch("CREATE TABLE message (session_id TEXT, data TEXT);")
+        .unwrap();
+    drop(db);
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    let wal = PathBuf::from(format!("{}-wal", db_path.to_string_lossy()));
+    std::fs::write(&wal, b"wal").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "opencode.db-wal change should be stale"
+    );
+}
+
 #[ignore]
 #[test]
 fn ingest_real_home_rollups_match_overview() {
@@ -3770,6 +3836,115 @@ fn backup_and_restore_round_trips_records_and_user_config() {
     let restored_prices: PriceTable =
         serde_json::from_str(&std::fs::read_to_string(&prices_path).unwrap()).unwrap();
     assert_eq!(restored_prices.prices[0].model, "claude-sonnet-5");
+}
+
+#[test]
+fn restore_rejects_invalid_backup_without_touching_live_files() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+    std::fs::create_dir_all(&dest).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path,
+        budget_path,
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+    drop(conn);
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+
+    assert!(backup::validate_restore(&dest).is_err());
+    assert!(backup::restore_from(&dest, &paths).is_err());
+
+    std::fs::write(
+        dest.join("manifest.json"),
+        "{\"created_at\":\"x\",\"files\":[],\"note\":\"\"}",
+    )
+    .unwrap();
+    assert!(
+        backup::restore_from(&dest, &paths)
+            .unwrap_err()
+            .contains("usage.sqlite"),
+        "missing sqlite should fail before overwrite"
+    );
+
+    let still = store::open_db(db_path.to_str().unwrap()).unwrap();
+    assert_eq!(store::load_all(&still).unwrap()[0].total_tokens, 42);
+    assert_eq!(
+        std::fs::read_to_string(&prices_path).unwrap(),
+        "{\"prices\":[]}"
+    );
+}
+
+#[test]
+fn restore_rolls_back_live_files_when_a_later_replace_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let live = root.path().join("live");
+    let dest = root.path().join("backup");
+    std::fs::create_dir_all(&live).unwrap();
+
+    let db_path = live.join("usage.sqlite");
+    let prices_path = live.join("prices.json");
+    let snapshot_path = live.join("litellm_prices.json");
+    let budget_path = live.join("budget.json");
+    let paths = backup::AppDataPaths {
+        db_path: db_path.clone(),
+        prices_path: prices_path.clone(),
+        snapshot_path,
+        budget_path,
+    };
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-18T00:00:00.000Z",
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj",
+            "s1",
+            42,
+        )],
+    )
+    .unwrap();
+    std::fs::write(&prices_path, "{\"prices\":[]}").unwrap();
+    backup::backup_to(&conn, &dest, &paths).unwrap();
+    drop(conn);
+
+    std::fs::remove_file(&prices_path).unwrap();
+    std::fs::create_dir(&prices_path).unwrap();
+
+    let error = backup::restore_from(&dest, &paths).unwrap_err();
+    assert!(error.contains("写入") || error.contains("失败"), "{error}");
+
+    let still = store::open_db(db_path.to_str().unwrap()).unwrap();
+    assert_eq!(
+        store::load_all(&still).unwrap()[0].total_tokens,
+        42,
+        "db should roll back when a later file cannot be replaced"
+    );
 }
 
 #[test]
