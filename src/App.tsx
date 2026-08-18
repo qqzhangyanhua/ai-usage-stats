@@ -39,6 +39,7 @@ export default function App() {
       />
       <div className="workspace">
         <Topbar
+          key={view}
           view={view}
           filter={data.filter}
           preset={data.preset}
@@ -164,14 +165,14 @@ export default function App() {
                 <ErrorBoundary fullscreen={false}>
                   <Suspense fallback={<ViewFallback />}>
                     <LazySessions
-                      filter={data.filter}
+                      filter={data.sessionsFilter}
                       options={data.options}
                       revision={data.sessionsRevision}
                       turns={data.turns}
                       turnsLoading={data.turnsLoading}
                       selected={data.selectedSession}
                       onSelect={data.setSelectedSession}
-                      onFilterChange={data.applyFilter}
+                      onFilterChange={data.applySessionsFilter}
                       onError={data.reportError}
                     />
                   </Suspense>

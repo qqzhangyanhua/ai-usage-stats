@@ -86,7 +86,7 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
         <div className="panel-head">
           <div>
             <h2>应用趋势堆叠图</h2>
-            <p className="panel-note">查看各应用在总 Token 中的时间分布，遵循顶部全局筛选。</p>
+            <p className="panel-note">查看各应用在总 Token 中的时间分布，遵循本页筛选。</p>
           </div>
           <GrainSwitch value={grain} onChange={setGrain} />
         </div>

@@ -22,7 +22,16 @@ import type {
   SourceDiagnostic,
   View,
 } from "../types";
-import { isViewFresh, viewFromHash, viewsWarmedBy, viewStamp } from "./viewCache";
+import {
+  initialViewScopes,
+  isViewFresh,
+  reconcileLoadedStamps,
+  scopesEqual,
+  viewFromHash,
+  viewStamp,
+  viewsWarmedBy,
+  type ViewScope,
+} from "./viewCache";
 import { emptyFilter } from "./usage/constants";
 import { useAutoRefresh } from "./usage/useAutoRefresh";
 import { useIngestOperations } from "./usage/useIngestOperations";
@@ -38,8 +47,9 @@ export function useUsageData() {
   const optionsEpoch = useRef(-1);
 
   const [view, setView] = useState<View>(viewFromHash);
-  const [filter, setFilter] = useState<Filter>(emptyFilter);
-  const [preset, setPreset] = useState("all");
+  const [viewScopes, setViewScopes] = useState<Record<View, ViewScope>>(initialViewScopes);
+  const { filter, preset } = viewScopes[view];
+  const sessionsFilter = viewScopes.sessions.filter;
   const [options, setOptions] = useState<FilterOptions>({
     sources: [],
     models: [],
@@ -89,20 +99,30 @@ export function useUsageData() {
   }, []);
 
   const { turns, turnsLoading, selectedSession, loadSessionTurns, selectSession } = useSessionTurns(
-    filter,
+    sessionsFilter,
     reportError,
   );
 
   const markHydrated = useCallback(
-    (target: View, nextFilter: Filter, nextPreset: string) => {
+    (target: View, nextFilter: Filter, nextPreset: string, scopes: Record<View, ViewScope>) => {
       const epoch = dataEpoch.current;
-      for (const warmed of viewsWarmedBy(target)) {
-        loadedStamps.current[warmed] = viewStamp(warmed, nextFilter, nextPreset, grain, epoch);
-      }
+      const used: ViewScope = { filter: nextFilter, preset: nextPreset };
+      loadedStamps.current = reconcileLoadedStamps(
+        loadedStamps.current,
+        target,
+        used,
+        scopes,
+        grain,
+        epoch,
+      );
       setHydratedViews((current) => {
         const next = new Set(current);
+        next.add(target);
         for (const warmed of viewsWarmedBy(target)) {
-          next.add(warmed);
+          const scope = warmed === target ? used : scopes[warmed];
+          if (scopesEqual(scope, used)) {
+            next.add(warmed);
+          }
         }
         return next;
       });
@@ -263,7 +283,7 @@ export function useUsageData() {
           await Promise.all(tasks);
         }
         if (generation === requestGeneration.current) {
-          markHydrated(view, nextFilter, nextPreset);
+          markHydrated(view, nextFilter, nextPreset, viewScopes);
         }
       } finally {
         if (generation === requestGeneration.current) {
@@ -274,7 +294,7 @@ export function useUsageData() {
         setUpdatedAt(new Date().toISOString());
       }
     },
-    [filter, preset, view, grain, selectedSession, loadSessionTurns, hydratedViews, markHydrated],
+    [filter, preset, view, viewScopes, grain, selectedSession, loadSessionTurns, hydratedViews, markHydrated],
   );
 
   const refreshTrend = useCallback(
@@ -311,17 +331,22 @@ export function useUsageData() {
         if (generation === requestGeneration.current) {
           setLoading(false);
           if (view === "overview" || view === "trend") {
-            markHydrated("trend", nextFilter, preset);
-            loadedStamps.current.overview = viewStamp(
-              "overview",
-              nextFilter,
-              preset,
-              grain,
-              dataEpoch.current,
-            );
+            markHydrated(view, nextFilter, preset, viewScopes);
+            if (
+              view === "trend" &&
+              scopesEqual(viewScopes.overview, { filter: nextFilter, preset })
+            ) {
+              loadedStamps.current.overview = viewStamp(
+                "overview",
+                nextFilter,
+                preset,
+                grain,
+                dataEpoch.current,
+              );
+            }
           }
           if (view === "application") {
-            markHydrated("application", nextFilter, preset);
+            markHydrated("application", nextFilter, preset, viewScopes);
           }
         }
       }
@@ -329,7 +354,7 @@ export function useUsageData() {
         setUpdatedAt(new Date().toISOString());
       }
     },
-    [filter, view, grain, preset, markHydrated],
+    [filter, view, viewScopes, grain, preset, markHydrated],
   );
 
   const wrappedRefreshViews = useCallback(async () => {
@@ -452,26 +477,48 @@ export function useUsageData() {
 
   const applyPreset = useCallback(
     (next: string, explicitRange?: { from: string | null; to: string | null }) => {
-      setPreset(next);
       const range = explicitRange ?? rangeFromPreset(next);
       const nextFilter = { ...filter, ...range };
-      setFilter(nextFilter);
+      setViewScopes((current) => ({
+        ...current,
+        [view]: { filter: nextFilter, preset: next },
+      }));
       refreshViews(nextFilter, next).catch(reportError);
     },
-    [filter, refreshViews, reportError],
+    [filter, view, refreshViews, reportError],
+  );
+
+  const applyViewFilter = useCallback(
+    (target: View, next: Filter) => {
+      setViewScopes((current) => ({
+        ...current,
+        [target]: { filter: next, preset: current[target].preset },
+      }));
+      if (target === view) {
+        refreshViews(next).catch(reportError);
+      }
+    },
+    [view, refreshViews, reportError],
   );
 
   const applyFilter = useCallback(
     (next: Filter) => {
-      setFilter(next);
-      refreshViews(next).catch(reportError);
+      applyViewFilter(view, next);
     },
-    [refreshViews, reportError],
+    [applyViewFilter, view],
+  );
+
+  const applySessionsFilter = useCallback(
+    (next: Filter) => {
+      applyViewFilter("sessions", next);
+    },
+    [applyViewFilter],
   );
 
   return {
     view,
     filter,
+    sessionsFilter,
     preset,
     options,
     overview,
@@ -519,6 +566,7 @@ export function useUsageData() {
     navigate,
     applyPreset,
     applyFilter,
+    applySessionsFilter,
     openSessions,
     runIngest: runIngestWithCacheClear,
     runRebuild: runRebuildWithCacheClear,
