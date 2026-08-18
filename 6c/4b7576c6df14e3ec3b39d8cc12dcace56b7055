@@ -1,0 +1,25 @@
+src/styles.css
+  s_732c6956d0fa81::t_8a4be4528d7a85 1626-1627,1629-1634,1637-1638
+  s_732c6956d0fa81::t_e1a5787a681f41 2192-2197
+  s_732c6956d0fa81::t_11a90f362393e3 2870-2875,2877-2879
+  s_732c6956d0fa81::t_b5ce51d1f29dc1 1728-1731
+  s_732c6956d0fa81::t_d4af5a41f423a8 1690-1691
+src/components/ExportableChart.tsx
+  s_732c6956d0fa81::t_03604411b2878b 41,52-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "6c4b7576c6df14e3ec3b39d8cc12dcace56b7055",
+  "prompts": {},
+  "sessions": {
+    "s_732c6956d0fa81": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a1756003-a2cb-4d3e-8a6e-a057eaf547c0",
+        "model": "composer-2.5"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
