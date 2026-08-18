@@ -23,14 +23,7 @@ fn parse_one(row: &OpencodeMessage) -> Option<UsageRecord> {
         return None;
     }
     // 进行中的消息只有半截 token，与 cc-switch 一样等 time.completed 再入账。
-    if row
-        .data
-        .get("time")
-        .and_then(|t| t.get("completed"))
-        .is_none()
-    {
-        return None;
-    }
+    row.data.get("time").and_then(|t| t.get("completed"))?;
     let cache = tokens.get("cache").cloned().unwrap_or_default();
     let path = row.data.get("path").cloned().unwrap_or_default();
     let project = text_field(&path, &["root", "cwd"]);

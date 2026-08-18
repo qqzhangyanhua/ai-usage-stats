@@ -508,6 +508,8 @@ pub struct SourceDiagnostic {
     pub record_count: u64,
     pub total_tokens: i64,
     pub coverage: String,
+    /// 源文件已被工具自身清理，但仍计入统计的历史记录数（见 ADR 0004）。
+    pub archived_record_count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -527,6 +529,8 @@ pub struct SourceIngestReport {
     pub files_failed: u64,
     pub records_written: u64,
     pub records_removed: u64,
+    /// 本轮因源文件消失而归档（非物理删除，见 ADR 0004）的记录数。
+    pub records_archived: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -537,6 +541,7 @@ pub struct IngestReport {
     pub files_failed: u64,
     pub records_written: u64,
     pub records_removed: u64,
+    pub records_archived: u64,
     pub partial_success: bool,
     pub issues: Vec<IngestIssue>,
     pub sources: Vec<SourceIngestReport>,
@@ -551,6 +556,7 @@ impl Default for IngestReport {
             files_failed: 0,
             records_written: 0,
             records_removed: 0,
+            records_archived: 0,
             partial_success: false,
             issues: Vec::new(),
             sources: Source::ALL
@@ -564,6 +570,7 @@ impl Default for IngestReport {
                     files_failed: 0,
                     records_written: 0,
                     records_removed: 0,
+                    records_archived: 0,
                 })
                 .collect(),
         }

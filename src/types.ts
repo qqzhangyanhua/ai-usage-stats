@@ -269,6 +269,7 @@ export type SourceIngestReport = {
   files_failed: number;
   records_written: number;
   records_removed: number;
+  records_archived: number;
 };
 
 export type IngestReport = {
@@ -278,6 +279,7 @@ export type IngestReport = {
   files_failed: number;
   records_written: number;
   records_removed: number;
+  records_archived: number;
   partial_success: boolean;
   issues: IngestIssue[];
   sources: SourceIngestReport[];
@@ -292,4 +294,5 @@ export type SourceDiagnostic = {
   record_count: number;
   total_tokens: number;
   coverage: string;
+  archived_record_count: number;
 };
