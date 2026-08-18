@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import { donutOption } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { formatCompact, formatTokens } from "../lib/format";
+import { codeVolumeTable } from "../lib/exportRows";
 import type { CodeVolumeSummary } from "../types";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import { KpiCard, LegendRow } from "./Kpi";
 
 export function CursorPanel({
@@ -69,6 +71,11 @@ export function CursorPanel({
       <div className="panel partition">
         <div className="panel-head">
           <h2>Cursor 代码量（独立口径，不计入 token）</h2>
+          <ExportButton
+            filename="Cursor代码量"
+            headers={codeVolumeTable(data).headers}
+            rows={codeVolumeTable(data).rows}
+          />
         </div>
         <p className="note">此面板只展示 AI 生成代码行数与占比，不会并入上方任何 token 总量。</p>
         <div className="donut-wrap">

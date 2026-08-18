@@ -801,6 +801,11 @@ input[type="checkbox"] {
   width: 100%;
 }
 
+.dash-export {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
