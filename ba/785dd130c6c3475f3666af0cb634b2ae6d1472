@@ -1,0 +1,27 @@
+CONTEXT.md
+  s_96aa1317ab1de5::t_c073d27c0f2e5f 52-53
+docs/adr/0005-configurable-source-paths.md
+  s_96aa1317ab1de5::t_3f1a62dc3a6917 1-36
+src-tauri/src/ingest.rs
+  s_96aa1317ab1de5::t_98bf67b5313ebc 1,22-133,135-143,146,154,158,164-169,185,203-204,211-215,217,225,229,231-237,261,265,267-291,295,299,304,306-314,415-420,422-426,428-471,502-506,508,510-514,519-523,525,527-542,548-552,554,556-559,561-599,604-608,610,612-622,628-632,634,636-644,649,652,656,658-661
+src-tauri/src/tests.rs
+  s_96aa1317ab1de5::t_fd90f45c71d672 13,2452-2565
+src/components/Settings.tsx
+  s_96aa1317ab1de5::t_245b79268339a3 57-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "ba785dd130c6c3475f3666af0cb634b2ae6d1472",
+  "prompts": {},
+  "sessions": {
+    "s_96aa1317ab1de5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ff98d24a-2c41-4943-bdaa-3d270f6b4bdb",
+        "model": "unknown"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
