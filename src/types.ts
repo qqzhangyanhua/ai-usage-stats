@@ -260,6 +260,15 @@ export type CursorAccountUsageDto = {
   headless_share: number | null;
 };
 
+export type CursorSessionSortKey =
+  | "session"
+  | "project"
+  | "turns"
+  | "errors"
+  | "tools"
+  | "files"
+  | "time";
+
 export type CursorSessionListRow = {
   session_id: string;
   project: string;

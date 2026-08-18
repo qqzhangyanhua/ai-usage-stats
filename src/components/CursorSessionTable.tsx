@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatClock, formatTokens, projectLabel, relativeTime } from "../lib/format";
-import type { CursorSessionListRow } from "../types";
+import type { CursorSessionListRow, CursorSessionSortKey } from "../types";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { Pagination } from "./Pagination";
 import { SessionIdCell, SortArrow } from "./SessionTableParts";
-import type { CursorSessionSortKey } from "./type";
 import { SearchField } from "./ui/Field";
 import { Select } from "./ui/Select";
 
