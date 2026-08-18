@@ -1,0 +1,5 @@
+{"role":"user","message":{"content":[{"type":"text","text":"hello"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"ok"},{"type":"tool_use","name":"Read","input":{"path":"src/lib.rs"}}]}}
+{"type":"turn_ended","status":"success"}
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"cargo test"}}]}}
+{"type":"turn_ended","status":"error","error":"tool failed"}

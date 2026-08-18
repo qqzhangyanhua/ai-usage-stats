@@ -1,0 +1,39 @@
+{
+  "totalUsageEventsCount": 3,
+  "usageEventsDisplay": [
+    {
+      "timestamp": "1704067200000",
+      "model": "claude-4.5-sonnet",
+      "kind": "USAGE_EVENT_KIND_INCLUDED_IN_ULTRA",
+      "isHeadless": false,
+      "tokenUsage": {
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheReadTokens": 20,
+        "cacheWriteTokens": 10
+      }
+    },
+    {
+      "timestamp": "1704153600000",
+      "model": "composer-2",
+      "isHeadless": true,
+      "tokenUsage": {
+        "inputTokens": 200,
+        "outputTokens": 80,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 5
+      }
+    },
+    {
+      "timestamp": "1704067200000",
+      "model": "claude-4.5-sonnet",
+      "isHeadless": false,
+      "tokenUsage": {
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheReadTokens": 20,
+        "cacheWriteTokens": 10
+      }
+    }
+  ]
+}

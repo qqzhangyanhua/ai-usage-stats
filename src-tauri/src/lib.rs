@@ -3,6 +3,8 @@ pub mod aggregate;
 pub mod billing_window;
 pub mod budget;
 pub mod cost;
+pub mod cursor_account;
+pub mod cursor_session;
 pub mod domain;
 pub mod ingest;
 pub mod litellm;
@@ -21,9 +23,9 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
-    Filter, FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot,
-    PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source,
-    SourceDiagnostic, TurnRow,
+    CursorAccountUsageDto, CursorSessionSummaryDto, Filter, FilterOptions, IngestReport,
+    NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint,
+    SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
@@ -406,6 +408,77 @@ async fn get_code_volume() -> Result<CodeVolumeSummary, String> {
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn get_cursor_session_summary(
+    app: tauri::AppHandle,
+) -> Result<CursorSessionSummaryDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_session::load_summary(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn refresh_cursor_account_usage(
+    app: tauri::AppHandle,
+    token: Option<String>,
+) -> Result<CursorAccountUsageDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resolved = cursor_account::resolve_session_token(token)?;
+        let state = app.state::<AppState>();
+        let start_date_ms = {
+            let conn = state.conn.lock().map_err(|e| e.to_string())?;
+            cursor_account::incremental_start_ms(&conn)?
+        };
+        let pages = cursor_account::fetch_refresh_pages(&resolved, start_date_ms);
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_account::apply_fetched_pages(&conn, pages)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_cursor_account_usage(app: tauri::AppHandle) -> Result<CursorAccountUsageDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_account::load_summary(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn save_cursor_session_token(token: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cursor_account::save_token(&token))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn has_cursor_session_token() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(cursor_account::has_token)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn clear_cursor_account_usage(
+    app: tauri::AppHandle,
+) -> Result<CursorAccountUsageDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_account::clear_cache(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// 弹出原生保存对话框并写入 CSV 内容；返回 `false` 表示用户取消。
 #[tauri::command]
 async fn export_csv(default_name: String, content: String) -> Result<bool, String> {
@@ -540,6 +613,12 @@ pub fn run() {
             rebuild_cache,
             purge_archived_records,
             get_code_volume,
+            get_cursor_session_summary,
+            refresh_cursor_account_usage,
+            get_cursor_account_usage,
+            save_cursor_session_token,
+            has_cursor_session_token,
+            clear_cursor_account_usage,
             export_csv,
             export_json,
             export_image,

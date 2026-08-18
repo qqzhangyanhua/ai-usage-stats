@@ -24,6 +24,14 @@ _Avoid_: token 类型
 Cursor 一类工具本地只记录的「AI 生成代码行数、AI 占比」，与 token 无关，是独立维度，界面上与 token 严格分区。
 _Avoid_: 用量、消耗（避免与 token 混淆）
 
+**Cursor 账号用量 (Cursor Account Usage)**：
+从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量。会话 token 在设置页或 Cursor 页粘贴进钥匙串；缓存可在设置页独立清空，不参与本机文件对账。
+_Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
+
+**Cursor 会话 (Cursor Session)**：
+从本机 `agent-transcripts` jsonl 解析的 Cursor Agent 行为统计（会话数、轮次、工具调用、失败率等），只存聚合、不含对话正文。独立于消耗记录、代码量与账号用量；随 `ingest_all` 自动扫描，不进总览 token KPI。
+_Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混称
+
 ## 采集源现状
 
 | Source | 存储 | 本机 token | 本机费用 |
@@ -38,8 +46,9 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 | grok | `~/.grok/sessions` | ✅（`turn_completed.usage`） | ✅ 自带 `costUsdTicks` |
 | qwen | `~/.qwen` | 待确认 | ❌ |
 | Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
-| Cursor | sqlite（仅代码量） | ❌（云端） | ❌ |
+| Cursor | sqlite（代码量）+ 账号级 token（联网）+ 会话 transcript（行为统计） | ⚠️ 账号级（手动刷新） | ❌ |
 | cursor-agent | 无头 `stream-json`（本机会话无 token） | ✅（仅 stdout，需前瞻落盘） | ❌ |
+| copilot | jsonl `~/.copilot/session-state/<id>/events.jsonl` | ✅（仅会话结束时，按模型累计） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |
 
 以上是各 Source 的默认扫描路径；每个 Source 都可以用环境变量整体覆盖（逗号分隔可指定多个目录，同时扫描），用于非默认安装位置或多份数据目录。默认路径与对应环境变量见 `docs/adr/0005-configurable-source-paths.md`。Claude Code 默认会同时扫 `~/.claude/projects` 和 XDG 路径 `~/.config/claude/projects`。

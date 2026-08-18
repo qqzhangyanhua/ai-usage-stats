@@ -23,6 +23,7 @@ const nav: { id: View; label: string; icon: IconName }[] = [
   { id: "application", label: "应用统计", icon: "source" },
   { id: "provider", label: "Provider", icon: "provider" },
   { id: "cursor", label: "Cursor 代码量", icon: "cursor" },
+  { id: "cursor-sessions", label: "Cursor 会话", icon: "sessions" },
   { id: "settings", label: "设置", icon: "settings" },
 ];
 
@@ -183,6 +184,8 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
       return { title: "Provider", subtitle: "按官方 / 中转渠道拆分" };
     case "cursor":
       return { title: "Cursor 代码量", subtitle: "独立口径，不计入 Token" };
+    case "cursor-sessions":
+      return { title: "Cursor 会话", subtitle: "Agent 行为统计，不计入 Token" };
     case "settings":
       return { title: "设置", subtitle: "模型单价配置" };
   }

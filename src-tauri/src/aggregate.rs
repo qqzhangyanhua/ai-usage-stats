@@ -137,6 +137,9 @@ struct TrendBucket {
 }
 
 fn bucket_key(occurred_at: &str, grain: &str) -> String {
+    if grain == "hour" {
+        return occurred_at.get(0..13).unwrap_or(occurred_at).to_string();
+    }
     let date = occurred_at.get(0..10).unwrap_or(occurred_at);
     if grain == "week" {
         if let Ok(parsed) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") {

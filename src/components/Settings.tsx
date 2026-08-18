@@ -3,6 +3,7 @@ import { applicationLabel, formatTokens } from "../lib/format";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
 import { BudgetPanel } from "./BudgetPanel";
+import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
 import {
   groupPresetsByProvider,
@@ -178,6 +179,8 @@ export function Settings({
       </section>
 
       <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
+
+      <CursorAccountSettingsPanel />
 
       <LiteLlmSnapshotPanel onRefreshed={onSnapshotRefreshed} />
 

@@ -1,6 +1,9 @@
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
+use crate::adapters::cursor_account;
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
-use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
+use crate::adapters::{
+    claude, codex, copilot, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen,
+};
 use crate::aggregate;
 use crate::billing_window;
 use crate::budget;
@@ -442,6 +445,48 @@ fn cursor_agent_adapter_maps_result_usage_per_turn() {
 }
 
 #[test]
+fn copilot_adapter_only_uses_the_last_shutdown_snapshot_per_session() {
+    let records = copilot::parse_copilot_jsonl(
+        &fixture("copilot-events.jsonl"),
+        "/Users/dev/.copilot/session-state/c0ffee11-2222-4333-8444-555566667777/events.jsonl",
+    );
+    // 文件里有两次 session.shutdown（会话续接两次）；只应采信最后一次的累计用量，
+    // 否则会把第一次 shutdown 的 gpt-5.4 用量重复计入。
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].source, Source::Copilot);
+    assert_eq!(records[0].model, "claude-sonnet-4.5");
+    assert_eq!(records[0].provider, "");
+    assert_eq!(records[0].project, "/Users/dev/ai-usage-stats");
+    assert_eq!(
+        records[0].session_id,
+        "c0ffee11-2222-4333-8444-555566667777"
+    );
+    assert_eq!(records[0].occurred_at, "2026-08-10T15:12:30.500Z");
+    assert_eq!(records[0].input_tokens, 21583);
+    assert_eq!(records[0].output_tokens, 1064);
+    assert_eq!(records[0].cache_read_tokens, 21187);
+    assert_eq!(records[0].cache_creation_tokens, 0);
+    assert_eq!(records[0].total_tokens, 21583 + 1064 + 21187);
+
+    assert_eq!(records[1].model, "gpt-5.4");
+    assert_eq!(records[1].input_tokens, 244120);
+    assert_eq!(records[1].output_tokens, 2383);
+    assert_eq!(records[1].cache_read_tokens, 202112);
+}
+
+#[test]
+fn copilot_adapter_falls_back_to_parent_dir_name_when_session_id_is_missing() {
+    let content = r#"{"type":"session.shutdown","timestamp":"2026-08-11T00:00:00.000Z","data":{"modelMetrics":{"gpt-5.4":{"usage":{"inputTokens":10,"outputTokens":5,"cacheReadTokens":0,"cacheWriteTokens":0}}}}}"#;
+    let records = copilot::parse_copilot_jsonl(
+        content,
+        "/Users/dev/.copilot/session-state/no-start-event/events.jsonl",
+    );
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].session_id, "no-start-event");
+    assert_eq!(records[0].project, "");
+}
+
+#[test]
 fn source_maps_to_user_facing_application_names() {
     assert_eq!(Source::Claude.application_name(), "Claude Code");
     assert_eq!(Source::Codex.application_name(), "Codex");
@@ -449,6 +494,7 @@ fn source_maps_to_user_facing_application_names() {
     assert_eq!(Source::Opencode.application_name(), "OpenCode");
     assert_eq!(Source::Dsh.application_name(), "DeepSeek Harness");
     assert_eq!(Source::CursorAgent.application_name(), "Cursor Agent");
+    assert_eq!(Source::Copilot.application_name(), "GitHub Copilot CLI");
 }
 
 #[test]
@@ -1129,6 +1175,17 @@ fn trend_buckets_by_day_and_week() {
     assert_eq!(months.len(), 1);
     assert_eq!(months[0].bucket, "2026-08");
     assert_eq!(months[0].total_tokens, 470);
+
+    let hours = aggregate::trend(&stored, &Filter::default(), &prices, "hour");
+    assert!(hours.iter().any(|point| point.bucket == "2026-08-01T11"));
+    assert_eq!(
+        hours
+            .iter()
+            .filter(|point| point.bucket == "2026-08-01T11")
+            .map(|point| point.total_tokens)
+            .sum::<i64>(),
+        20
+    );
 
     let weeks = aggregate::trend(&stored, &Filter::default(), &prices, "week");
     assert_eq!(weeks.len(), 2);
@@ -2468,6 +2525,10 @@ fn source_scan_dirs_default_to_home_relative_paths() {
             home.join(".config/claude/projects"),
         ],
     );
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Copilot),
+        vec![home.join(".copilot/session-state")],
+    );
 }
 
 #[test]
@@ -2620,7 +2681,7 @@ fn overview_matches_source_model_project_and_session_rollups() {
 }
 
 fn write_all_source_fixtures(home: &std::path::Path) {
-    let paths: [(&str, &str); 7] = [
+    let paths: [(&str, &str); 8] = [
         (".codex/sessions/one.jsonl", "codex.jsonl"),
         (
             ".claude/projects/-Users-zhangyanhua-AI-TradingAgents-CN/04868551-34c3-4588-b984-6ae9a5d95f8a.jsonl",
@@ -2643,6 +2704,10 @@ fn write_all_source_fixtures(home: &std::path::Path) {
             "grok-updates.jsonl",
         ),
         (".qwen/tmp/hash/logs.json", "qwen-logs.json"),
+        (
+            ".copilot/session-state/c0ffee11-2222-4333-8444-555566667777/events.jsonl",
+            "copilot-events.jsonl",
+        ),
     ];
     for (rel, name) in paths {
         let path = home.join(rel);
@@ -2667,20 +2732,20 @@ fn ingest_all_fixtures_is_stable_on_refresh() {
     write_all_source_fixtures(home);
     let conn = store::open_memory().unwrap();
     let first = ingest::ingest_all(&conn, home).unwrap();
-    assert_eq!(first.files_parsed, 9);
-    assert_eq!(first.records_written, 14);
+    assert_eq!(first.files_parsed, 10);
+    assert_eq!(first.records_written, 16);
     let stored = store::load_all(&conn).unwrap();
-    assert_eq!(stored.len(), 14);
-    assert_eq!(stored.iter().map(|r| r.total_tokens).sum::<i64>(), 335997);
+    assert_eq!(stored.len(), 16);
+    assert_eq!(stored.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
     assert_rollups_match_overview(&stored, &Filter::default());
 
     let second = ingest::ingest_all(&conn, home).unwrap();
     assert_eq!(second.files_parsed, 0);
-    assert_eq!(second.files_skipped, 9);
+    assert_eq!(second.files_skipped, 10);
     assert_eq!(second.records_written, 0);
     let again = store::load_all(&conn).unwrap();
-    assert_eq!(again.len(), 14);
-    assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 335997);
+    assert_eq!(again.len(), 16);
+    assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
 }
 
 #[ignore]
@@ -2789,6 +2854,57 @@ fn billing_windows_do_not_mix_sources() {
         .expect("codex");
     assert_eq!(claude.total_tokens, 30);
     assert_eq!(codex.total_tokens, 90);
+}
+
+#[test]
+fn weekly_window_sums_last_seven_days_per_source() {
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    let records = vec![
+        window_rec("2026-08-11T12:00:00Z", Source::Claude, "s1", 100),
+        window_rec("2026-08-16T09:00:00Z", Source::Claude, "s1", 50),
+        // 8 天前，超出 7 天滚动窗口，不应计入。
+        window_rec("2026-08-09T12:00:00Z", Source::Claude, "s2", 999),
+        window_rec("2026-08-15T00:00:00Z", Source::Codex, "x1", 70),
+    ];
+    let dto = billing_window::summarize(&records, &PriceTable::default(), now);
+    assert_eq!(dto.weekly_window_days, 7);
+    assert_eq!(dto.weekly.len(), 2);
+
+    let claude = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "claude")
+        .expect("claude weekly window");
+    assert_eq!(claude.total_tokens, 150);
+    assert_eq!(claude.session_count, 1);
+    assert_eq!(claude.end, "2026-08-17T12:00:00Z");
+    assert_eq!(claude.start, "2026-08-10T12:00:00Z");
+    assert!((claude.daily_average_tokens - 150.0 / 7.0).abs() < 1e-9);
+    let claude_cost = claude.cost.expect("claude weekly cost");
+    assert!((claude_cost - 0.15).abs() < 1e-9);
+    let claude_daily_cost = claude.daily_average_cost.expect("claude daily cost");
+    assert!((claude_daily_cost - claude_cost / 7.0).abs() < 1e-9);
+
+    let codex = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "codex")
+        .expect("codex weekly window");
+    assert_eq!(codex.total_tokens, 70);
+
+    // 按 total_tokens 降序排列。
+    assert_eq!(dto.weekly[0].source, "claude");
+}
+
+#[test]
+fn weekly_window_excludes_activity_older_than_seven_days_but_within_the_lookback() {
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    // 10 天前：仍落在 14 天摄取回看窗内，但超出 7 天滚动窗口，不应计入 weekly。
+    let records = vec![window_rec("2026-08-07T12:00:00Z", Source::Claude, "s1", 40)];
+    let dto = billing_window::summarize(&records, &PriceTable::default(), now);
+    assert!(dto.weekly.is_empty());
+    // 仍应出现在 recent（5 小时窗）里，证明记录本身被正常摄取，只是不满足 weekly 的时间范围。
+    assert_eq!(dto.recent.len(), 1);
 }
 
 fn assert_opt_f64_eq(a: Option<f64>, b: Option<f64>) {
@@ -2941,8 +3057,8 @@ fn sql_queries_match_in_memory_aggregates() {
     assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
     assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
 
-    // trend 三种粒度
-    for grain in ["day", "week", "month"] {
+    // trend 四种粒度
+    for grain in ["hour", "day", "week", "month"] {
         let sql_tr = query::trend(&conn, &Filter::default(), &prices, grain).unwrap();
         let mem_tr = aggregate::trend(&records, &Filter::default(), &prices, grain);
         assert_eq!(sql_tr, mem_tr, "trend grain={grain} 不一致");
@@ -3426,4 +3542,735 @@ fn budget_config_round_trips_through_disk() {
     };
     budget::save_config(&path, &config).unwrap();
     assert_eq!(budget::load_config(&path), config);
+}
+
+// ---------- Cursor 账号用量 ----------
+
+#[test]
+fn cursor_account_parser_maps_token_dimensions_and_keeps_duplicates() {
+    let page = cursor_account::parse_cursor_usage_page(&fixture("cursor_account_usage.json"))
+        .expect("parse cursor account fixture");
+    assert_eq!(page.total_count, 3);
+    let events = page.events;
+    assert_eq!(events.len(), 3);
+
+    assert_eq!(events[0].occurred_at, "2024-01-01T00:00:00+00:00");
+    assert_eq!(events[0].model, "claude-4.5-sonnet");
+    assert_eq!(events[0].input_tokens, 100);
+    assert_eq!(events[0].output_tokens, 50);
+    assert_eq!(events[0].cache_read_tokens, 20);
+    assert_eq!(events[0].cache_creation_tokens, 10);
+    assert!(!events[0].is_headless);
+
+    assert_eq!(events[1].occurred_at, "2024-01-02T00:00:00+00:00");
+    assert_eq!(events[1].model, "composer-2");
+    assert_eq!(events[1].input_tokens, 200);
+    assert_eq!(events[1].output_tokens, 80);
+    assert_eq!(events[1].cache_read_tokens, 0);
+    assert_eq!(events[1].cache_creation_tokens, 5);
+    assert!(events[1].is_headless);
+
+    assert_eq!(events[2], events[0]);
+}
+
+#[test]
+fn cursor_account_parser_rejects_bad_json_and_skips_empty_payload() {
+    let err =
+        cursor_account::parse_cursor_usage_events("{not-json").expect_err("bad json should fail");
+    assert!(err.contains("解析失败"), "错误应可读：{err}");
+
+    let empty = cursor_account::parse_cursor_usage_events(r#"{"usageEventsDisplay":[]}"#)
+        .expect("empty list is valid");
+    assert!(empty.is_empty());
+
+    let missing = cursor_account::parse_cursor_usage_events(r#"{"totalUsageEventsCount":0}"#)
+        .expect_err("missing list is a structure change");
+    assert!(missing.contains("结构已变更"), "{missing}");
+}
+
+#[test]
+fn cursor_account_summary_adds_token_dimensions_without_dedup() {
+    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+        .expect("parse");
+    let dto = cursor_account::summarize_cursor_usage(&events);
+    assert_eq!(dto.event_count, 3);
+    assert_eq!(dto.input_tokens, 400);
+    assert_eq!(dto.output_tokens, 180);
+    assert_eq!(dto.cache_read_tokens, 40);
+    assert_eq!(dto.cache_creation_tokens, 25);
+    assert_eq!(dto.total_tokens, 645);
+    assert_eq!(dto.as_of, None);
+
+    let empty = cursor_account::summarize_cursor_usage(&[]);
+    assert_eq!(empty, crate::domain::CursorAccountUsageDto::empty());
+}
+
+#[test]
+fn cursor_account_summary_buckets_tokens_by_local_day() {
+    use crate::domain::CursorUsageEvent;
+
+    fn ev(occurred_at: &str, input: i64, output: i64) -> CursorUsageEvent {
+        CursorUsageEvent {
+            occurred_at: occurred_at.to_string(),
+            model: "m".into(),
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        }
+    }
+
+    let day_a = chrono::NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+    let day_b = chrono::NaiveDate::from_ymd_opt(2024, 1, 16).unwrap();
+    let dto = cursor_account::summarize_cursor_usage(&[
+        ev(&local_noon_iso(day_a), 100, 10),
+        ev(&local_noon_iso(day_a), 50, 5),
+        ev(&local_noon_iso(day_b), 20, 2),
+    ]);
+    assert_eq!(dto.daily.len(), 2);
+    assert_eq!(dto.daily[0].bucket, "2024-01-15");
+    assert_eq!(dto.daily[0].input_tokens, 150);
+    assert_eq!(dto.daily[0].output_tokens, 15);
+    assert_eq!(dto.daily[0].total_tokens, 165);
+    assert_eq!(dto.daily[0].cost, None);
+    assert_eq!(dto.daily[1].bucket, "2024-01-16");
+    assert_eq!(dto.daily[1].total_tokens, 22);
+
+    let single = cursor_account::summarize_cursor_usage(&[ev(&local_noon_iso(day_a), 7, 3)]);
+    assert_eq!(single.daily.len(), 1);
+    assert_eq!(single.daily[0].bucket, "2024-01-15");
+    assert_eq!(single.daily[0].total_tokens, 10);
+
+    let empty = cursor_account::summarize_cursor_usage(&[]);
+    assert!(empty.daily.is_empty());
+}
+
+#[test]
+fn cursor_account_summary_splits_by_model_and_headless() {
+    use crate::domain::CursorUsageEvent;
+
+    fn ev(model: &str, input: i64, headless: bool) -> CursorUsageEvent {
+        CursorUsageEvent {
+            occurred_at: "2024-01-15T12:00:00+00:00".into(),
+            model: model.into(),
+            input_tokens: input,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: headless,
+        }
+    }
+
+    let dto = cursor_account::summarize_cursor_usage(&[
+        ev("claude-4.5-sonnet", 300, false),
+        ev("composer-2", 100, true),
+        ev("claude-4.5-sonnet", 100, true),
+    ]);
+    assert_eq!(dto.by_model.len(), 2);
+    assert_eq!(dto.by_model[0].name, "claude-4.5-sonnet");
+    assert_eq!(dto.by_model[0].total_tokens, 400);
+    assert!((dto.by_model[0].share - 0.8).abs() < 1e-9);
+    assert_eq!(dto.by_model[1].name, "composer-2");
+    assert_eq!(dto.by_model[1].total_tokens, 100);
+    assert!((dto.by_model[1].share - 0.2).abs() < 1e-9);
+    assert_eq!(dto.headless_tokens, 200);
+    assert_eq!(dto.interactive_tokens, 300);
+    assert!((dto.headless_share.unwrap() - 0.4).abs() < 1e-9);
+
+    let interactive_only = cursor_account::summarize_cursor_usage(&[ev("gpt-5", 50, false)]);
+    assert_eq!(interactive_only.by_model.len(), 1);
+    assert_eq!(interactive_only.headless_tokens, 0);
+    assert_eq!(interactive_only.interactive_tokens, 50);
+    assert_eq!(interactive_only.headless_share, Some(0.0));
+
+    let empty = cursor_account::summarize_cursor_usage(&[]);
+    assert!(empty.by_model.is_empty());
+    assert_eq!(empty.headless_tokens, 0);
+    assert_eq!(empty.interactive_tokens, 0);
+    assert_eq!(empty.headless_share, None);
+}
+
+#[test]
+fn cursor_account_store_dedups_by_fingerprint() {
+    let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
+        .expect("parse");
+    assert_eq!(events.len(), 3);
+
+    let conn = store::open_memory().unwrap();
+    let first = store::upsert_cursor_account_events(&conn, &events).unwrap();
+    let second = store::upsert_cursor_account_events(&conn, &events).unwrap();
+    assert_eq!(first, 2);
+    assert_eq!(second, 0);
+
+    let stored = store::load_cursor_account_events(&conn).unwrap();
+    assert_eq!(stored.len(), 2);
+    let dto = cursor_account::summarize_cursor_usage(&stored);
+    assert_eq!(dto.event_count, 2);
+    assert_eq!(dto.input_tokens, 300);
+    assert_eq!(dto.output_tokens, 130);
+    assert_eq!(dto.cache_read_tokens, 20);
+    assert_eq!(dto.cache_creation_tokens, 15);
+    assert_eq!(dto.total_tokens, 465);
+
+    store::set_cursor_account_as_of(&conn, "2026-08-17T12:00:00+00:00").unwrap();
+    assert_eq!(
+        store::cursor_account_as_of(&conn).unwrap().as_deref(),
+        Some("2026-08-17T12:00:00+00:00")
+    );
+
+    store::clear_cursor_account_usage(&conn).unwrap();
+    assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
+    assert_eq!(store::cursor_account_as_of(&conn).unwrap(), None);
+}
+
+#[test]
+fn cursor_account_clear_resets_watermark_without_touching_usage_records() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-01-01T00:00:00+00:00",
+            Source::Codex,
+            "gpt-5",
+            "openai",
+            "/tmp/demo",
+            "sess-keep",
+            42,
+        )],
+    )
+    .unwrap();
+    crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE]).unwrap();
+    store::set_cursor_account_as_of(&conn, "2026-08-17T12:00:00+00:00").unwrap();
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        1_704_153_600_000
+    );
+
+    let cleared = crate::cursor_account::clear_cache(&conn).unwrap();
+    assert_eq!(cleared.event_count, 0);
+    assert_eq!(cleared.total_tokens, 0);
+    assert_eq!(cleared.as_of, None);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        0
+    );
+    assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
+
+    let kept = store::load_all(&conn).unwrap();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].session_id, "sess-keep");
+    assert_eq!(kept[0].total_tokens, 42);
+}
+
+const CURSOR_PAGE_ONE: &str = r#"{
+    "totalUsageEventsCount": 3,
+    "usageEventsDisplay": [
+        {
+            "timestamp": "1704067200000",
+            "model": "claude-4.5-sonnet",
+            "isHeadless": false,
+            "tokenUsage": {
+                "inputTokens": 100,
+                "outputTokens": 50,
+                "cacheReadTokens": 20,
+                "cacheWriteTokens": 10
+            }
+        },
+        {
+            "timestamp": "1704153600000",
+            "model": "composer-2",
+            "isHeadless": true,
+            "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 80,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 5
+            }
+        }
+    ]
+}"#;
+
+const CURSOR_PAGE_TWO: &str = r#"{
+    "totalUsageEventsCount": 3,
+    "usageEventsDisplay": [
+        {
+            "timestamp": "1704153600000",
+            "model": "composer-2",
+            "isHeadless": true,
+            "tokenUsage": {
+                "inputTokens": 200,
+                "outputTokens": 80,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 5
+            }
+        },
+        {
+            "timestamp": "1704240000000",
+            "model": "gpt-5",
+            "isHeadless": false,
+            "tokenUsage": {
+                "inputTokens": 30,
+                "outputTokens": 10,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0
+            }
+        }
+    ]
+}"#;
+
+#[test]
+fn cursor_account_ingest_dedups_overlapping_pages() {
+    let conn = store::open_memory().unwrap();
+    let written =
+        crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE, CURSOR_PAGE_TWO])
+            .unwrap();
+    assert_eq!(written, 3);
+
+    let dto = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(dto.event_count, 3);
+    assert_eq!(dto.input_tokens, 330);
+    assert_eq!(dto.output_tokens, 140);
+    assert_eq!(dto.cache_read_tokens, 20);
+    assert_eq!(dto.cache_creation_tokens, 15);
+    assert_eq!(dto.total_tokens, 505);
+}
+
+#[test]
+fn cursor_account_incremental_ingest_only_adds_new_events() {
+    let conn = store::open_memory().unwrap();
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        0
+    );
+
+    let first = crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE]).unwrap();
+    assert_eq!(first, 2);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        1_704_153_600_000
+    );
+
+    let second = crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_TWO]).unwrap();
+    assert_eq!(second, 1);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        1_704_240_000_000
+    );
+
+    let again = crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_TWO]).unwrap();
+    assert_eq!(again, 0);
+
+    let dto = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(dto.event_count, 3);
+    assert_eq!(dto.total_tokens, 505);
+}
+
+#[test]
+fn cursor_account_failed_refresh_keeps_last_good_cache() {
+    let conn = store::open_memory().unwrap();
+    crate::cursor_account::ingest_raw_pages(&conn, &[CURSOR_PAGE_ONE]).unwrap();
+    store::set_cursor_account_as_of(&conn, "2026-08-17T12:00:00+00:00").unwrap();
+    let before = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(before.event_count, 2);
+    assert_eq!(before.total_tokens, 465);
+
+    let auth = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Err(crate::cursor_account::auth_expired_error()),
+    );
+    assert!(
+        auth.as_ref().unwrap_err().contains("过期"),
+        "{}",
+        auth.unwrap_err()
+    );
+    let after_auth = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(after_auth.event_count, 2);
+    assert_eq!(after_auth.total_tokens, 465);
+    assert_eq!(
+        after_auth.as_of.as_deref(),
+        Some("2026-08-17T12:00:00+00:00")
+    );
+
+    let structure = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Ok(vec![r#"{"totalUsageEventsCount":9}"#.to_string()]),
+    );
+    assert!(
+        structure.as_ref().unwrap_err().contains("结构已变更"),
+        "{}",
+        structure.unwrap_err()
+    );
+    assert_eq!(
+        crate::cursor_account::load_summary(&conn)
+            .unwrap()
+            .event_count,
+        2
+    );
+
+    let parse = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Ok(vec![CURSOR_PAGE_TWO.to_string(), "{not-json".to_string()]),
+    );
+    assert!(
+        parse.as_ref().unwrap_err().contains("解析失败"),
+        "{}",
+        parse.unwrap_err()
+    );
+    let after_parse = crate::cursor_account::load_summary(&conn).unwrap();
+    assert_eq!(after_parse.event_count, 2);
+    assert_eq!(after_parse.total_tokens, 465);
+    assert_eq!(
+        after_parse.as_of.as_deref(),
+        Some("2026-08-17T12:00:00+00:00")
+    );
+
+    let network = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Err(crate::cursor_account::network_failure_error()),
+    );
+    assert!(
+        network.as_ref().unwrap_err().contains("网络"),
+        "{}",
+        network.unwrap_err()
+    );
+    assert_eq!(
+        crate::cursor_account::load_summary(&conn)
+            .unwrap()
+            .event_count,
+        2
+    );
+
+    let empty = crate::cursor_account::apply_fetched_pages(
+        &conn,
+        Ok(vec![r#"{"usageEventsDisplay":[]}"#.to_string()]),
+    )
+    .unwrap();
+    assert_eq!(empty.event_count, 2);
+    assert_eq!(empty.total_tokens, 465);
+}
+
+#[test]
+fn cursor_session_adapter_counts_turns_tools_and_status() {
+    let parsed = crate::adapters::cursor_session::parse_cursor_session_transcript(&fixture(
+        "cursor-session-transcript.jsonl",
+    ))
+    .expect("fixture should parse");
+    assert_eq!(parsed.turn_count, 2);
+    assert_eq!(parsed.success_count, 1);
+    assert_eq!(parsed.error_count, 1);
+    assert_eq!(parsed.aborted_count, 0);
+    assert_eq!(parsed.tool_calls.get("Read"), Some(&1));
+    assert_eq!(parsed.tool_calls.get("Shell"), Some(&1));
+}
+
+fn seed_cursor_transcript(
+    home: &std::path::Path,
+    project_slug: &str,
+    session_id: &str,
+    content: &str,
+) -> std::path::PathBuf {
+    let path = home.join(format!(
+        ".cursor/projects/{project_slug}/agent-transcripts/{session_id}/{session_id}.jsonl"
+    ));
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
+    std::fs::write(&path, content).expect("write transcript");
+    path
+}
+
+#[test]
+fn cursor_session_ingest_summarize_does_not_touch_usage_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(report.files_parsed, 1);
+    assert!(store::load_all(&conn).unwrap().is_empty());
+
+    let summary = crate::cursor_session::load_summary(&conn).unwrap();
+    assert_eq!(summary.session_count, 1);
+    assert_eq!(summary.turn_count, 2);
+    assert_eq!(summary.error_rate, Some(0.5));
+    assert_eq!(summary.active_project_count, 1);
+    assert_eq!(summary.by_project.len(), 1);
+    assert_eq!(summary.by_project[0].name, "/Users/test/project");
+    assert_eq!(summary.by_project[0].session_count, 1);
+    assert_eq!(summary.by_project[0].turn_count, 2);
+    assert_eq!(summary.daily.len(), 1);
+    assert_eq!(summary.daily[0].session_count, 1);
+    assert_eq!(summary.daily[0].turn_count, 2);
+}
+
+#[test]
+fn cursor_session_ingest_skips_unchanged_transcripts() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(first.files_parsed, 1);
+    assert_eq!(first.files_skipped, 0);
+
+    let mut second = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut second);
+    assert_eq!(second.files_parsed, 0);
+    assert_eq!(second.files_skipped, 1);
+}
+
+#[test]
+fn cursor_session_ingest_reconciles_deleted_transcripts() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        1
+    );
+
+    std::fs::remove_file(path).expect("remove transcript");
+    let mut again = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut again);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        0
+    );
+    assert_eq!(again.records_removed, 1);
+}
+
+#[test]
+fn cursor_session_ingest_skips_reconcile_when_parse_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path_one = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    let path_two = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-2",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        2
+    );
+
+    std::fs::remove_file(path_one).expect("remove first transcript");
+    std::fs::write(&path_two, "{not-json").expect("corrupt second transcript");
+    let mut failed = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut failed);
+    assert_eq!(failed.files_failed, 1);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        2,
+        "reconcile should be skipped while a transcript parse fails"
+    );
+
+    std::fs::write(&path_two, fixture("cursor-session-transcript.jsonl")).expect("fix transcript");
+    let mut clean = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut clean);
+    assert_eq!(clean.files_failed, 0);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        1
+    );
+    assert_eq!(clean.records_removed, 1);
+}
+
+#[test]
+fn cursor_session_parse_failure_keeps_last_good_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
+        2
+    );
+
+    std::fs::write(&path, "{not-json").expect("write bad json");
+    let mut bad = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut bad);
+    assert_eq!(bad.files_failed, 1);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
+        2
+    );
+}
+
+fn seed_ai_code_hashes(home: &std::path::Path, rows: &[(&str, &str, i64, &str)]) {
+    let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    std::fs::create_dir_all(db_path.parent().expect("parent")).expect("create dirs");
+    let conn = rusqlite::Connection::open(&db_path).expect("open tracking db");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE ai_code_hashes (
+            hash TEXT,
+            source TEXT,
+            fileExtension TEXT,
+            fileName TEXT,
+            requestId TEXT,
+            conversationId TEXT,
+            timestamp INTEGER,
+            createdAt INTEGER,
+            model TEXT
+        );
+        "#,
+    )
+    .expect("create table");
+    for (conversation_id, model, timestamp, file_name) in rows {
+        conn.execute(
+            r#"
+            INSERT INTO ai_code_hashes(
+                hash, source, fileExtension, fileName, requestId,
+                conversationId, timestamp, createdAt, model
+            ) VALUES (?1, 'composer', 'rs', ?2, 'req', ?3, ?4, ?4, ?5)
+            "#,
+            rusqlite::params![
+                format!("hash-{conversation_id}-{file_name}"),
+                file_name,
+                conversation_id,
+                timestamp,
+                model
+            ],
+        )
+        .expect("insert hash");
+    }
+}
+
+#[test]
+fn cursor_session_enriches_from_ai_code_hashes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].files_touched, 1);
+    assert!(sessions[0].models_json.contains("grok-4.6"));
+    assert!(sessions[0]
+        .first_seen_at
+        .as_deref()
+        .unwrap()
+        .contains("2026"));
+
+    let summary = crate::cursor_session::load_summary(&conn).unwrap();
+    assert_eq!(summary.by_model.len(), 1);
+    assert_eq!(summary.by_model[0].name, "grok-4.6");
+    assert_eq!(summary.by_model[0].session_count, 1);
+    assert_eq!(summary.top_tools.len(), 2);
+    assert_eq!(summary.top_tools[0].name, "Read");
+    assert_eq!(summary.top_tools[0].call_count, 1);
+}
+
+#[test]
+fn cursor_session_transcript_without_hash_stays_counted() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].models_json, "[]");
+    assert_eq!(sessions[0].files_touched, 0);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        1
+    );
+}
+
+#[test]
+fn cursor_session_orphan_hash_does_not_create_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_ai_code_hashes(
+        home,
+        &[("orphan-only", "grok-4.6", 1_784_511_794_686, "lib.rs")],
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    assert!(store::load_cursor_sessions(&conn).unwrap().is_empty());
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
+        0
+    );
 }

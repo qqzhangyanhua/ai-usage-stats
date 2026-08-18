@@ -22,6 +22,7 @@
 | Qwen | `QWEN_DATA_DIR` | `~/.qwen`（扫 `tmp/`） |
 | Factory/droid | `FACTORY_SESSIONS_DIR` | `~/.factory/sessions` |
 | cursor-agent | `CURSOR_AGENT_USAGE_DIR` | `~/.cursor-agent-usage` |
+| GitHub Copilot CLI | `COPILOT_HOME` | `~/.copilot`（扫 `session-state/`） |
 
 环境变量的值可以是逗号分隔的多个绝对路径，会全部扫描并合并到同一次摄取/对账里（不是相互独立的多份缓存）。覆盖是整体替换默认值，不是追加；默认的多路径（目前只有 Claude Code 的 XDG 双路径）在显式设置对应环境变量后也不再自动附加。
 

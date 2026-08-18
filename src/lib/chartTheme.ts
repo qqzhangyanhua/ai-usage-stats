@@ -2,6 +2,7 @@ import type { EChartsOption } from "echarts";
 import type {
   ApplicationEfficiency,
   ApplicationTrendPoint,
+  CursorSessionDailyPoint,
   NamedAmount,
   SeriesPoint,
 } from "../types";
@@ -10,7 +11,7 @@ import type { ResolvedTheme } from "../hooks/useTheme";
 
 export type ChartTheme = ResolvedTheme;
 
-const modelPalette = ["#8b6cff", "#3b82f6", "#22d3ee", "#64748b", "#f59e0b", "#34d399", "#f472b6"];
+export const modelPalette = ["#8b6cff", "#3b82f6", "#22d3ee", "#64748b", "#f59e0b", "#34d399", "#f472b6"];
 
 const palettes: Record<
   ChartTheme,
@@ -156,6 +157,71 @@ export function areaTrendOption(points: SeriesPoint[], theme: ChartTheme = "dark
             ],
           },
         },
+      },
+    ],
+  };
+}
+
+export function cursorSessionDailyOption(
+  points: CursorSessionDailyPoint[],
+  theme: ChartTheme = "dark",
+): EChartsOption {
+  const p = paletteFor(theme);
+  return {
+    tooltip: {
+      ...tooltipBase(theme),
+      trigger: "axis",
+    },
+    legend: {
+      data: ["会话数", "轮次数"],
+      top: 0,
+      right: 32,
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: p.text, fontSize: 11 },
+    },
+    grid: { left: 8, right: 8, top: 30, bottom: 8, containLabel: true },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: points.map((point) => formatBucket(point.bucket)),
+      axisLine: { lineStyle: { color: p.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: p.text, fontSize: 11 },
+    },
+    yAxis: {
+      type: "value",
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: p.split } },
+      axisLabel: {
+        color: p.text,
+        fontSize: 11,
+        formatter: (v: number) => formatCompact(v),
+      },
+    },
+    series: [
+      {
+        name: "会话数",
+        type: "line",
+        smooth: 0.35,
+        symbol: "circle",
+        symbolSize: 7,
+        showSymbol: true,
+        data: points.map((point) => point.session_count),
+        lineStyle: { width: 2.4, color: p.input },
+        itemStyle: { color: p.input },
+      },
+      {
+        name: "轮次数",
+        type: "line",
+        smooth: 0.35,
+        symbol: "circle",
+        symbolSize: 7,
+        showSymbol: true,
+        data: points.map((point) => point.turn_count),
+        lineStyle: { width: 2.4, color: p.output },
+        itemStyle: { color: p.output },
       },
     ],
   };
@@ -368,6 +434,9 @@ export function modelSlices(rows: NamedAmount[]): { name: string; value: number;
 }
 
 export function formatBucket(bucket: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(bucket)) {
+    return `${bucket.slice(5, 10)} ${bucket.slice(11, 13)}:00`;
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(bucket)) {
     return bucket.slice(5);
   }
