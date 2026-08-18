@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod aggregate;
 pub mod billing_window;
+pub mod budget;
 pub mod cost;
 pub mod domain;
 pub mod ingest;
@@ -19,15 +20,18 @@ use serde::Deserialize;
 use tauri::Manager;
 
 use crate::domain::{
-    ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, Filter, FilterOptions,
-    IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable,
-    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
+    ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
+    Filter, FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot,
+    PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source,
+    SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
     pub db_path: PathBuf,
     pub prices_path: PathBuf,
     pub snapshot_path: PathBuf,
+    pub budget_path: PathBuf,
+    pub budget_notify_path: PathBuf,
     pub conn: Mutex<Connection>,
     pub snapshot: Mutex<PriceSnapshot>,
 }
@@ -98,7 +102,16 @@ async fn ingest(app: tauri::AppHandle) -> Result<IngestReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        ingest::ingest_all(&conn, &ingest::default_home())
+        let report = ingest::ingest_all(&conn, &ingest::default_home())?;
+        let prices = state.effective_prices();
+        let _ = budget::check_and_notify(
+            &app,
+            &conn,
+            &prices,
+            &state.budget_path,
+            &state.budget_notify_path,
+        );
+        Ok(report)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -250,6 +263,25 @@ fn get_prices(state: tauri::State<AppState>) -> PriceTable {
 #[tauri::command]
 fn save_price_table(state: tauri::State<AppState>, prices: PriceTable) -> Result<(), String> {
     save_prices(&state.prices_path, &prices)
+}
+
+/// 当前自然月的预算执行情况：本地估算的月度费用、进度与预测，供设置页展示。
+#[tauri::command]
+async fn get_budget_status(app: tauri::AppHandle) -> Result<BudgetStatusDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let prices = state.effective_prices();
+        let config = budget::load_config(&state.budget_path);
+        budget::status(&conn, &prices, &config, chrono::Local::now())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn save_budget(state: tauri::State<AppState>, config: BudgetConfig) -> Result<(), String> {
+    budget::save_config(&state.budget_path, &config)
 }
 
 /// 当前生效的 LiteLLM 价目快照元信息（内置或已刷新）。
@@ -450,11 +482,14 @@ async fn export_image(default_name: String, base64: String) -> Result<bool, Stri
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = cache_dir();
             let db_path = dir.join("usage.sqlite");
             let prices_path = dir.join("prices.json");
             let snapshot_path = dir.join("litellm_prices.json");
+            let budget_path = dir.join("budget.json");
+            let budget_notify_path = dir.join("budget_notify_state.json");
             let conn = store::open_db(db_path.to_string_lossy().as_ref())
                 .map_err(std::io::Error::other)?;
             let (snapshot, _bundled) = litellm::load_snapshot(&snapshot_path);
@@ -462,10 +497,17 @@ pub fn run() {
                 db_path,
                 prices_path,
                 snapshot_path,
+                budget_path,
+                budget_notify_path,
                 conn: Mutex::new(conn),
                 snapshot: Mutex::new(snapshot),
             });
             tray::setup(app.handle()).map_err(std::io::Error::other)?;
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_notification::NotificationExt;
+                let _ = app.notification().request_permission();
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -488,6 +530,8 @@ pub fn run() {
             get_filter_options,
             get_prices,
             save_price_table,
+            get_budget_status,
+            save_budget,
             get_price_snapshot,
             get_price_snapshot_url,
             refresh_price_snapshot,

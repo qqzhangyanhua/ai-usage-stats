@@ -32,6 +32,7 @@ urlencoding = "2"
 dirs = "6"
 rfd = "0.17.2"
 base64 = "0.22"
+tauri-plugin-notification = "2.3.3"
 
 [dev-dependencies]
 tempfile = "3"

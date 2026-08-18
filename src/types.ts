@@ -58,6 +58,23 @@ export type BillingWindowsDto = {
   recent: BillingWindowDto[];
 };
 
+export type BudgetConfig = {
+  monthly_usd: number | null;
+};
+
+export type BudgetStatusDto = {
+  monthly_budget: number | null;
+  month: string;
+  days_elapsed: number;
+  days_in_month: number;
+  month_to_date_cost: number;
+  unpriced: boolean;
+  projected_month_cost: number | null;
+  percent_used: number | null;
+  percent_projected: number | null;
+  thresholds: number[];
+};
+
 export type Grain = "day" | "week" | "month";
 
 export type View =

@@ -5,6 +5,8 @@ import { previousFilter, rangeFromPreset } from "../lib/format";
 import type {
   ApplicationAnalyticsDto,
   BillingWindowsDto,
+  BudgetConfig,
+  BudgetStatusDto,
   CodeVolumeSummary,
   Filter,
   FilterOptions,
@@ -107,6 +109,8 @@ export function useUsageData() {
   const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null);
   const [sessionsVisited, setSessionsVisited] = useState(() => viewFromHash() === "sessions");
   const [prices, setPrices] = useState<PriceTable>({ prices: [] });
+  const [budgetStatus, setBudgetStatus] = useState<BudgetStatusDto | null>(null);
+  const [savingBudget, setSavingBudget] = useState(false);
   const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([]);
   const [lastIngestReport, setLastIngestReport] = useState<IngestReport | null>(null);
   const [rebuilding, setRebuilding] = useState<string | null>(null);
@@ -187,6 +191,7 @@ export function useUsageData() {
           invoke<BillingWindowsDto>("get_billing_windows", { filter: nextFilter }).then(
             commit(setBillingWindows),
           ),
+          invoke<BudgetStatusDto>("get_budget_status").then(commit(setBudgetStatus)),
           invoke<SeriesPoint[]>("get_trend", { filter: heat.filter, grain: "day" }).then(
             (points) => {
               commit(setHeatmap)(points);
@@ -228,6 +233,7 @@ export function useUsageData() {
         tasks.push(
           invoke<PriceTable>("get_prices").then(commit(setPrices)),
           invoke<SourceDiagnostic[]>("get_source_diagnostics").then(commit(setDiagnostics)),
+          invoke<BudgetStatusDto>("get_budget_status").then(commit(setBudgetStatus)),
         );
       }
       try {
@@ -387,6 +393,24 @@ export function useUsageData() {
     [refreshViews],
   );
 
+  const saveBudget = useCallback(
+    async (config: BudgetConfig) => {
+      setSavingBudget(true);
+      try {
+        await invoke("save_budget", { config });
+        const nextStatus = await invoke<BudgetStatusDto>("get_budget_status");
+        setBudgetStatus(nextStatus);
+        setStatus("预算设置已保存");
+      } catch (error) {
+        setStatus(`预算设置保存失败：${humanStatus(error)}`);
+        throw error;
+      } finally {
+        setSavingBudget(false);
+      }
+    },
+    [],
+  );
+
   const runIngestRef = useRef(runIngest);
   useEffect(() => {
     runIngestRef.current = runIngest;
@@ -513,6 +537,9 @@ export function useUsageData() {
     setSelectedSession: selectSession,
     prices,
     setPrices,
+    budgetStatus,
+    savingBudget,
+    saveBudget,
     diagnostics,
     lastIngestReport,
     rebuilding,
