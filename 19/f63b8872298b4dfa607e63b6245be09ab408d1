@@ -1,0 +1,29 @@
+docs/adr/0010-writing-user-owned-files.md
+  s_aab3df05781610::t_81c541836a19c2 1-2,4-29
+  s_aab3df05781610::t_819e216d309a00 3
+CONTEXT.md
+  s_aab3df05781610::t_85649bc08d73e3 39,42
+  s_aab3df05781610::t_b92863de50e0ad 40-41
+  s_aab3df05781610::t_2c30a74896f509 62
+docs/adr/0009-global-instruction-dimension.md
+  s_aab3df05781610::t_1e192435a6fb4d 18
+  s_aab3df05781610::t_81254111417b81 3
+  s_aab3df05781610::t_b03d5cb1787dc6 25
+  s_aab3df05781610::t_fe94afc2d204e5 1-2,4-17,19-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "19f63b8872298b4dfa607e63b6245be09ab408d1",
+  "prompts": {},
+  "sessions": {
+    "s_aab3df05781610": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f4d4d20-1457-420b-9020-edca79b04d63",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
