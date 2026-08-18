@@ -1,5 +1,7 @@
 # Cursor 账号用量走联网采集、独立维度
 
+> 原文件名 `0004-cursor-account-usage-network-ingest.md`，2026-08-18 重编号为 0006，避免与归档 ADR 0004 撞号。
+
 Cursor 的真实 token 用量只存在于云端账号，本机会话文件里没有。用户需要看到 Cursor 实际消耗了多少 token，但这与「本机离线扫描本地文件」的立身前提冲突。
 
 **决定**：新增独立维度「Cursor 账号用量 (Cursor Account Usage)」。仅在用户手动点「刷新」时，由 Rust 侧携带本机钥匙串中的 `WorkosCursorSessionToken`，调用 Cursor 非公开仪表盘接口 `POST /api/dashboard/get-filtered-usage-events`，把账号级事件解析后写入独立缓存表。self-serve 计划只采 token、不采费用。
