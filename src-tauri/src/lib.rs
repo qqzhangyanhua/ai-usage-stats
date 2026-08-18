@@ -419,14 +419,9 @@ async fn get_code_volume(app: tauri::AppHandle) -> Result<CodeVolumeSummary, Str
         let state = app.state::<AppState>();
         let conn = state.lock_read()?;
         let prices = state.effective_prices();
-        // 代码量本身是「至今累计」口径、不受总览筛选影响，这里用同样不筛选的 Filter 取全量费用，
-        // 保证分子分母覆盖同一个时间窗口（都是全部时间）。
-        let overview = query::overview(&conn, &Filter::default(), &prices)?;
-        Ok(adapters::cursor::with_cost_roi(
-            summary,
-            overview.cost,
-            overview.unpriced,
-        ))
+        // 代码量是至今累计口径。这里只取费用标量，不跑带 COUNT DISTINCT 的全量 overview。
+        let (cost, unpriced) = query::lifetime_cost(&conn, &prices)?;
+        Ok(adapters::cursor::with_cost_roi(summary, cost, unpriced))
     })
     .await
     .map_err(|e| e.to_string())?

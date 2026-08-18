@@ -21,6 +21,7 @@ import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
 import { KpiCard, LegendRow } from "./Kpi";
+import { LoadingOverlay } from "./LoadingOverlay";
 
 function emptySummary(): CursorSessionSummaryDto {
   return {
@@ -38,11 +39,13 @@ function emptySummary(): CursorSessionSummaryDto {
 
 export function CursorSessionPanel({
   summary,
+  loading = false,
   theme,
   revision,
   onError,
 }: {
   summary: CursorSessionSummaryDto | null;
+  loading?: boolean;
   theme: ResolvedTheme;
   revision: number;
   onError?: (error: unknown) => void;
@@ -80,6 +83,14 @@ export function CursorSessionPanel({
 
   const modelTotal = data.by_model.reduce((sum, row) => sum + row.session_count, 0);
 
+  if (!summary && loading) {
+    return (
+      <LoadingOverlay active className="panel partition">
+        <EmptyState icon="cursor" title="正在加载会话…" />
+      </LoadingOverlay>
+    );
+  }
+
   if (!summary || summary.session_count === 0) {
     return (
       <div className="panel partition">
@@ -93,7 +104,7 @@ export function CursorSessionPanel({
   }
 
   return (
-    <div className="stack">
+    <LoadingOverlay active={loading} className="stack">
       <section className="kpi-row">
         <KpiCard
           icon="sessions"
@@ -242,6 +253,6 @@ export function CursorSessionPanel({
           <p className="note">暂无项目分布数据。</p>
         )}
       </section>
-    </div>
+    </LoadingOverlay>
   );
 }

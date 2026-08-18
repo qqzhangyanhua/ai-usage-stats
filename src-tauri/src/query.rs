@@ -221,6 +221,21 @@ pub fn overview(
     .map_err(|e| e.to_string())
 }
 
+/// 全时段、全来源的费用标量。给代码量 ROI 用，不扫 token 维度、不算会话数。
+pub fn lifetime_cost(
+    conn: &Connection,
+    prices: &PriceTable,
+) -> Result<(Option<f64>, bool), String> {
+    install_prices(conn, prices)?;
+    let sql = format!(
+        "SELECT SUM({COST_EXPR}), COALESCE(SUM({UNPRICED_EXPR}), 0)
+         FROM usage_records r
+         {PRICE_JOINS}"
+    );
+    conn.query_row(&sql, [], |row| Ok((row.get(0)?, row.get::<_, i64>(1)? > 0)))
+        .map_err(|e| e.to_string())
+}
+
 pub fn billing_windows(
     conn: &Connection,
     filter: &Filter,

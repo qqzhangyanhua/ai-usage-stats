@@ -22,6 +22,9 @@ import type {
   TurnRow,
   View,
 } from "../types";
+import { isViewFresh, viewFromHash, viewsWarmedBy, viewStamp } from "./viewCache";
+
+export { viewFromHash, views } from "./viewCache";
 
 const AUTO_REFRESH_STORAGE_KEY = "ai-usage-stats:auto-refresh";
 
@@ -42,27 +45,6 @@ const emptyFilter: Filter = {
   providers: [],
 };
 
-export const views: View[] = [
-  "overview",
-  "trend",
-  "application",
-  "model",
-  "provider",
-  "project",
-  "sessions",
-  "cursor",
-  "cursor-sessions",
-  "settings",
-];
-
-export function viewFromHash(): View {
-  const raw = window.location.hash.replace(/^#/, "");
-  if (raw === "source") {
-    return "application";
-  }
-  return views.find((item) => item === raw) ?? "overview";
-}
-
 type SelectedSession = { id: string; source: string };
 
 export function useUsageData() {
@@ -70,6 +52,9 @@ export function useUsageData() {
   const requestGeneration = useRef(0);
   const turnsGeneration = useRef(0);
   const ingestOperation = useRef(false);
+  const dataEpoch = useRef(0);
+  const loadedStamps = useRef<Partial<Record<View, string>>>({});
+  const optionsEpoch = useRef(-1);
 
   const [view, setView] = useState<View>(viewFromHash);
   const [filter, setFilter] = useState<Filter>(emptyFilter);
@@ -90,12 +75,13 @@ export function useUsageData() {
     return { from: window.fromDate, to: window.toDate };
   });
   const [grain, setGrain] = useState<Grain>("day");
-  const [breakdown, setBreakdown] = useState<NamedAmount[]>([]);
   const [applicationAnalytics, setApplicationAnalytics] = useState<ApplicationAnalyticsDto | null>(
     null,
   );
   const [models, setModels] = useState<NamedAmount[]>([]);
   const [projects, setProjects] = useState<NamedAmount[]>([]);
+  const [providerBreakdown, setProviderBreakdown] = useState<NamedAmount[]>([]);
+  const [hydratedViews, setHydratedViews] = useState<Set<View>>(() => new Set());
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsRevision, setSessionsRevision] = useState(0);
   const [turns, setTurns] = useState<TurnRow[]>([]);
@@ -110,8 +96,12 @@ export function useUsageData() {
   const [rebuilding, setRebuilding] = useState<string | null>(null);
   const [purging, setPurging] = useState<string | null>(null);
   const [codeVolume, setCodeVolume] = useState<CodeVolumeSummary | null>(null);
+  const [codeVolumeLoading, setCodeVolumeLoading] = useState(() => viewFromHash() === "cursor");
   const [cursorSessionSummary, setCursorSessionSummary] = useState<CursorSessionSummaryDto | null>(
     null,
+  );
+  const [cursorSessionLoading, setCursorSessionLoading] = useState(
+    () => viewFromHash() === "cursor-sessions",
   );
   const [status, setStatus] = useState("正在连接…");
   const [connected, setConnected] = useState(false);
@@ -142,14 +132,27 @@ export function useUsageData() {
     [filter],
   );
 
+  const markHydrated = useCallback((target: View, nextFilter: Filter, nextPreset: string) => {
+    const epoch = dataEpoch.current;
+    for (const warmed of viewsWarmedBy(target)) {
+      loadedStamps.current[warmed] = viewStamp(warmed, nextFilter, nextPreset, grain, epoch);
+    }
+    setHydratedViews((current) => {
+      const next = new Set(current);
+      for (const warmed of viewsWarmedBy(target)) {
+        next.add(warmed);
+      }
+      return next;
+    });
+  }, [grain]);
+
   const refreshViews = useCallback(
     async (nextFilter = filter, nextPreset = preset) => {
       const generation = ++requestGeneration.current;
-      // 会话列表自行分页拉取数据，这里只需要一个信号让它知道该重新查询了
-      // （比如摄取完成后底层数据变了，但 filter 引用未必变化）。
-      setSessionsRevision((n) => n + 1);
-      // 会话页有自己的 loading，不要用全屏遮罩把已缓存的列表盖住。
-      if (view !== "sessions") {
+      // 会话 / Cursor / 已有缓存的页不要用全屏遮罩。
+      const localOnly =
+        view === "sessions" || view === "cursor" || view === "cursor-sessions" || view === "settings";
+      if (!localOnly && !hydratedViews.has(view)) {
         setLoading(true);
       }
       const commit =
@@ -159,10 +162,27 @@ export function useUsageData() {
             setter(value);
           }
         };
-      const paint: Array<Promise<void>> = [
-        invoke<FilterOptions>("get_filter_options").then(commit(setOptions)),
-      ];
-      if (view !== "sessions") {
+      const epoch = dataEpoch.current;
+      const overviewFresh = isViewFresh(
+        loadedStamps.current,
+        "overview",
+        nextFilter,
+        nextPreset,
+        grain,
+        epoch,
+      );
+      const paint: Array<Promise<void>> = [];
+      if (optionsEpoch.current !== epoch) {
+        paint.push(
+          invoke<FilterOptions>("get_filter_options").then((value) => {
+            commit(setOptions)(value);
+            if (generation === requestGeneration.current) {
+              optionsEpoch.current = epoch;
+            }
+          }),
+        );
+      }
+      if (view !== "sessions" && !overviewFresh) {
         paint.push(
           invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
         );
@@ -213,25 +233,52 @@ export function useUsageData() {
           }).then(commit(setApplicationAnalytics)),
         );
       }
-      if (["model", "provider", "project"].includes(view)) {
-        const dimension = view;
+      if (view === "model") {
         tasks.push(
           invoke<NamedAmount[]>("get_breakdown", {
-            query: { filter: nextFilter, dimension },
-          }).then(commit(setBreakdown)),
+            query: { filter: nextFilter, dimension: "model" },
+          }).then(commit(setModels)),
+        );
+      }
+      if (view === "provider") {
+        tasks.push(
+          invoke<NamedAmount[]>("get_breakdown", {
+            query: { filter: nextFilter, dimension: "provider" },
+          }).then(commit(setProviderBreakdown)),
+        );
+      }
+      if (view === "project") {
+        tasks.push(
+          invoke<NamedAmount[]>("get_breakdown", {
+            query: { filter: nextFilter, dimension: "project" },
+          }).then(commit(setProjects)),
         );
       }
       if (view === "sessions" && selectedSession) {
         tasks.push(loadSessionTurns(selectedSession, nextFilter));
       }
       if (view === "cursor") {
-        tasks.push(invoke<CodeVolumeSummary>("get_code_volume").then(commit(setCodeVolume)));
+        setCodeVolumeLoading(true);
+        tasks.push(
+          invoke<CodeVolumeSummary>("get_code_volume")
+            .then(commit(setCodeVolume))
+            .finally(() => {
+              if (generation === requestGeneration.current) {
+                setCodeVolumeLoading(false);
+              }
+            }),
+        );
       }
       if (view === "cursor-sessions") {
+        setCursorSessionLoading(true);
         tasks.push(
-          invoke<CursorSessionSummaryDto>("get_cursor_session_summary").then(
-            commit(setCursorSessionSummary),
-          ),
+          invoke<CursorSessionSummaryDto>("get_cursor_session_summary")
+            .then(commit(setCursorSessionSummary))
+            .finally(() => {
+              if (generation === requestGeneration.current) {
+                setCursorSessionLoading(false);
+              }
+            }),
         );
       }
       if (view === "settings") {
@@ -243,11 +290,17 @@ export function useUsageData() {
       }
       try {
         await Promise.all(paint);
-        if (generation === requestGeneration.current && view === "overview") {
+        if (
+          generation === requestGeneration.current &&
+          (view === "overview" || view === "cursor" || view === "cursor-sessions")
+        ) {
           setLoading(false);
         }
         if (tasks.length > 0) {
           await Promise.all(tasks);
+        }
+        if (generation === requestGeneration.current) {
+          markHydrated(view, nextFilter, nextPreset);
         }
       } finally {
         if (generation === requestGeneration.current) {
@@ -258,7 +311,7 @@ export function useUsageData() {
         setUpdatedAt(new Date().toISOString());
       }
     },
-    [filter, preset, view, grain, selectedSession, loadSessionTurns],
+    [filter, preset, view, grain, selectedSession, loadSessionTurns, hydratedViews, markHydrated],
   );
 
   // 切换粒度（按日/按周/按月）时只重新拉取趋势相关数据，避免刷新整页导致的卡顿。
@@ -295,13 +348,26 @@ export function useUsageData() {
       } finally {
         if (generation === requestGeneration.current) {
           setLoading(false);
+          if (view === "overview" || view === "trend") {
+            markHydrated("trend", nextFilter, preset);
+            loadedStamps.current.overview = viewStamp(
+              "overview",
+              nextFilter,
+              preset,
+              grain,
+              dataEpoch.current,
+            );
+          }
+          if (view === "application") {
+            markHydrated("application", nextFilter, preset);
+          }
         }
       }
       if (generation === requestGeneration.current) {
         setUpdatedAt(new Date().toISOString());
       }
     },
-    [filter, view, grain],
+    [filter, view, grain, preset, markHydrated],
   );
 
   const reportError = useCallback((error: unknown) => {
@@ -319,6 +385,8 @@ export function useUsageData() {
       setStatus(`${label}中…`);
       try {
         const report = await invoke<IngestReport>("ingest");
+        dataEpoch.current += 1;
+        setSessionsRevision((n) => n + 1);
         setLastIngestReport(report);
         const issue = report.files_failed > 0 ? `，失败 ${report.files_failed}` : "";
         const removed = report.records_removed > 0 ? `，清理 ${report.records_removed}` : "";
@@ -356,6 +424,8 @@ export function useUsageData() {
       setStatus(`${source ? `${source} ` : "全部"}缓存重建中…`);
       try {
         const report = await invoke<IngestReport>("rebuild_cache", { source });
+        dataEpoch.current += 1;
+        setSessionsRevision((n) => n + 1);
         setLastIngestReport(report);
         const archived = report.records_archived > 0 ? `，归档 ${report.records_archived}` : "";
         setStatus(
@@ -391,6 +461,8 @@ export function useUsageData() {
       setStatus(`正在清理${source ? `${source} ` : "全部"}已归档记录…`);
       try {
         const removed = await invoke<number>("purge_archived_records", { source });
+        dataEpoch.current += 1;
+        setSessionsRevision((n) => n + 1);
         setStatus(`已永久删除 ${removed} 条归档记录`);
         await refreshViews();
       } catch (error) {
@@ -473,9 +545,11 @@ export function useUsageData() {
     if (view === "sessions") {
       return;
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 切视图时按需拉该页数据
+    if (isViewFresh(loadedStamps.current, view, filter, preset, grain, dataEpoch.current)) {
+      return;
+    }
     refreshViews().catch(reportError);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 切到会话页不重拉；列表由 Sessions 自己缓存
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 热缓存命中则不重拉；会话页自己管列表
   }, [view]);
 
   const didMountGrain = useRef(false);
@@ -544,7 +618,8 @@ export function useUsageData() {
     heatmapRange,
     grain,
     setGrain,
-    breakdown,
+    breakdown:
+      view === "provider" ? providerBreakdown : view === "project" ? projects : models,
     applicationAnalytics,
     models,
     projects,
@@ -565,12 +640,15 @@ export function useUsageData() {
     rebuilding,
     purging,
     codeVolume,
+    codeVolumeLoading,
     cursorSessionSummary,
+    cursorSessionLoading,
     status,
     setStatus,
     connected,
     busy,
     loading,
+    viewHasData: hydratedViews.has(view),
     updatedAt,
     autoRefresh,
     setAutoRefresh,

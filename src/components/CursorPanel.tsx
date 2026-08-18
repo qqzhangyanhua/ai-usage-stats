@@ -8,12 +8,15 @@ import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { KpiCard, LegendRow } from "./Kpi";
+import { LoadingOverlay } from "./LoadingOverlay";
 
 export function CursorPanel({
   summary,
+  loading = false,
   theme,
 }: {
   summary: CodeVolumeSummary | null;
+  loading?: boolean;
   theme: ResolvedTheme;
 }) {
   const data = summary ?? {
@@ -35,6 +38,14 @@ export function CursorPanel({
     return donutOption(donutItems, theme);
   }, [data.composer_lines_added, data.human_lines_added, theme]);
 
+  if (!summary && loading) {
+    return (
+      <LoadingOverlay active className="panel partition">
+        <EmptyState icon="cursor" title="正在加载代码量…" />
+      </LoadingOverlay>
+    );
+  }
+
   if (!summary) {
     return (
       <div className="panel partition">
@@ -48,7 +59,7 @@ export function CursorPanel({
   }
 
   return (
-    <div className="stack">
+    <LoadingOverlay active={loading} className="stack">
       <section className="kpi-row">
         <KpiCard
           icon="sessions"
@@ -109,7 +120,7 @@ export function CursorPanel({
       </div>
 
       <CodeCostRoiCard data={data} />
-    </div>
+    </LoadingOverlay>
   );
 }
 

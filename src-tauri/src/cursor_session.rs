@@ -32,15 +32,12 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     };
 
-    let enrichments = match load_hash_enrichments(home) {
-        Ok(map) => Some(map),
-        Err(error) => {
-            record_issue(report, &root.to_string_lossy(), &error);
-            None
-        }
-    };
+    let current_fp = tracking_db_fingerprint(home);
+    let stored_fp = store::cursor_tracking_fingerprint(conn).unwrap_or_default();
+    let tracking_changed = current_fp != stored_fp;
 
     let mut seen_paths = BTreeSet::new();
+    let mut pending = Vec::new();
     let mut any_failed = false;
 
     for path in transcripts {
@@ -59,74 +56,36 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         let mtime_ms = modified_millis(&meta);
         let size = meta.len() as i64;
 
-        if let Ok(Some((cached_mtime, cached_size))) =
-            store::cursor_session_file_fingerprint(conn, &path_key)
-        {
-            if cached_mtime == mtime_ms && cached_size == size {
-                match store::cursor_session_has_source_file(conn, &path_key) {
-                    Ok(true) => {
-                        report.files_skipped += 1;
-                        continue;
-                    }
-                    Ok(false) => {}
-                    Err(error) => {
-                        record_issue(report, &path_key, &error);
-                        any_failed = true;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(error) => {
-                record_issue(report, &path_key, &format!("读取 transcript 失败：{error}"));
-                any_failed = true;
-                continue;
-            }
-        };
-
-        let parsed = match parse_cursor_session_transcript(&content) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                record_issue(report, &path_key, &error);
-                any_failed = true;
-                continue;
-            }
-        };
-
-        let seen_at = millis_to_rfc3339(mtime_ms);
-        let mut record = match build_cursor_session_record(&path_key, &parsed, seen_at) {
-            Ok(record) => record,
-            Err(error) => {
-                record_issue(report, &path_key, &error);
-                any_failed = true;
-                continue;
-            }
-        };
-        if let Some(enrichment) = enrichments
-            .as_ref()
-            .and_then(|map| map.get(&record.session_id))
-        {
-            if let Err(error) = apply_hash_enrichment(&mut record, enrichment) {
-                record_issue(report, &path_key, &error);
-                any_failed = true;
-                continue;
-            }
-        }
-
-        if let Err(error) = store::upsert_cursor_session(conn, &record) {
-            record_issue(report, &path_key, &error);
-            any_failed = true;
+        if transcript_unchanged(conn, &path_key, mtime_ms, size, report, &mut any_failed) {
             continue;
         }
-        if let Err(error) = store::upsert_cursor_session_file(conn, &path_key, mtime_ms, size) {
-            record_issue(report, &path_key, &error);
-            any_failed = true;
-            continue;
+        pending.push((path, path_key, mtime_ms, size));
+    }
+
+    let enrichments = if tracking_changed || !pending.is_empty() {
+        match load_hash_enrichments(home) {
+            Ok(map) => Some(map),
+            Err(error) => {
+                record_issue(report, &root.to_string_lossy(), &error);
+                None
+            }
         }
-        report.files_parsed += 1;
+    } else {
+        None
+    };
+
+    for (path, path_key, mtime_ms, size) in pending {
+        if !ingest_transcript(
+            conn,
+            &path,
+            &path_key,
+            mtime_ms,
+            size,
+            enrichments.as_ref(),
+            report,
+        ) {
+            any_failed = true;
+        }
     }
 
     if !any_failed {
@@ -136,20 +95,102 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     }
 
-    if let Some(map) = enrichments.as_ref() {
-        match refresh_hash_enrichments(conn, map) {
-            Ok(()) => {
-                if let Err(error) =
-                    store::set_cursor_tracking_fingerprint(conn, &tracking_db_fingerprint(home))
-                {
-                    record_issue(report, &root.to_string_lossy(), &error);
+    if tracking_changed {
+        if let Some(map) = enrichments.as_ref() {
+            match refresh_hash_enrichments(conn, map) {
+                Ok(()) => {
+                    if let Err(error) = store::set_cursor_tracking_fingerprint(conn, &current_fp) {
+                        record_issue(report, &root.to_string_lossy(), &error);
+                    }
                 }
+                Err(error) => record_issue(report, &root.to_string_lossy(), &error),
             }
-            Err(error) => record_issue(report, &root.to_string_lossy(), &error),
         }
     }
 
     let _ = store::set_cursor_session_as_of(conn, &chrono::Utc::now().to_rfc3339());
+}
+
+fn transcript_unchanged(
+    conn: &Connection,
+    path_key: &str,
+    mtime_ms: i64,
+    size: i64,
+    report: &mut IngestReport,
+    any_failed: &mut bool,
+) -> bool {
+    let Ok(Some((cached_mtime, cached_size))) =
+        store::cursor_session_file_fingerprint(conn, path_key)
+    else {
+        return false;
+    };
+    if cached_mtime != mtime_ms || cached_size != size {
+        return false;
+    }
+    match store::cursor_session_has_source_file(conn, path_key) {
+        Ok(true) => {
+            report.files_skipped += 1;
+            true
+        }
+        Ok(false) => false,
+        Err(error) => {
+            record_issue(report, path_key, &error);
+            *any_failed = true;
+            true
+        }
+    }
+}
+
+fn ingest_transcript(
+    conn: &Connection,
+    path: &Path,
+    path_key: &str,
+    mtime_ms: i64,
+    size: i64,
+    enrichments: Option<&BTreeMap<String, crate::adapters::cursor_session::SessionHashEnrichment>>,
+    report: &mut IngestReport,
+) -> bool {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) => {
+            record_issue(report, path_key, &format!("读取 transcript 失败：{error}"));
+            return false;
+        }
+    };
+
+    let parsed = match parse_cursor_session_transcript(&content) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            record_issue(report, path_key, &error);
+            return false;
+        }
+    };
+
+    let seen_at = millis_to_rfc3339(mtime_ms);
+    let mut record = match build_cursor_session_record(path_key, &parsed, seen_at) {
+        Ok(record) => record,
+        Err(error) => {
+            record_issue(report, path_key, &error);
+            return false;
+        }
+    };
+    if let Some(enrichment) = enrichments.and_then(|map| map.get(&record.session_id)) {
+        if let Err(error) = apply_hash_enrichment(&mut record, enrichment) {
+            record_issue(report, path_key, &error);
+            return false;
+        }
+    }
+
+    if let Err(error) = store::upsert_cursor_session(conn, &record) {
+        record_issue(report, path_key, &error);
+        return false;
+    }
+    if let Err(error) = store::upsert_cursor_session_file(conn, path_key, mtime_ms, size) {
+        record_issue(report, path_key, &error);
+        return false;
+    }
+    report.files_parsed += 1;
+    true
 }
 
 fn refresh_hash_enrichments(
@@ -159,10 +200,20 @@ fn refresh_hash_enrichments(
     let sessions = store::load_cursor_sessions(conn)?;
     for mut session in sessions {
         if let Some(enrichment) = enrichments.get(&session.session_id) {
+            let previous = session.clone();
             apply_hash_enrichment(&mut session, enrichment)?;
-        } else {
+            if session.models_json == previous.models_json
+                && session.files_touched == previous.files_touched
+                && session.first_seen_at == previous.first_seen_at
+                && session.last_seen_at == previous.last_seen_at
+            {
+                continue;
+            }
+        } else if session.models_json != "[]" || session.files_touched != 0 {
             session.models_json = "[]".to_string();
             session.files_touched = 0;
+        } else {
+            continue;
         }
         store::upsert_cursor_session(conn, &session)?;
     }
@@ -514,14 +565,18 @@ fn later_ts(current: &Option<String>, candidate: &Option<String>) -> Option<Stri
 }
 
 /// 托盘心跳用：transcript 指纹或代码量 sqlite 变化时视为 stale。
-pub(crate) fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
+/// 缓存由调用方在读锁内取出，本函数只扫盘比对，不再碰数据库。
+pub(crate) fn scan_is_stale_cached(
+    cached: &BTreeMap<String, (i64, i64)>,
+    tracking_fingerprint: &str,
+    home: &Path,
+) -> Result<bool, String> {
     let root = home.join(".cursor/projects");
     let transcripts = if root.exists() {
         walk_transcripts(&root)?
     } else {
         Vec::new()
     };
-    let cached = store::cached_cursor_session_file_stats(conn)?;
     if transcripts.is_empty() && cached.is_empty() {
         return Ok(false);
     }
@@ -529,7 +584,7 @@ pub(crate) fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, Stri
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
         .collect();
-    if cached.len() != seen.len() || cached.iter().any(|(path, _, _)| !seen.contains(path)) {
+    if cached.len() != seen.len() || cached.keys().any(|path| !seen.contains(path)) {
         return Ok(true);
     }
     for path in transcripts {
@@ -538,16 +593,14 @@ pub(crate) fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, Stri
             Ok(meta) => meta,
             Err(_) => return Ok(true),
         };
-        match store::cursor_session_file_fingerprint(conn, &loc)? {
-            Some((mtime, size)) if mtime == modified_millis(&meta) && size == meta.len() as i64 => {
-            }
+        match cached.get(&loc) {
+            Some((mtime, size))
+                if *mtime == modified_millis(&meta) && *size == meta.len() as i64 => {}
             _ => return Ok(true),
         }
     }
 
-    let current = tracking_db_fingerprint(home);
-    let stored = store::cursor_tracking_fingerprint(conn)?;
-    Ok(current != stored)
+    Ok(tracking_db_fingerprint(home) != tracking_fingerprint)
 }
 
 fn tracking_db_fingerprint(home: &Path) -> String {
@@ -560,32 +613,33 @@ fn tracking_db_fingerprint(home: &Path) -> String {
 
 fn walk_transcripts(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
-    walk_transcripts_inner(root, &mut files)?;
+    let entries = fs::read_dir(root)
+        .map_err(|e| format!("扫描 Cursor 会话目录 {} 失败：{e}", root.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let transcripts = entry.path().join("agent-transcripts");
+        if !transcripts.is_dir() {
+            continue;
+        }
+        collect_transcript_jsonl(&transcripts, &mut files)?;
+    }
     files.sort();
     Ok(files)
 }
 
-fn walk_transcripts_inner(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+fn collect_transcript_jsonl(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     for entry in fs::read_dir(dir)
         .map_err(|e| format!("扫描 Cursor 会话目录 {} 失败：{e}", dir.display()))?
     {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
+        let path = entry.map_err(|e| e.to_string())?.path();
         if path.is_dir() {
-            walk_transcripts_inner(&path, files)?;
+            collect_transcript_jsonl(&path, files)?;
             continue;
         }
         let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
             continue;
         };
-        if !name.ends_with(".jsonl") {
-            continue;
-        }
-        if path
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy())
-            .any(|part| part == "agent-transcripts")
-        {
+        if name.ends_with(".jsonl") {
             files.push(path);
         }
     }

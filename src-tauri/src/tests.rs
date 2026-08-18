@@ -2071,6 +2071,11 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
     assert_eq!(by_source[2].name, "claude");
     assert_eq!(by_source[2].cost, None);
     assert!(by_source[2].unpriced);
+
+    let (lifetime_cost, lifetime_unpriced) = query::lifetime_cost(&conn, &table).unwrap();
+    let overview = query::overview(&conn, &Filter::default(), &table).unwrap();
+    assert_eq!(lifetime_cost, overview.cost);
+    assert_eq!(lifetime_unpriced, overview.unpriced);
 }
 
 #[test]
@@ -5114,6 +5119,107 @@ fn cursor_session_hash_db_read_failure_keeps_last_enrichment() {
         "transient hash db failure must not wipe enrichment"
     );
     assert!(again[0].models_json.contains("grok-4.6"));
+}
+
+#[test]
+fn cursor_session_ingest_ignores_mcps_and_non_transcript_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    let project = home.join(".cursor/projects/Users-test-project");
+    std::fs::create_dir_all(project.join("mcps")).expect("mcps dir");
+    std::fs::write(project.join("mcps/server.json"), r#"{"tools":[]}"#).expect("mcp json");
+    std::fs::write(
+        project.join("mcps/noise.jsonl"),
+        r#"{"type":"turn_ended","status":"success"}"#,
+    )
+    .expect("mcp jsonl");
+    std::fs::write(
+        project.join("random.jsonl"),
+        r#"{"type":"turn_ended","status":"success"}"#,
+    )
+    .expect("root jsonl");
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(report.files_seen, 1);
+    assert_eq!(report.files_parsed, 1);
+    assert_eq!(store::load_cursor_sessions(&conn).unwrap().len(), 1);
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+}
+
+#[test]
+fn cursor_session_enriches_existing_cache_when_tracking_db_appears() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(
+        store::load_cursor_sessions(&conn).unwrap()[0].models_json,
+        "[]"
+    );
+
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
+    let mut second = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut second);
+    assert!(store::load_cursor_sessions(&conn).unwrap()[0]
+        .models_json
+        .contains("grok-4.6"));
+}
+
+#[test]
+fn cursor_session_skips_hash_reload_when_tracking_fingerprint_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert!(store::load_cursor_sessions(&conn).unwrap()[0]
+        .models_json
+        .contains("grok-4.6"));
+
+    let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    let meta = std::fs::metadata(&db_path).expect("tracking meta");
+    let modified = meta.modified().expect("mtime");
+    std::fs::write(&db_path, vec![b'x'; meta.len() as usize]).expect("corrupt same size");
+    let file = std::fs::File::options()
+        .write(true)
+        .open(&db_path)
+        .expect("reopen tracking db");
+    file.set_modified(modified).expect("restore mtime");
+    drop(file);
+
+    let mut second = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut second);
+    assert_eq!(second.files_failed, 0);
+    assert!(second.issues.is_empty());
+    let again = store::load_cursor_sessions(&conn).unwrap();
+    assert!(
+        again[0].models_json.contains("grok-4.6"),
+        "unchanged tracking fingerprint must skip hash reload"
+    );
 }
 
 #[test]

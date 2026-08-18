@@ -146,21 +146,50 @@ pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String
 /// 新文件、fingerprint 变化、或缓存路径已从磁盘消失时视为 stale。
 /// 同时覆盖 Cursor 会话 transcript 与代码量 sqlite，避免托盘心跳漏扫这两类输入。
 pub fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
-    scan_is_stale_with_overrides(conn, home, &env_overrides())
+    let cache = load_scan_cache(conn)?;
+    scan_is_stale_from_cache(&cache, home)
 }
 
-pub(crate) fn scan_is_stale_with_overrides(
-    conn: &Connection,
+/// 只读库快照。托盘心跳先在锁内取出，再松锁扫盘。
+pub struct ScanCache {
+    ingested: BTreeMap<String, store::IngestedFileCacheRow>,
+    cursor_files: BTreeMap<String, (i64, i64)>,
+    tracking_fingerprint: String,
+}
+
+pub fn load_scan_cache(conn: &Connection) -> Result<ScanCache, String> {
+    let ingested = store::cached_ingested_files(conn)?
+        .into_iter()
+        .map(|row| (row.path.clone(), row))
+        .collect();
+    let cursor_files = store::cached_cursor_session_file_stats(conn)?
+        .into_iter()
+        .map(|(path, mtime, size)| (path, (mtime, size)))
+        .collect();
+    let tracking_fingerprint = store::cursor_tracking_fingerprint(conn)?;
+    Ok(ScanCache {
+        ingested,
+        cursor_files,
+        tracking_fingerprint,
+    })
+}
+
+pub fn scan_is_stale_from_cache(cache: &ScanCache, home: &Path) -> Result<bool, String> {
+    scan_is_stale_cached(cache, home, &env_overrides())
+}
+
+fn scan_is_stale_cached(
+    cache: &ScanCache,
     home: &Path,
     overrides: &PathOverrides,
 ) -> Result<bool, String> {
     let watched = list_watched_inputs(home, overrides)?;
-    let cached = store::cached_file_stats(conn)?;
     let seen: BTreeSet<String> = watched
         .iter()
         .map(|input| input.path.to_string_lossy().into_owned())
         .collect();
-    if cached.len() != seen.len() || cached.iter().any(|(path, _, _)| !seen.contains(path)) {
+    if cache.ingested.len() != seen.len() || cache.ingested.keys().any(|path| !seen.contains(path))
+    {
         return Ok(true);
     }
     for input in watched {
@@ -170,18 +199,19 @@ pub(crate) fn scan_is_stale_with_overrides(
             Err(_) => return Ok(true),
         };
         let key = cache_key(&input.path, &input.extra_fingerprint);
-        if !store::file_unchanged(
-            conn,
-            &loc,
-            modified_millis(&meta),
-            meta.len() as i64,
-            input.source,
-            &key,
-        )? {
+        let Some(row) = cache.ingested.get(&loc) else {
+            return Ok(true);
+        };
+        if row.mtime_ms != modified_millis(&meta)
+            || row.size != meta.len() as i64
+            || row.source != input.source.as_str()
+            || row.fingerprint != key
+            || row.adapter_version != store::ADAPTER_VERSION
+        {
             return Ok(true);
         }
     }
-    cursor_session::scan_is_stale(conn, home)
+    cursor_session::scan_is_stale_cached(&cache.cursor_files, &cache.tracking_fingerprint, home)
 }
 
 struct WatchedInput {

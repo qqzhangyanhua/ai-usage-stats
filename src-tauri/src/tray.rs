@@ -168,12 +168,12 @@ pub fn refresh(app: &AppHandle) -> Result<(), String> {
 
 /// 源文件元数据没变时只重算今日菜单栏，避免关闭主窗口后每 5 分钟全量扫盘。
 pub fn refresh_if_stale(app: &AppHandle) -> Result<(), String> {
-    let stale = {
+    let cache = {
         let state = app.state::<AppState>();
         let conn = state.lock_read()?;
-        ingest::scan_is_stale(&conn, &ingest::default_home())?
+        ingest::load_scan_cache(&conn)?
     };
-    if stale {
+    if ingest::scan_is_stale_from_cache(&cache, &ingest::default_home())? {
         refresh_with_ingest(app)
     } else {
         refresh(app)

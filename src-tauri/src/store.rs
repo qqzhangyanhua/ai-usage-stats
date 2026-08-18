@@ -271,13 +271,34 @@ pub fn file_unchanged(
     ))
 }
 
-/// 托盘心跳用的轻量对账：只取路径、mtime、大小，不读源文件内容。
-pub fn cached_file_stats(conn: &Connection) -> Result<Vec<(String, i64, i64)>, String> {
+/// 托盘心跳用的轻量对账：一次取出比对所需字段，避免扫盘时再逐条查库。
+#[derive(Debug, Clone)]
+pub struct IngestedFileCacheRow {
+    pub path: String,
+    pub mtime_ms: i64,
+    pub size: i64,
+    pub source: String,
+    pub fingerprint: String,
+    pub adapter_version: i64,
+}
+
+pub fn cached_ingested_files(conn: &Connection) -> Result<Vec<IngestedFileCacheRow>, String> {
     let mut stmt = conn
-        .prepare("SELECT path, mtime_ms, size FROM ingested_files")
+        .prepare(
+            "SELECT path, mtime_ms, size, source, fingerprint, adapter_version FROM ingested_files",
+        )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .query_map([], |row| {
+            Ok(IngestedFileCacheRow {
+                path: row.get(0)?,
+                mtime_ms: row.get(1)?,
+                size: row.get(2)?,
+                source: row.get(3)?,
+                fingerprint: row.get(4)?,
+                adapter_version: row.get(5)?,
+            })
+        })
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())

@@ -47,9 +47,15 @@ export default function App() {
         />
         <main className="main">
           <LoadingOverlay
-            active={data.loading && (data.overview === null || view !== "overview")}
+            active={
+              data.loading &&
+              !data.viewHasData &&
+              view !== "sessions" &&
+              view !== "cursor" &&
+              view !== "cursor-sessions"
+            }
           >
-            <ErrorBoundary key={view} fullscreen={false}>
+            <ErrorBoundary fullscreen={false}>
               {view === "overview" ? (
                 <Overview
                   overview={data.overview}
@@ -102,12 +108,17 @@ export default function App() {
               {view === "cursor" ? (
                 <div className="stack">
                   <CursorAccountUsagePanel theme={theme} />
-                  <CursorPanel summary={data.codeVolume} theme={theme} />
+                  <CursorPanel
+                    summary={data.codeVolume}
+                    loading={data.codeVolumeLoading}
+                    theme={theme}
+                  />
                 </div>
               ) : null}
               {view === "cursor-sessions" ? (
                 <CursorSessionPanel
                   summary={data.cursorSessionSummary}
+                  loading={data.cursorSessionLoading}
                   theme={theme}
                   revision={data.sessionsRevision}
                   onError={data.reportError}
