@@ -1,0 +1,48 @@
+src/App.tsx
+  s_a2edc741b2e2ba::t_17aa16ed2d4a7f 49
+  s_a2edc741b2e2ba::t_3c868a684ea059 42-43
+src-tauri/src/query.rs
+  s_a2edc741b2e2ba::t_ad1d16fdc531c1 588-590,592-594,605-607,610,620-621,630-642,646,650-695
+  s_a2edc741b2e2ba::t_67603b1100c372 696-697
+src-tauri/src/lib.rs
+  s_a2edc741b2e2ba::t_82c49dfb395d04 371,420,441,455,471,486,565,568-571,573-577,579-580,676-678,687
+  s_a2edc741b2e2ba::t_edc19c9fa4a1de 117,389,408,475,513,543
+  s_a2edc741b2e2ba::t_2fcd6a9d74c475 18,40,55-61
+  s_a2edc741b2e2ba::t_1ebcf1dfff1b30 137,152,168,184,204,220,235,252,264,286
+  s_a2edc741b2e2ba::t_ddd93e0f045ebb 62
+src-tauri/src/tests.rs
+  s_a2edc741b2e2ba::t_8808ab4b01f6d3 2260-2263
+  s_a2edc741b2e2ba::t_f43307f277b1b0 2218-2259,2264-2270
+  s_a2edc741b2e2ba::t_66f900b5b0da78 1537-1562
+  s_a2edc741b2e2ba::t_a1e51397639757 1536,2217
+src/hooks/useUsageData.ts
+  s_a2edc741b2e2ba::t_acb7282f27add4 245-251
+  s_a2edc741b2e2ba::t_e2c0720ecf4b59 162,166,170
+  s_a2edc741b2e2ba::t_2a382ad73158b6 448,450-457
+  s_a2edc741b2e2ba::t_61993e101a06a6 465
+src-tauri/src/store.rs
+  s_a2edc741b2e2ba::t_810b95bd7f708d 3,22-25
+  s_a2edc741b2e2ba::t_d0c11d2f658e16 26-27
+src/components/Topbar.tsx
+  s_a2edc741b2e2ba::t_7fc6b18fa23a95 32,42,114
+src-tauri/src/tray.rs
+  s_a2edc741b2e2ba::t_76c07157d92d88 186
+  s_a2edc741b2e2ba::t_05c3f5a034f5b3 145-146
+  s_a2edc741b2e2ba::t_6d99a0995a02ee 173,203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "88a0142391a94c3878a1ef8b54ee05fa9178f63a",
+  "prompts": {},
+  "sessions": {
+    "s_a2edc741b2e2ba": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a013a2-552f-7a30-9f2e-0096c704d202",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
