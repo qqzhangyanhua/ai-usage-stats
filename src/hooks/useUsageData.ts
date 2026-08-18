@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heatmapFilter } from "../lib/calendar";
+import { clearCursorSessionDetailCache } from "../lib/cursorSessionDetailCache";
 import { humanStatus, previousFilter, rangeFromPreset } from "../lib/format";
 import type {
   ApplicationAnalyticsDto,
@@ -19,39 +20,19 @@ import type {
   SeriesPoint,
   SessionRow,
   SourceDiagnostic,
-  TurnRow,
   View,
 } from "../types";
 import { isViewFresh, viewFromHash, viewsWarmedBy, viewStamp } from "./viewCache";
+import { emptyFilter } from "./usage/constants";
+import { useAutoRefresh } from "./usage/useAutoRefresh";
+import { useIngestOperations } from "./usage/useIngestOperations";
+import { useSessionTurns } from "./usage/useSessionTurns";
 
 export { viewFromHash, views } from "./viewCache";
-
-const AUTO_REFRESH_STORAGE_KEY = "ai-usage-stats:auto-refresh";
-
-function loadAutoRefresh(): string {
-  try {
-    return window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY) ?? "off";
-  } catch {
-    return "off";
-  }
-}
-
-const emptyFilter: Filter = {
-  from: null,
-  to: null,
-  sources: [],
-  models: [],
-  projects: [],
-  providers: [],
-};
-
-type SelectedSession = { id: string; source: string };
 
 export function useUsageData() {
   const didMount = useRef(false);
   const requestGeneration = useRef(0);
-  const turnsGeneration = useRef(0);
-  const ingestOperation = useRef(false);
   const dataEpoch = useRef(0);
   const loadedStamps = useRef<Partial<Record<View, string>>>({});
   const optionsEpoch = useRef(-1);
@@ -84,17 +65,12 @@ export function useUsageData() {
   const [hydratedViews, setHydratedViews] = useState<Set<View>>(() => new Set());
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsRevision, setSessionsRevision] = useState(0);
-  const [turns, setTurns] = useState<TurnRow[]>([]);
-  const [turnsLoading, setTurnsLoading] = useState(false);
-  const [selectedSession, setSelectedSession] = useState<SelectedSession | null>(null);
   const [sessionsVisited, setSessionsVisited] = useState(() => viewFromHash() === "sessions");
   const [prices, setPrices] = useState<PriceTable>({ prices: [] });
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatusDto | null>(null);
   const [savingBudget, setSavingBudget] = useState(false);
   const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([]);
   const [lastIngestReport, setLastIngestReport] = useState<IngestReport | null>(null);
-  const [rebuilding, setRebuilding] = useState<string | null>(null);
-  const [purging, setPurging] = useState<string | null>(null);
   const [codeVolume, setCodeVolume] = useState<CodeVolumeSummary | null>(null);
   const [codeVolumeLoading, setCodeVolumeLoading] = useState(() => viewFromHash() === "cursor");
   const [cursorSessionSummary, setCursorSessionSummary] = useState<CursorSessionSummaryDto | null>(
@@ -105,51 +81,38 @@ export function useUsageData() {
   );
   const [status, setStatus] = useState("正在连接…");
   const [connected, setConnected] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState<string>(loadAutoRefresh);
 
-  const loadSessionTurns = useCallback(
-    async (session: SelectedSession, nextFilter = filter) => {
-      const generation = ++turnsGeneration.current;
-      setTurnsLoading(true);
-      try {
-        const rows = await invoke<TurnRow[]>("get_session_turns", {
-          sessionId: session.id,
-          source: session.source,
-          filter: nextFilter,
-        });
-        if (generation === turnsGeneration.current) {
-          setTurns(rows);
-        }
-      } finally {
-        if (generation === turnsGeneration.current) {
-          setTurnsLoading(false);
-        }
-      }
-    },
-    [filter],
+  const reportError = useCallback((error: unknown) => {
+    setStatus(humanStatus(error));
+  }, []);
+
+  const { turns, turnsLoading, selectedSession, loadSessionTurns, selectSession } = useSessionTurns(
+    filter,
+    reportError,
   );
 
-  const markHydrated = useCallback((target: View, nextFilter: Filter, nextPreset: string) => {
-    const epoch = dataEpoch.current;
-    for (const warmed of viewsWarmedBy(target)) {
-      loadedStamps.current[warmed] = viewStamp(warmed, nextFilter, nextPreset, grain, epoch);
-    }
-    setHydratedViews((current) => {
-      const next = new Set(current);
+  const markHydrated = useCallback(
+    (target: View, nextFilter: Filter, nextPreset: string) => {
+      const epoch = dataEpoch.current;
       for (const warmed of viewsWarmedBy(target)) {
-        next.add(warmed);
+        loadedStamps.current[warmed] = viewStamp(warmed, nextFilter, nextPreset, grain, epoch);
       }
-      return next;
-    });
-  }, [grain]);
+      setHydratedViews((current) => {
+        const next = new Set(current);
+        for (const warmed of viewsWarmedBy(target)) {
+          next.add(warmed);
+        }
+        return next;
+      });
+    },
+    [grain],
+  );
 
   const refreshViews = useCallback(
     async (nextFilter = filter, nextPreset = preset) => {
       const generation = ++requestGeneration.current;
-      // 会话 / Cursor / 已有缓存的页不要用全屏遮罩。
       const localOnly =
         view === "sessions" || view === "cursor" || view === "cursor-sessions" || view === "settings";
       if (!localOnly && !hydratedViews.has(view)) {
@@ -314,7 +277,6 @@ export function useUsageData() {
     [filter, preset, view, grain, selectedSession, loadSessionTurns, hydratedViews, markHydrated],
   );
 
-  // 切换粒度（按日/按周/按月）时只重新拉取趋势相关数据，避免刷新整页导致的卡顿。
   const refreshTrend = useCallback(
     async (nextFilter = filter) => {
       const generation = ++requestGeneration.current;
@@ -370,111 +332,38 @@ export function useUsageData() {
     [filter, view, grain, preset, markHydrated],
   );
 
-  const reportError = useCallback((error: unknown) => {
-    setStatus(humanStatus(error));
-  }, []);
+  const wrappedRefreshViews = useCallback(async () => {
+    await refreshViews();
+  }, [refreshViews]);
 
-  const runIngest = useCallback(
+  const { busy, rebuilding, purging, runIngest, runRebuild, runPurgeArchived } =
+    useIngestOperations({
+      refreshViews: wrappedRefreshViews,
+      dataEpochRef: dataEpoch,
+      requestGenerationRef: requestGeneration,
+      setSessionsRevision,
+      setLastIngestReport,
+      setStatus,
+      setLoading,
+    });
+
+  const runIngestWithCacheClear = useCallback(
     async (label: string) => {
-      if (ingestOperation.current) {
-        return;
-      }
-      ingestOperation.current = true;
-      requestGeneration.current += 1;
-      setBusy(true);
-      setStatus(`${label}中…`);
-      try {
-        const report = await invoke<IngestReport>("ingest");
-        dataEpoch.current += 1;
-        setSessionsRevision((n) => n + 1);
-        setLastIngestReport(report);
-        const issue = report.files_failed > 0 ? `，失败 ${report.files_failed}` : "";
-        const removed = report.records_removed > 0 ? `，清理 ${report.records_removed}` : "";
-        const archived = report.records_archived > 0 ? `，归档 ${report.records_archived}` : "";
-        setStatus(
-          `${label}${report.partial_success ? "部分完成" : "完成"}：解析 ${report.files_parsed}，跳过 ${report.files_skipped}，写入 ${report.records_written}${archived}${removed}${issue}`,
-        );
-        await refreshViews();
-        try {
-          await invoke("refresh_tray");
-        } catch {
-          // 菜单栏刷新失败不阻断主界面
-        }
-      } catch (error) {
-        setStatus(`${label}失败：${humanStatus(error)}`);
-        setLoading(false);
-      } finally {
-        ingestOperation.current = false;
-        setBusy(false);
-      }
+      clearCursorSessionDetailCache();
+      await runIngest(label);
     },
-    [refreshViews],
+    [runIngest],
   );
 
-  const runRebuild = useCallback(
+  const runRebuildWithCacheClear = useCallback(
     async (source: string | null) => {
-      if (ingestOperation.current) {
-        return;
-      }
-      ingestOperation.current = true;
-      requestGeneration.current += 1;
-      const target = source ?? "all";
-      setRebuilding(target);
-      setBusy(true);
-      setStatus(`${source ? `${source} ` : "全部"}缓存重建中…`);
-      try {
-        const report = await invoke<IngestReport>("rebuild_cache", { source });
-        dataEpoch.current += 1;
-        setSessionsRevision((n) => n + 1);
-        setLastIngestReport(report);
-        const archived = report.records_archived > 0 ? `，归档 ${report.records_archived}` : "";
-        setStatus(
-          `缓存重建${report.partial_success ? "部分完成" : "完成"}：写入 ${report.records_written}${archived}，清理 ${report.records_removed}，失败 ${report.files_failed}`,
-        );
-        await refreshViews();
-        try {
-          await invoke("refresh_tray");
-        } catch {
-          // 菜单栏刷新失败不阻断主界面
-        }
-      } catch (error) {
-        setStatus(`缓存重建失败：${humanStatus(error)}`);
-        setLoading(false);
-      } finally {
-        ingestOperation.current = false;
-        setRebuilding(null);
-        setBusy(false);
-      }
+      clearCursorSessionDetailCache();
+      await runRebuild(source);
     },
-    [refreshViews],
+    [runRebuild],
   );
 
-  const runPurgeArchived = useCallback(
-    async (source: string | null) => {
-      if (ingestOperation.current) {
-        return;
-      }
-      ingestOperation.current = true;
-      const target = source ?? "all";
-      setPurging(target);
-      setBusy(true);
-      setStatus(`正在清理${source ? `${source} ` : "全部"}已归档记录…`);
-      try {
-        const removed = await invoke<number>("purge_archived_records", { source });
-        dataEpoch.current += 1;
-        setSessionsRevision((n) => n + 1);
-        setStatus(`已永久删除 ${removed} 条归档记录`);
-        await refreshViews();
-      } catch (error) {
-        setStatus(`清理归档记录失败：${humanStatus(error)}`);
-      } finally {
-        ingestOperation.current = false;
-        setPurging(null);
-        setBusy(false);
-      }
-    },
-    [refreshViews],
-  );
+  const { autoRefresh, setAutoRefresh } = useAutoRefresh(runIngestWithCacheClear, reportError);
 
   const saveBudget = useCallback(
     async (config: BudgetConfig) => {
@@ -494,26 +383,10 @@ export function useUsageData() {
     [],
   );
 
-  const runIngestRef = useRef(runIngest);
+  const runIngestRef = useRef(runIngestWithCacheClear);
   useEffect(() => {
-    runIngestRef.current = runIngest;
-  }, [runIngest]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, autoRefresh);
-    } catch {
-      // localStorage 不可用时忽略，仅影响下次启动是否记住选择
-    }
-    const minutes = Number(autoRefresh);
-    if (autoRefresh === "off" || !Number.isFinite(minutes) || minutes <= 0) {
-      return;
-    }
-    const id = window.setInterval(() => {
-      runIngestRef.current("定时刷新").catch(reportError);
-    }, minutes * 60_000);
-    return () => window.clearInterval(id);
-  }, [autoRefresh, reportError]);
+    runIngestRef.current = runIngestWithCacheClear;
+  }, [runIngestWithCacheClear]);
 
   useEffect(() => {
     invoke<string>("ping")
@@ -521,7 +394,6 @@ export function useUsageData() {
         setConnected(true);
         setStatus("正在加载缓存…");
         try {
-          // 先画已有缓存。启动摄取可能扫数 GB 源文件，不能挡住首屏。
           await refreshViews();
         } catch (error: unknown) {
           reportError(error);
@@ -577,14 +449,6 @@ export function useUsageData() {
       window.history.replaceState(null, "", `#${next}`);
     }
   }, []);
-
-  const selectSession = useCallback(
-    (session: SelectedSession) => {
-      setSelectedSession(session);
-      loadSessionTurns(session).catch(reportError);
-    },
-    [loadSessionTurns, reportError],
-  );
 
   const applyPreset = useCallback(
     (next: string, explicitRange?: { from: string | null; to: string | null }) => {
@@ -656,8 +520,8 @@ export function useUsageData() {
     applyPreset,
     applyFilter,
     openSessions,
-    runIngest,
-    runRebuild,
+    runIngest: runIngestWithCacheClear,
+    runRebuild: runRebuildWithCacheClear,
     runPurgeArchived,
     reportError,
   };

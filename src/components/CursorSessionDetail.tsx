@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import {
+  getCachedCursorSessionDetail,
+  setCachedCursorSessionDetail,
+} from "../lib/cursorSessionDetailCache";
+import {
   formatClock,
   formatDuration,
   formatTokens,
@@ -30,18 +34,24 @@ export function CursorSessionDetail({
   sourceFile: string;
   onError?: (error: unknown) => void;
 }) {
-  const [detail, setDetail] = useState<CursorSessionDetailDto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = getCachedCursorSessionDetail(sourceFile);
+  const [fetched, setFetched] = useState<CursorSessionDetailDto | null>(null);
+  const [loading, setLoading] = useState(() => !getCachedCursorSessionDetail(sourceFile));
   const generationRef = useRef(0);
+  const detail = cached ?? fetched;
 
   useEffect(() => {
+    if (getCachedCursorSessionDetail(sourceFile)) {
+      return;
+    }
     const generation = ++generationRef.current;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 标准的“发起请求前先置 loading”写法
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 发起请求前先置 loading
     setLoading(true);
     invoke<CursorSessionDetailDto>("get_cursor_session_detail", { sourceFile })
       .then((next) => {
         if (generation === generationRef.current) {
-          setDetail(next);
+          setCachedCursorSessionDetail(sourceFile, next);
+          setFetched(next);
         }
       })
       .catch((error: unknown) => {
