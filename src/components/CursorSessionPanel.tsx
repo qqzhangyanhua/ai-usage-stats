@@ -1,11 +1,31 @@
 import { useMemo } from "react";
-import { breakdownBarOption, cursorSessionDailyOption } from "../lib/chartTheme";
+import {
+  breakdownBarOption,
+  cursorSessionDailyOption,
+  donutOption,
+  modelPalette,
+} from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
-import { formatTokens, projectLabel } from "../lib/format";
+import { formatCompact, formatTokens, projectLabel } from "../lib/format";
 import type { CursorSessionSummaryDto } from "../types";
+import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { ExportableChart } from "./ExportableChart";
-import { KpiCard } from "./Kpi";
+import { KpiCard, LegendRow } from "./Kpi";
+
+function emptySummary(): CursorSessionSummaryDto {
+  return {
+    as_of: null,
+    session_count: 0,
+    turn_count: 0,
+    error_rate: null,
+    active_project_count: 0,
+    by_project: [],
+    by_model: [],
+    top_tools: [],
+    daily: [],
+  };
+}
 
 export function CursorSessionPanel({
   summary,
@@ -14,15 +34,7 @@ export function CursorSessionPanel({
   summary: CursorSessionSummaryDto | null;
   theme: ResolvedTheme;
 }) {
-  const data = summary ?? {
-    as_of: null,
-    session_count: 0,
-    turn_count: 0,
-    error_rate: null,
-    active_project_count: 0,
-    by_project: [],
-    daily: [],
-  };
+  const data = summary ?? emptySummary();
 
   const trendOption = useMemo(
     () => cursorSessionDailyOption(data.daily, theme),
@@ -35,6 +47,24 @@ export function CursorSessionPanel({
     const values = top.map((row) => row.session_count).reverse();
     return breakdownBarOption(labels, values, theme);
   }, [data.by_project, theme]);
+
+  const modelOption = useMemo(() => {
+    const slices = data.by_model.map((row, index) => ({
+      name: row.name,
+      value: row.session_count,
+      color: modelPalette[index % modelPalette.length],
+    }));
+    return donutOption(slices, theme);
+  }, [data.by_model, theme]);
+
+  const toolOption = useMemo(() => {
+    const top = data.top_tools.slice(0, 10);
+    const labels = top.map((row) => row.name).reverse();
+    const values = top.map((row) => row.call_count).reverse();
+    return breakdownBarOption(labels, values, theme);
+  }, [data.top_tools, theme]);
+
+  const modelTotal = data.by_model.reduce((sum, row) => sum + row.session_count, 0);
 
   if (!summary || summary.session_count === 0) {
     return (
@@ -83,6 +113,46 @@ export function CursorSessionPanel({
           style={{ height: 280 }}
         />
       </section>
+
+      <div className="split-2">
+        <section className="panel partition">
+          <div className="panel-head">
+            <h2>按模型</h2>
+          </div>
+          {data.by_model.length > 0 ? (
+            <div className="donut-wrap">
+              <DonutChart option={modelOption} centerValue={formatCompact(modelTotal)} />
+              <div className="legend-col">
+                {data.by_model.slice(0, 8).map((row, index) => (
+                  <LegendRow
+                    key={row.name}
+                    color={modelPalette[index % modelPalette.length]}
+                    label={row.name}
+                    value={`${formatTokens(row.session_count)} 会话`}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="note">暂无模型 enrich 数据（纯问答或未关联 ai_code_hashes）。</p>
+          )}
+        </section>
+
+        <section className="panel partition">
+          <div className="panel-head">
+            <h2>工具调用 Top N</h2>
+          </div>
+          {data.top_tools.length > 0 ? (
+            <ExportableChart
+              option={toolOption}
+              filename="cursor-session-tools"
+              style={{ height: Math.max(220, data.top_tools.slice(0, 10).length * 36) }}
+            />
+          ) : (
+            <p className="note">暂无工具调用记录。</p>
+          )}
+        </section>
+      </div>
 
       <section className="panel partition">
         <div className="panel-head">

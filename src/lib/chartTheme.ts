@@ -11,7 +11,7 @@ import type { ResolvedTheme } from "../hooks/useTheme";
 
 export type ChartTheme = ResolvedTheme;
 
-const modelPalette = ["#8b6cff", "#3b82f6", "#22d3ee", "#64748b", "#f59e0b", "#34d399", "#f472b6"];
+export const modelPalette = ["#8b6cff", "#3b82f6", "#22d3ee", "#64748b", "#f59e0b", "#34d399", "#f472b6"];
 
 const palettes: Record<
   ChartTheme,

@@ -3597,3 +3597,125 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
         2
     );
 }
+
+fn seed_ai_code_hashes(
+    home: &std::path::Path,
+    rows: &[(&str, &str, i64, &str)],
+) {
+    let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
+    std::fs::create_dir_all(db_path.parent().expect("parent")).expect("create dirs");
+    let conn = rusqlite::Connection::open(&db_path).expect("open tracking db");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE ai_code_hashes (
+            hash TEXT,
+            source TEXT,
+            fileExtension TEXT,
+            fileName TEXT,
+            requestId TEXT,
+            conversationId TEXT,
+            timestamp INTEGER,
+            createdAt INTEGER,
+            model TEXT
+        );
+        "#,
+    )
+    .expect("create table");
+    for (conversation_id, model, timestamp, file_name) in rows {
+        conn.execute(
+            r#"
+            INSERT INTO ai_code_hashes(
+                hash, source, fileExtension, fileName, requestId,
+                conversationId, timestamp, createdAt, model
+            ) VALUES (?1, 'composer', 'rs', ?2, 'req', ?3, ?4, ?4, ?5)
+            "#,
+            rusqlite::params![
+                format!("hash-{conversation_id}-{file_name}"),
+                file_name,
+                conversation_id,
+                timestamp,
+                model
+            ],
+        )
+        .expect("insert hash");
+    }
+}
+
+#[test]
+fn cursor_session_enriches_from_ai_code_hashes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_ai_code_hashes(
+        home,
+        &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")],
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].files_touched, 1);
+    assert!(sessions[0].models_json.contains("grok-4.6"));
+    assert!(sessions[0].first_seen_at.as_deref().unwrap().contains("2026"));
+
+    let summary = crate::cursor_session::load_summary(&conn).unwrap();
+    assert_eq!(summary.by_model.len(), 1);
+    assert_eq!(summary.by_model[0].name, "grok-4.6");
+    assert_eq!(summary.by_model[0].session_count, 1);
+    assert_eq!(summary.top_tools.len(), 2);
+    assert_eq!(summary.top_tools[0].name, "Read");
+    assert_eq!(summary.top_tools[0].call_count, 1);
+}
+
+#[test]
+fn cursor_session_transcript_without_hash_stays_counted() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].models_json, "[]");
+    assert_eq!(sessions[0].files_touched, 0);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        1
+    );
+}
+
+#[test]
+fn cursor_session_orphan_hash_does_not_create_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_ai_code_hashes(
+        home,
+        &[("orphan-only", "grok-4.6", 1_784_511_794_686, "lib.rs")],
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    assert!(store::load_cursor_sessions(&conn).unwrap().is_empty());
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        0
+    );
+}

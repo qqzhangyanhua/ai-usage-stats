@@ -456,6 +456,18 @@ pub struct CursorSessionDailyPoint {
     pub turn_count: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionModelRow {
+    pub name: String,
+    pub session_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionToolRow {
+    pub name: String,
+    pub call_count: i64,
+}
+
 /// Cursor 会话汇总：独立维度，不并入本机 token 总量。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CursorSessionSummaryDto {
@@ -465,6 +477,8 @@ pub struct CursorSessionSummaryDto {
     pub error_rate: Option<f64>,
     pub active_project_count: i64,
     pub by_project: Vec<CursorSessionProjectRow>,
+    pub by_model: Vec<CursorSessionModelRow>,
+    pub top_tools: Vec<CursorSessionToolRow>,
     pub daily: Vec<CursorSessionDailyPoint>,
 }
 
@@ -477,6 +491,8 @@ impl CursorSessionSummaryDto {
             error_rate: None,
             active_project_count: 0,
             by_project: Vec::new(),
+            by_model: Vec::new(),
+            top_tools: Vec::new(),
             daily: Vec::new(),
         }
     }

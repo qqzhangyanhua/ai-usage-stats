@@ -225,6 +225,16 @@ export type CursorSessionDailyPoint = {
   turn_count: number;
 };
 
+export type CursorSessionModelRow = {
+  name: string;
+  session_count: number;
+};
+
+export type CursorSessionToolRow = {
+  name: string;
+  call_count: number;
+};
+
 export type CursorSessionSummaryDto = {
   as_of: string | null;
   session_count: number;
@@ -232,6 +242,8 @@ export type CursorSessionSummaryDto = {
   error_rate: number | null;
   active_project_count: number;
   by_project: CursorSessionProjectRow[];
+  by_model: CursorSessionModelRow[];
+  top_tools: CursorSessionToolRow[];
   daily: CursorSessionDailyPoint[];
 };
 

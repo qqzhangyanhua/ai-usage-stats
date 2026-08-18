@@ -5,10 +5,13 @@ use std::time::UNIX_EPOCH;
 
 use rusqlite::Connection;
 
-use crate::adapters::cursor_session::{build_cursor_session_record, parse_cursor_session_transcript};
+use crate::adapters::cursor_session::{
+    apply_hash_enrichment, build_cursor_session_record, load_hash_enrichments,
+    parse_cursor_session_transcript,
+};
 use crate::domain::{
-    CursorSessionDailyPoint, CursorSessionProjectRow, CursorSessionRecord, CursorSessionSummaryDto,
-    IngestIssue, IngestReport,
+    CursorSessionDailyPoint, CursorSessionModelRow, CursorSessionProjectRow, CursorSessionRecord,
+    CursorSessionSummaryDto, CursorSessionToolRow, IngestIssue, IngestReport,
 };
 use crate::store;
 
@@ -27,6 +30,11 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
             return;
         }
     };
+
+    let enrichments = load_hash_enrichments(home).unwrap_or_else(|error| {
+        record_issue(report, &root.to_string_lossy(), &error);
+        BTreeMap::new()
+    });
 
     let mut seen_paths = BTreeSet::new();
     let mut any_failed = false;
@@ -75,7 +83,7 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         };
 
         let seen_at = millis_to_rfc3339(mtime_ms);
-        let record = match build_cursor_session_record(&path_key, &parsed, seen_at) {
+        let mut record = match build_cursor_session_record(&path_key, &parsed, seen_at) {
             Ok(record) => record,
             Err(error) => {
                 record_issue(report, &path_key, &error);
@@ -83,6 +91,13 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
                 continue;
             }
         };
+        if let Some(enrichment) = enrichments.get(&record.session_id) {
+            if let Err(error) = apply_hash_enrichment(&mut record, enrichment) {
+                record_issue(report, &path_key, &error);
+                any_failed = true;
+                continue;
+            }
+        }
 
         if let Err(error) = store::upsert_cursor_session(conn, &record) {
             record_issue(report, &path_key, &error);
@@ -104,7 +119,28 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
         }
     }
 
+    if let Err(error) = refresh_hash_enrichments(conn, &enrichments) {
+        record_issue(report, &root.to_string_lossy(), &error);
+    }
+
     let _ = store::set_cursor_session_as_of(conn, &chrono::Utc::now().to_rfc3339());
+}
+
+fn refresh_hash_enrichments(
+    conn: &Connection,
+    enrichments: &BTreeMap<String, crate::adapters::cursor_session::SessionHashEnrichment>,
+) -> Result<(), String> {
+    let sessions = store::load_cursor_sessions(conn)?;
+    for mut session in sessions {
+        if let Some(enrichment) = enrichments.get(&session.session_id) {
+            apply_hash_enrichment(&mut session, enrichment)?;
+        } else {
+            session.models_json = "[]".to_string();
+            session.files_touched = 0;
+        }
+        store::upsert_cursor_session(conn, &session)?;
+    }
+    Ok(())
 }
 
 pub fn load_summary(conn: &Connection) -> Result<CursorSessionSummaryDto, String> {
@@ -178,6 +214,43 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         })
         .collect();
 
+    let mut models: BTreeMap<String, i64> = BTreeMap::new();
+    let mut tools: BTreeMap<String, i64> = BTreeMap::new();
+    for session in sessions {
+        if let Ok(names) = serde_json::from_str::<Vec<String>>(&session.models_json) {
+            for name in names {
+                if name.is_empty() {
+                    continue;
+                }
+                *models.entry(name).or_insert(0) += 1;
+            }
+        }
+        if let Ok(calls) = serde_json::from_str::<BTreeMap<String, i64>>(&session.tool_calls_json) {
+            for (name, count) in calls {
+                *tools.entry(name).or_insert(0) += count;
+            }
+        }
+    }
+    let mut by_model: Vec<CursorSessionModelRow> = models
+        .into_iter()
+        .map(|(name, session_count)| CursorSessionModelRow { name, session_count })
+        .collect();
+    by_model.sort_by(|a, b| {
+        b.session_count
+            .cmp(&a.session_count)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    let mut top_tools: Vec<CursorSessionToolRow> = tools
+        .into_iter()
+        .map(|(name, call_count)| CursorSessionToolRow { name, call_count })
+        .collect();
+    top_tools.sort_by(|a, b| {
+        b.call_count
+            .cmp(&a.call_count)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    top_tools.truncate(12);
+
     CursorSessionSummaryDto {
         as_of: None,
         session_count,
@@ -185,6 +258,8 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         error_rate,
         active_project_count,
         by_project,
+        by_model,
+        top_tools,
         daily,
     }
 }
