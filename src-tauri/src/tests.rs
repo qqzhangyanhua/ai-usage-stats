@@ -3575,7 +3575,10 @@ fn cursor_account_clear_resets_watermark_without_touching_usage_records() {
     assert_eq!(cleared.event_count, 0);
     assert_eq!(cleared.total_tokens, 0);
     assert_eq!(cleared.as_of, None);
-    assert_eq!(crate::cursor_account::incremental_start_ms(&conn).unwrap(), 0);
+    assert_eq!(
+        crate::cursor_account::incremental_start_ms(&conn).unwrap(),
+        0
+    );
     assert!(store::load_cursor_account_events(&conn).unwrap().is_empty());
 
     let kept = store::load_all(&conn).unwrap();
@@ -3868,7 +3871,9 @@ fn cursor_session_ingest_reconciles_deleted_transcripts() {
     let mut report = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut report);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         1
     );
 
@@ -3876,7 +3881,9 @@ fn cursor_session_ingest_reconciles_deleted_transcripts() {
     let mut again = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut again);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         0
     );
     assert_eq!(again.records_removed, 1);
@@ -3903,7 +3910,9 @@ fn cursor_session_ingest_skips_reconcile_when_parse_failed() {
     let mut first = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut first);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         2
     );
 
@@ -3913,17 +3922,21 @@ fn cursor_session_ingest_skips_reconcile_when_parse_failed() {
     crate::cursor_session::ingest(&conn, home, &mut failed);
     assert_eq!(failed.files_failed, 1);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         2,
         "reconcile should be skipped while a transcript parse fails"
     );
 
-    std::fs::write(&path_two, &fixture("cursor-session-transcript.jsonl")).expect("fix transcript");
+    std::fs::write(&path_two, fixture("cursor-session-transcript.jsonl")).expect("fix transcript");
     let mut clean = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut clean);
     assert_eq!(clean.files_failed, 0);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         1
     );
     assert_eq!(clean.records_removed, 1);
@@ -3944,7 +3957,9 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
     let mut report = crate::domain::IngestReport::default();
     crate::cursor_session::ingest(&conn, home, &mut report);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().turn_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
         2
     );
 
@@ -3953,15 +3968,14 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
     crate::cursor_session::ingest(&conn, home, &mut bad);
     assert_eq!(bad.files_failed, 1);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().turn_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
         2
     );
 }
 
-fn seed_ai_code_hashes(
-    home: &std::path::Path,
-    rows: &[(&str, &str, i64, &str)],
-) {
+fn seed_ai_code_hashes(home: &std::path::Path, rows: &[(&str, &str, i64, &str)]) {
     let db_path = home.join(".cursor/ai-tracking/ai-code-tracking.db");
     std::fs::create_dir_all(db_path.parent().expect("parent")).expect("create dirs");
     let conn = rusqlite::Connection::open(&db_path).expect("open tracking db");
@@ -4011,10 +4025,7 @@ fn cursor_session_enriches_from_ai_code_hashes() {
         "sess-1",
         &fixture("cursor-session-transcript.jsonl"),
     );
-    seed_ai_code_hashes(
-        home,
-        &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")],
-    );
+    seed_ai_code_hashes(home, &[("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs")]);
 
     let conn = store::open_memory().unwrap();
     let mut report = crate::domain::IngestReport::default();
@@ -4024,7 +4035,11 @@ fn cursor_session_enriches_from_ai_code_hashes() {
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].files_touched, 1);
     assert!(sessions[0].models_json.contains("grok-4.6"));
-    assert!(sessions[0].first_seen_at.as_deref().unwrap().contains("2026"));
+    assert!(sessions[0]
+        .first_seen_at
+        .as_deref()
+        .unwrap()
+        .contains("2026"));
 
     let summary = crate::cursor_session::load_summary(&conn).unwrap();
     assert_eq!(summary.by_model.len(), 1);
@@ -4055,7 +4070,9 @@ fn cursor_session_transcript_without_hash_stays_counted() {
     assert_eq!(sessions[0].models_json, "[]");
     assert_eq!(sessions[0].files_touched, 0);
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         1
     );
 }
@@ -4075,7 +4092,9 @@ fn cursor_session_orphan_hash_does_not_create_session() {
 
     assert!(store::load_cursor_sessions(&conn).unwrap().is_empty());
     assert_eq!(
-        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .session_count,
         0
     );
 }

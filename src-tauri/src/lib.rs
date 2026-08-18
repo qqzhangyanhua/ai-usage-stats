@@ -22,10 +22,9 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, CursorAccountUsageDto,
-    CursorSessionSummaryDto, Filter,
-    FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
-    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow,
+    CursorSessionSummaryDto, Filter, FilterOptions, IngestReport, NamedAmount, OverviewDto,
+    PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage, SessionQuery,
+    SessionRow, Source, SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
@@ -437,7 +436,9 @@ async fn has_cursor_session_token() -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn clear_cursor_account_usage(app: tauri::AppHandle) -> Result<CursorAccountUsageDto, String> {
+async fn clear_cursor_account_usage(
+    app: tauri::AppHandle,
+) -> Result<CursorAccountUsageDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;

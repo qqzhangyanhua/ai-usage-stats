@@ -178,11 +178,13 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
     let active_project_count = projects.len() as i64;
     let mut by_project: Vec<CursorSessionProjectRow> = projects
         .into_iter()
-        .map(|(name, (session_count, turn_count))| CursorSessionProjectRow {
-            name,
-            session_count,
-            turn_count,
-        })
+        .map(
+            |(name, (session_count, turn_count))| CursorSessionProjectRow {
+                name,
+                session_count,
+                turn_count,
+            },
+        )
         .collect();
     by_project.sort_by(|a, b| {
         b.session_count
@@ -207,11 +209,13 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
     }
     let daily = daily
         .into_iter()
-        .map(|(bucket, (session_count, turn_count))| CursorSessionDailyPoint {
-            bucket,
-            session_count,
-            turn_count,
-        })
+        .map(
+            |(bucket, (session_count, turn_count))| CursorSessionDailyPoint {
+                bucket,
+                session_count,
+                turn_count,
+            },
+        )
         .collect();
 
     let mut models: BTreeMap<String, i64> = BTreeMap::new();
@@ -233,7 +237,10 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
     }
     let mut by_model: Vec<CursorSessionModelRow> = models
         .into_iter()
-        .map(|(name, session_count)| CursorSessionModelRow { name, session_count })
+        .map(|(name, session_count)| CursorSessionModelRow {
+            name,
+            session_count,
+        })
         .collect();
     by_model.sort_by(|a, b| {
         b.session_count
@@ -272,7 +279,9 @@ fn walk_transcripts(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn walk_transcripts_inner(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in fs::read_dir(dir).map_err(|e| format!("扫描 Cursor 会话目录 {} 失败：{e}", dir.display()))? {
+    for entry in fs::read_dir(dir)
+        .map_err(|e| format!("扫描 Cursor 会话目录 {} 失败：{e}", dir.display()))?
+    {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         if path.is_dir() {
@@ -335,12 +344,8 @@ mod tests {
 
     #[test]
     fn project_from_transcript_path_decodes_slug() {
-        let path = Path::new(
-            "/home/.cursor/projects/Users-test-project/agent-transcripts/s1/s1.jsonl",
-        );
-        assert_eq!(
-            project_from_transcript_path(path),
-            "/Users/test/project"
-        );
+        let path =
+            Path::new("/home/.cursor/projects/Users-test-project/agent-transcripts/s1/s1.jsonl");
+        assert_eq!(project_from_transcript_path(path), "/Users/test/project");
     }
 }
