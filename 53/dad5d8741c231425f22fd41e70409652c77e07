@@ -1,0 +1,51 @@
+src/types.ts
+  s_aab3df05781610::t_2d4500591b171d 150-160
+src/components/InstructionEditor.tsx
+  s_aab3df05781610::t_dc7ac8509826e5 1-59,71
+  s_aab3df05781610::t_99397fa38902d5 60-70
+src-tauri/src/official_quota/mod.rs
+  s_aab3df05781610::t_6fbe4ca8dd7be6 26
+src/components/GlobalInstructionPanel.tsx
+  s_aab3df05781610::t_d0d997c7a320d4 2
+  s_aab3df05781610::t_a2cccd5ac5e470 11,33,37,39-40,46-48,94,108-131,142,145-146,150,153-154,158,184-190
+  s_aab3df05781610::t_edea061d41774d 34-35,38
+src-tauri/src/lib.rs
+  s_aab3df05781610::t_be6324c96b038a 16
+  s_aab3df05781610::t_ead6c7ad49688e 38
+  s_aab3df05781610::t_987c1235ba3210 20
+  s_aab3df05781610::t_994492a31be045 590-606
+  s_aab3df05781610::t_d8303a655014e3 93
+  s_aab3df05781610::t_988d474fed9c68 870
+  s_aab3df05781610::t_5d396a1a81134d 589
+src/styles.css
+  s_aab3df05781610::t_ee54c664dfb928 3275-3303
+src-tauri/src/domain.rs
+  s_aab3df05781610::t_026376190c3f65 305-317
+src-tauri/src/tests.rs
+  s_aab3df05781610::t_521d90069fb44d 6449-6497,6502-6528,6532-6538
+  s_aab3df05781610::t_72c3318f609b31 6539-6554
+  s_aab3df05781610::t_ead6c7ad49688e 6498-6501,6529-6531
+  s_aab3df05781610::t_030beadf078321 6423-6448
+src-tauri/src/paths.rs
+  s_aab3df05781610::t_4f9ea87b09b44c 1-11
+src-tauri/src/user_files.rs
+  s_aab3df05781610::t_ead6c7ad49688e 25-29
+  s_aab3df05781610::t_3e15b6ed04232e 55,61-68
+  s_aab3df05781610::t_e09263ea3acd81 1-24,30-54,56-60,69-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "53dad5d8741c231425f22fd41e70409652c77e07",
+  "prompts": {},
+  "sessions": {
+    "s_aab3df05781610": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f4d4d20-1457-420b-9020-edca79b04d63",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
