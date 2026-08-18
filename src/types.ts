@@ -124,7 +124,10 @@ export type InstructionLoadStatus =
 
 export type InstructionEvidence = "verified" | "inferred" | "no_mechanism";
 
+export type InstructionEntryKind = "file" | "directory";
+
 export type GlobalInstructionFile = {
+  kind: InstructionEntryKind;
   display_path: string;
   abs_path: string;
   byte_size: number;

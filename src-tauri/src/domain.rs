@@ -263,6 +263,13 @@ pub enum InstructionEvidence {
     NoMechanism,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstructionEntryKind {
+    File,
+    Directory,
+}
+
 /// 各 Source 的消耗摘要，扫描接缝预留给用量交叉洞察，本维度不写入 sqlite。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct InstructionUsageSummary {
@@ -277,6 +284,7 @@ pub struct InstructionSourceUsage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalInstructionFile {
+    pub kind: InstructionEntryKind,
     pub display_path: String,
     pub abs_path: String,
     pub byte_size: u64,

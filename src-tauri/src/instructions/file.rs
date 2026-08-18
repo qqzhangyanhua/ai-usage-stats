@@ -3,7 +3,9 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::{GlobalInstructionFile, InstructionEvidence, InstructionLoadStatus};
+use crate::domain::{
+    GlobalInstructionFile, InstructionEntryKind, InstructionEvidence, InstructionLoadStatus,
+};
 
 pub fn read_file(
     path: &Path,
@@ -21,6 +23,7 @@ pub fn read_file(
                 None
             };
             GlobalInstructionFile {
+                kind: InstructionEntryKind::File,
                 display_path: display_path.to_string(),
                 abs_path: path.to_string_lossy().into_owned(),
                 byte_size: meta.len(),
@@ -51,6 +54,7 @@ fn missing(
     note: Option<String>,
 ) -> GlobalInstructionFile {
     GlobalInstructionFile {
+        kind: InstructionEntryKind::File,
         display_path: display_path.to_string(),
         abs_path: path.to_string_lossy().into_owned(),
         byte_size: 0,
@@ -62,6 +66,32 @@ fn missing(
         note,
         action: None,
     }
+}
+
+pub fn read_directory(
+    path: &Path,
+    display_path: &str,
+    load_status: InstructionLoadStatus,
+    evidence: InstructionEvidence,
+    note: Option<String>,
+) -> Option<GlobalInstructionFile> {
+    let meta = fs::metadata(path).ok()?;
+    if !meta.is_dir() {
+        return None;
+    }
+    Some(GlobalInstructionFile {
+        kind: InstructionEntryKind::Directory,
+        display_path: display_path.to_string(),
+        abs_path: path.to_string_lossy().into_owned(),
+        byte_size: 0,
+        modified_at: mtime_rfc3339(&meta),
+        load_status,
+        evidence,
+        content: String::new(),
+        error: None,
+        note,
+        action: None,
+    })
 }
 
 pub fn list_files(dir: &Path) -> Vec<(String, std::path::PathBuf)> {

@@ -8,7 +8,8 @@ import type {
   InstructionLoadStatus,
 } from "../types";
 import { EmptyState } from "./EmptyState";
-import { canEditInstruction, InstructionEditor } from "./InstructionEditor";
+import { canEditInstruction, canOpenInstruction } from "../lib/instructionAccess";
+import { InstructionEditor } from "./InstructionEditor";
 import { Button } from "./ui/Button";
 
 const STATUS_LABEL: Record<InstructionLoadStatus, string> = {
@@ -84,6 +85,15 @@ export function GlobalInstructionPanel() {
     }
   }
 
+  async function openExternal(absPath: string) {
+    setActionError(null);
+    try {
+      await invoke("open_global_instruction", { abs_path: absPath });
+    } catch (err: unknown) {
+      setActionError(humanStatus(err));
+    }
+  }
+
   return (
     <article className="panel instruction-panel">
       <div className="panel-head">
@@ -96,7 +106,7 @@ export function GlobalInstructionPanel() {
         </Button>
       </div>
       {error ? <EmptyState tone="warn" title="读取失败" hint={error} /> : null}
-      {actionError ? <EmptyState tone="warn" title="无法跳转" hint={actionError} /> : null}
+      {actionError ? <EmptyState tone="warn" title="无法打开" hint={actionError} /> : null}
       {!error && !files.length && !busy ? (
         <EmptyState title="尚未发现全局指令" hint="当前扫描 Claude、Codex、Gemini 与 Cursor。" />
       ) : null}
@@ -126,6 +136,7 @@ export function GlobalInstructionPanel() {
                         load(true);
                       }}
                       onCursorSettings={openCursorSettings}
+                      onOpenExternal={() => void openExternal(file.abs_path)}
                     />
                   );
                 })}
@@ -145,6 +156,7 @@ function InstructionRow({
   onDraft,
   onSaved,
   onCursorSettings,
+  onOpenExternal,
 }: {
   file: GlobalInstructionFile;
   draft: string;
@@ -153,23 +165,31 @@ function InstructionRow({
   onDraft: (value: string) => void;
   onSaved: () => void;
   onCursorSettings: () => void;
+  onOpenExternal: () => void;
 }) {
   return (
     <li className={`instruction-row status-${file.load_status} evidence-${file.evidence}`}>
-      <button type="button" className="instruction-row-head" onClick={onToggle}>
-        <div className="instruction-row-title">
-          <strong>{file.display_path}</strong>
-          <span className="instruction-badges">
-            <em className="instruction-status">{STATUS_LABEL[file.load_status]}</em>
-            <em className="instruction-evidence">{EVIDENCE_LABEL[file.evidence]}</em>
-          </span>
-        </div>
-        <div className="instruction-row-meta">
-          <span>{formatBytes(file.byte_size)}</span>
-          <span>{formatClock(file.modified_at)}</span>
-        </div>
-        {file.note ? <p className="instruction-note">{file.note}</p> : null}
-      </button>
+      <div className="instruction-row-bar">
+        <button type="button" className="instruction-row-head" onClick={onToggle}>
+          <div className="instruction-row-title">
+            <strong>{file.display_path}</strong>
+            <span className="instruction-badges">
+              <em className="instruction-status">{STATUS_LABEL[file.load_status]}</em>
+              <em className="instruction-evidence">{EVIDENCE_LABEL[file.evidence]}</em>
+            </span>
+          </div>
+          <div className="instruction-row-meta">
+            <span>{file.kind === "directory" ? "目录" : formatBytes(file.byte_size)}</span>
+            <span>{formatClock(file.modified_at)}</span>
+          </div>
+          {file.note ? <p className="instruction-note">{file.note}</p> : null}
+        </button>
+        {canOpenInstruction(file) ? (
+          <Button type="button" variant="ghost" onClick={onOpenExternal}>
+            在外部打开
+          </Button>
+        ) : null}
+      </div>
       {open ? (
         <div className="instruction-body">
           {file.error ? <p className="instruction-error">{file.error}</p> : null}

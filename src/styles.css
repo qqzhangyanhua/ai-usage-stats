@@ -3169,6 +3169,22 @@ td.row-actions {
   overflow: hidden;
 }
 
+.instruction-row-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.instruction-row-bar .instruction-row-head {
+  flex: 1;
+  min-width: 0;
+}
+
+.instruction-row-bar > .ghost-btn {
+  margin: 8px 8px 0 0;
+  flex-shrink: 0;
+}
+
 .instruction-row-head {
   display: grid;
   gap: 6px;

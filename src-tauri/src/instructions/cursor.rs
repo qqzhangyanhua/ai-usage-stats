@@ -7,6 +7,7 @@ pub fn scan() -> GlobalInstructionSourceRow {
         source: "cursor".into(),
         application: "Cursor".into(),
         files: vec![GlobalInstructionFile {
+            kind: crate::domain::InstructionEntryKind::File,
             display_path: "Cursor 账号级偏好".into(),
             abs_path: String::new(),
             byte_size: 0,

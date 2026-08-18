@@ -6241,27 +6241,57 @@ fn scan_lists_claude_main_file_and_user_instruction_files() {
 
     let claude = instruction_source(&dto, "claude");
     assert_eq!(claude.application, "Claude");
-    let files = &claude.files;
-    assert_eq!(files.len(), 3);
-    assert_eq!(files[0].display_path, "~/.claude/CLAUDE.md");
-    assert_eq!(files[0].byte_size, 15);
-    assert_eq!(files[0].content, "prefer-chinese\n");
+    let main = file_named(claude, "~/.claude/CLAUDE.md");
+    assert_eq!(main.byte_size, 15);
+    assert_eq!(main.content, "prefer-chinese\n");
     assert_eq!(
-        files[0].load_status,
+        main.load_status,
         crate::domain::InstructionLoadStatus::Loaded
     );
-    assert!(files[0]
-        .modified_at
-        .as_deref()
-        .is_some_and(|t| !t.is_empty()));
-    assert_eq!(files[1].display_path, "~/.claude/rules/routing.md");
-    assert_eq!(files[1].content, "# routing\n");
+    assert!(main.modified_at.as_deref().is_some_and(|t| !t.is_empty()));
+    let routing = file_named(claude, "~/.claude/rules/routing.md");
+    assert_eq!(routing.content, "# routing\n");
     assert_eq!(
-        files[1].load_status,
+        routing.load_status,
         crate::domain::InstructionLoadStatus::Loaded
     );
-    assert_eq!(files[2].display_path, "~/.claude/rules/skills.md");
-    assert_eq!(files[2].content, "# skills\n");
+    assert_eq!(
+        file_named(claude, "~/.claude/rules/skills.md").content,
+        "# skills\n"
+    );
+}
+
+#[test]
+fn scan_lists_claude_rules_directory_when_present() {
+    let home = tempfile::tempdir().unwrap();
+    let claude_rules = home.path().join(".claude/rules");
+    let codex_rules = home.path().join(".codex/rules");
+    std::fs::create_dir_all(&claude_rules).unwrap();
+    std::fs::create_dir_all(&codex_rules).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "ok\n").unwrap();
+    std::fs::write(claude_rules.join("routing.md"), "# routing\n").unwrap();
+    std::fs::write(codex_rules.join("default.rules"), "third-party\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+
+    let claude_dir = file_named(instruction_source(&dto, "claude"), "~/.claude/rules/");
+    assert_eq!(
+        claude_dir.kind,
+        crate::domain::InstructionEntryKind::Directory
+    );
+    assert_eq!(
+        claude_dir.load_status,
+        crate::domain::InstructionLoadStatus::Loaded
+    );
+    assert_eq!(claude_dir.abs_path, claude_rules.to_string_lossy());
+    assert!(instruction_source(&dto, "codex")
+        .files
+        .iter()
+        .all(|file| file.kind != crate::domain::InstructionEntryKind::Directory));
 }
 
 #[test]
@@ -6551,4 +6581,42 @@ fn write_user_file_rejects_parent_dir_name_in_allowlist() {
         std::fs::read_to_string(home.path().join(".claude/CLAUDE.md")).unwrap(),
         "keep\n"
     );
+}
+
+#[test]
+fn open_target_uses_existing_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("CLAUDE.md");
+    std::fs::write(&path, "x\n").unwrap();
+    assert_eq!(
+        crate::instructions::resolve_open_path(path.to_str().unwrap()).unwrap(),
+        path
+    );
+}
+
+#[test]
+fn open_target_uses_directory_when_path_is_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rules");
+    std::fs::create_dir_all(&path).unwrap();
+    assert_eq!(
+        crate::instructions::resolve_open_path(path.to_str().unwrap()).unwrap(),
+        path
+    );
+}
+
+#[test]
+fn open_target_falls_back_to_parent_when_file_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("CLAUDE.md");
+    assert_eq!(
+        crate::instructions::resolve_open_path(path.to_str().unwrap()).unwrap(),
+        dir.path()
+    );
+}
+
+#[test]
+fn open_target_rejects_empty_path() {
+    let error = crate::instructions::resolve_open_path("").unwrap_err();
+    assert!(error.contains("没有可打开"));
 }

@@ -605,6 +605,13 @@ async fn write_global_instruction(
 }
 
 #[tauri::command]
+async fn open_global_instruction(abs_path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || instructions::open_in_external_editor(&abs_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn open_cursor_instruction_settings() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(instructions::cursor::open_settings)
         .await
@@ -868,6 +875,7 @@ pub fn run() {
             save_budget,
             get_global_instructions,
             write_global_instruction,
+            open_global_instruction,
             open_cursor_instruction_settings,
             get_official_quota,
             refresh_official_quota,
