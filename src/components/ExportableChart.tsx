@@ -38,7 +38,7 @@ export function ExportableChart({
   }
 
   return (
-    <div className="chart-frame">
+    <div className="chart-frame" style={style}>
       <button
         type="button"
         className="chart-export-btn"
@@ -49,7 +49,11 @@ export function ExportableChart({
       >
         <Icon name="download" size={13} />
       </button>
-      <ReactECharts ref={chartRef} option={option} style={style} />
+      <ReactECharts
+        ref={chartRef}
+        option={option}
+        style={{ height: "100%", width: "100%" }}
+      />
     </div>
   );
 }

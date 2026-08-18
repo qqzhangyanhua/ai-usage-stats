@@ -1623,13 +1623,19 @@ input[type="checkbox"] {
 
 .donut-wrap {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 160px minmax(200px, 26rem);
+  gap: 8px 24px;
   align-items: center;
-  align-content: center;
+  justify-content: start;
+  min-height: 0;
+}
+
+.dash-side .donut-wrap,
+.dash-bottom .donut-wrap {
   flex: 1;
   height: 100%;
-  min-height: 0;
+  align-content: center;
+  grid-template-columns: 160px minmax(0, 1fr);
 }
 
 .donut-chart {
@@ -1681,7 +1687,8 @@ input[type="checkbox"] {
 .legend-col {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  justify-content: center;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -1718,9 +1725,10 @@ input[type="checkbox"] {
 
 .legend-nums {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  flex-flow: row wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 6px;
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -2181,6 +2189,12 @@ tr:hover .session-id-cell .table-icon-btn,
 .note {
   color: var(--orange-fg);
   font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+
+.note:last-child {
+  margin-bottom: 0;
 }
 
 table {
@@ -2848,16 +2862,21 @@ td.row-actions {
 
 .loading-overlay-wrap {
   position: relative;
-  flex: 1 0 auto;
-  min-height: 100%;
   width: 100%;
   display: flex;
   flex-direction: column;
 }
 
+/* 只有页面根遮罩铺满 main。嵌套层再写 min-height:100% 会按外层总高度再撑一截，滚动到底后留下大片空白。 */
+.main > .loading-overlay-wrap {
+  flex: 1 0 auto;
+  min-height: 100%;
+}
+
 /* 嵌在 panel 里时不要撑满父级高度，否则 overflow:hidden 会裁掉下面的分页。 */
-.panel > .loading-overlay-wrap {
-  flex: 0 0 auto;
+.panel > .loading-overlay-wrap,
+.loading-overlay-wrap .loading-overlay-wrap {
+  flex: none;
   min-height: 0;
 }
 
