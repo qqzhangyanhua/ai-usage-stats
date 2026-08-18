@@ -14,17 +14,30 @@ function loadCollapsed(): boolean {
   }
 }
 
-const nav: { id: View; label: string; icon: IconName }[] = [
-  { id: "overview", label: "概览", icon: "overview" },
-  { id: "trend", label: "使用统计", icon: "trend" },
-  { id: "sessions", label: "会话管理", icon: "sessions" },
-  { id: "model", label: "模型统计", icon: "model" },
-  { id: "project", label: "项目统计", icon: "project" },
-  { id: "application", label: "应用统计", icon: "source" },
-  { id: "provider", label: "Provider", icon: "provider" },
-  { id: "cursor", label: "Cursor 代码量", icon: "cursor" },
-  { id: "cursor-sessions", label: "Cursor 会话", icon: "sessions" },
-  { id: "settings", label: "设置", icon: "settings" },
+const navGroups: { label: string; items: { id: View; label: string; icon: IconName }[] }[] = [
+  {
+    label: "用量",
+    items: [
+      { id: "overview", label: "概览", icon: "overview" },
+      { id: "trend", label: "使用统计", icon: "trend" },
+      { id: "sessions", label: "会话管理", icon: "sessions" },
+      { id: "model", label: "模型统计", icon: "model" },
+      { id: "project", label: "项目统计", icon: "project" },
+      { id: "application", label: "应用统计", icon: "source" },
+      { id: "provider", label: "Provider", icon: "provider" },
+    ],
+  },
+  {
+    label: "Cursor",
+    items: [
+      { id: "cursor", label: "代码量", icon: "cursor" },
+      { id: "cursor-sessions", label: "会话", icon: "sessions" },
+    ],
+  },
+  {
+    label: "系统",
+    items: [{ id: "settings", label: "设置", icon: "settings" }],
+  },
 ];
 
 export const AUTO_REFRESH_OPTIONS: { value: string; label: string }[] = [
@@ -86,16 +99,21 @@ export function Sidebar({
         </div>
       </div>
       <nav className="nav">
-        {nav.map((item) => (
-          <button
-            key={item.id}
-            className={view === item.id ? "nav-btn active" : "nav-btn"}
-            onClick={() => onNavigate(item.id)}
-            title={collapsed ? item.label : undefined}
-          >
-            <Icon name={item.icon} size={16} />
-            <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
-          </button>
+        {navGroups.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <div className={collapsed ? "sr-only" : "nav-group-label"}>{group.label}</div>
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                className={view === item.id ? "nav-btn active" : "nav-btn"}
+                onClick={() => onNavigate(item.id)}
+                title={collapsed ? item.label : undefined}
+              >
+                <Icon name={item.icon} size={16} />
+                <span className={collapsed ? "sr-only" : undefined}>{item.label}</span>
+              </button>
+            ))}
+          </div>
         ))}
       </nav>
       <button
@@ -151,7 +169,9 @@ export function Sidebar({
               </div>
             </div>
           </div>
-          <div className="version">版本 0.1.0</div>
+          <div className="version" title="数字键切页 · R 刷新 · Esc 清空筛选">
+            版本 0.1.0 · 快捷键 R / 1-0
+          </div>
         </div>
       ) : (
         <div className="sidebar-foot collapsed-foot">

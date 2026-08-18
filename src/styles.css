@@ -352,8 +352,29 @@ button {
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
   flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-group-label {
+  padding: 8px 12px 2px;
+  color: var(--text-faint-2);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar.collapsed .nav {
+  gap: 4px;
 }
 
 .nav-btn {
@@ -496,10 +517,51 @@ button {
 
 .topbar {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 20px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: var(--bg);
+}
+
+.topbar-main {
+  display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 6px 20px 3px;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--tone-codex-bg);
+  color: var(--purple-fg);
+  font-size: 12px;
+}
+
+.filter-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-chip:hover:not(:disabled) {
+  border-color: rgba(139, 108, 255, 0.5);
 }
 
 .topbar h1 {
@@ -730,6 +792,22 @@ button {
 .date-cell:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.multi-select-search {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.multi-select-search:focus {
+  outline: none;
+  border-color: rgba(139, 108, 255, 0.45);
 }
 
 .multi-select-actions {
@@ -1783,6 +1861,19 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
+.rank-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rank-link:hover {
+  color: var(--purple-fg);
+}
+
 .rank-bar {
   height: 8px;
   border-radius: 999px;
@@ -1851,10 +1942,26 @@ input[type="checkbox"] {
 }
 
 .session-list li {
+  display: block;
+}
+
+.sess-open {
   display: grid;
   grid-template-columns: 28px 1fr auto auto;
   gap: 8px;
   align-items: center;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sess-open:hover {
+  background: var(--overlay-2);
 }
 
 .src-ico,

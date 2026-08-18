@@ -68,6 +68,8 @@ export const Overview = memo(function Overview({
   theme,
   onGrain,
   onOpenSessions,
+  onProjectClick,
+  onSessionClick,
 }: {
   overview: OverviewDto | null;
   billingWindows: BillingWindowsDto | null;
@@ -85,6 +87,8 @@ export const Overview = memo(function Overview({
   theme: ResolvedTheme;
   onGrain: (grain: Grain) => void;
   onOpenSessions: () => void;
+  onProjectClick?: (project: string) => void;
+  onSessionClick?: (session: { id: string; source: string }) => void;
 }) {
   const data = overview ?? emptyOverview;
   const palette = chartPalette(theme);
@@ -260,9 +264,14 @@ export const Overview = memo(function Overview({
             {topProjects.map((row, index) => (
               <li key={row.name}>
                 <span className="rank">{index + 1}</span>
-                <span className="rank-name" title={row.name}>
+                <button
+                  type="button"
+                  className="rank-name rank-link"
+                  title={`筛选项目 ${projectLabel(row.name)}`}
+                  onClick={() => onProjectClick?.(row.name)}
+                >
                   {projectLabel(row.name)}
-                </span>
+                </button>
                 <span className="rank-bar">
                   <i style={{ width: `${(row.total_tokens / maxProject) * 100}%` }} />
                 </span>
@@ -286,6 +295,11 @@ export const Overview = memo(function Overview({
           <ul className="session-list">
             {recent.map((row) => (
               <li key={`${row.source}-${row.session_id}`}>
+                <button
+                  type="button"
+                  className="sess-open"
+                  onClick={() => onSessionClick?.({ id: row.session_id, source: row.source })}
+                >
                 <span className={`src-ico ${sourceTone[row.source] ?? "tone-other"}`}>
                   {applicationLabel(row.source).slice(0, 1).toUpperCase()}
                 </span>
@@ -301,6 +315,7 @@ export const Overview = memo(function Overview({
                 </div>
                 <span className="sess-time">{relativeTime(row.ended_at)}</span>
                 <span className="sess-tokens">{formatCompact(row.total_tokens)}</span>
+                </button>
               </li>
             ))}
             {recent.length === 0 ? (
@@ -345,6 +360,12 @@ export const Overview = memo(function Overview({
 });
 
 function periodDays(preset: string, grain: Grain, bucketCount: number): number {
+  if (preset === "today") {
+    return 1;
+  }
+  if (preset === "month") {
+    return Math.max(new Date().getDate(), 1);
+  }
   if (preset === "7") {
     return 7;
   }

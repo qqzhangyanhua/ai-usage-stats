@@ -4,8 +4,10 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
+import { clearDimensionFilters } from "./lib/filterChips";
 import {
   LazyApplicationAnalytics,
   LazyBreakdown,
@@ -23,6 +25,14 @@ export default function App() {
   const data = useUsageData();
   const { theme, mode: themeMode, setMode: setThemeMode } = useTheme();
   const { view } = data;
+
+  useKeyboardShortcuts({
+    onNavigate: data.navigate,
+    onRefresh: () => {
+      void data.runIngest("刷新");
+    },
+    onClearFilters: () => data.applyFilter(clearDimensionFilters(data.filter)),
+  });
 
   return (
     <div className="app">
@@ -79,6 +89,13 @@ export default function App() {
                     theme={theme}
                     onGrain={data.setGrain}
                     onOpenSessions={data.openSessions}
+                    onProjectClick={(project) =>
+                      data.applyFilter({ ...data.filter, projects: [project] })
+                    }
+                    onSessionClick={(session) => {
+                      data.openSessions();
+                      data.setSelectedSession(session);
+                    }}
                   />
                 ) : null}
                 {view === "trend" ? (
