@@ -3272,3 +3272,32 @@ td.row-actions {
   color: var(--red-fg);
   font-size: 12px;
 }
+
+.instruction-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-textarea {
+  width: 100%;
+  min-height: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.instruction-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.instruction-editor-actions .instruction-error {
+  margin: 0;
+}

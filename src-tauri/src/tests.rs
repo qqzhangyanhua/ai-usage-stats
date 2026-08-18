@@ -6420,3 +6420,135 @@ fn scan_always_emits_four_verified_sources() {
             .all(|file| { file.evidence == crate::domain::InstructionEvidence::Verified }));
     }
 }
+
+fn file_mtime(path: &std::path::Path) -> String {
+    let meta = std::fs::metadata(path).unwrap();
+    chrono::DateTime::<chrono::Utc>::from(meta.modified().unwrap()).to_rfc3339()
+}
+
+#[test]
+fn write_user_file_replaces_content_when_mtime_matches() {
+    let home = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let path = home.path().join(".claude/CLAUDE.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "old\n").unwrap();
+    let expected = file_mtime(&path);
+
+    crate::user_files::write(
+        home.path(),
+        data.path(),
+        &path,
+        "new-content\n",
+        Some(expected.as_str()),
+    )
+    .unwrap();
+
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "new-content\n");
+}
+
+#[test]
+fn write_user_file_rejects_stale_mtime_and_keeps_original() {
+    let home = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let path = home.path().join(".claude/CLAUDE.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "keep-me\n").unwrap();
+
+    let error = crate::user_files::write(
+        home.path(),
+        data.path(),
+        &path,
+        "stolen\n",
+        Some("2000-01-01T00:00:00+00:00"),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("外部被修改"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep-me\n");
+}
+
+#[test]
+fn write_user_file_backs_up_original_before_replace() {
+    let home = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let path = home.path().join(".codex/AGENTS.md");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "before-backup\n").unwrap();
+    let expected = file_mtime(&path);
+
+    crate::user_files::write(
+        home.path(),
+        data.path(),
+        &path,
+        "after-backup\n",
+        Some(expected.as_str()),
+    )
+    .unwrap();
+
+    let backups: Vec<_> = std::fs::read_dir(data.path().join("instruction-backups"))
+        .unwrap()
+        .flatten()
+        .flat_map(|entry| std::fs::read_dir(entry.path()).into_iter().flatten())
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bak"))
+        .collect();
+    assert_eq!(backups.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(&backups[0]).unwrap(),
+        "before-backup\n"
+    );
+}
+
+#[test]
+fn write_user_file_rejects_path_outside_allowlist() {
+    let home = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let path = home.path().join(".codex/rules/default.rules");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "third-party\n").unwrap();
+
+    let error = crate::user_files::write(
+        home.path(),
+        data.path(),
+        &path,
+        "nope\n",
+        Some(file_mtime(&path).as_str()),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("可写名单"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "third-party\n");
+}
+
+#[test]
+fn write_user_file_rejects_third_party_database() {
+    let home = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let path = home
+        .path()
+        .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "db").unwrap();
+
+    let error = crate::user_files::write(home.path(), data.path(), &path, "x", None).unwrap_err();
+    assert!(error.contains("可写名单"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "db");
+}
+
+#[test]
+fn write_user_file_rejects_parent_dir_name_in_allowlist() {
+    let home = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let path = home.path().join(".claude/rules/../CLAUDE.md");
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "keep\n").unwrap();
+
+    let error = crate::user_files::write(home.path(), data.path(), &path, "x\n", None).unwrap_err();
+    assert!(error.contains("可写名单"));
+    assert_eq!(
+        std::fs::read_to_string(home.path().join(".claude/CLAUDE.md")).unwrap(),
+        "keep\n"
+    );
+}

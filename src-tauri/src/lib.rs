@@ -13,9 +13,11 @@ pub mod ingest;
 pub mod instructions;
 pub mod litellm;
 pub mod official_quota;
+pub mod paths;
 pub mod query;
 pub mod store;
 pub mod tray;
+pub mod user_files;
 
 use std::fs;
 use std::path::PathBuf;
@@ -33,7 +35,7 @@ use crate::domain::{
     GlobalInstructionDto, IngestReport, InstructionUsageSummary, NamedAmount, OfficialQuotaConfig,
     OfficialQuotaDto, OfficialQuotaHookDto, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
     PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow,
+    TurnRow, WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -88,11 +90,7 @@ impl AppState {
 }
 
 fn cache_dir() -> PathBuf {
-    let dir = dirs::data_local_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
-        .join("ai-usage-stats");
-    let _ = fs::create_dir_all(&dir);
-    dir
+    crate::paths::app_data_dir()
 }
 
 pub(crate) fn load_prices(path: &PathBuf) -> PriceTable {
@@ -589,6 +587,24 @@ async fn get_global_instructions() -> Result<GlobalInstructionDto, String> {
 }
 
 #[tauri::command]
+async fn write_global_instruction(
+    request: WriteUserFileRequest,
+) -> Result<WriteUserFileResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = dirs::home_dir().ok_or_else(|| "无法确定用户主目录".to_string())?;
+        crate::user_files::write(
+            &home,
+            &crate::paths::app_data_dir(),
+            std::path::Path::new(&request.abs_path),
+            &request.content,
+            request.expected_mtime.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn open_cursor_instruction_settings() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(instructions::cursor::open_settings)
         .await
@@ -851,6 +867,7 @@ pub fn run() {
             get_budget_status,
             save_budget,
             get_global_instructions,
+            write_global_instruction,
             open_cursor_instruction_settings,
             get_official_quota,
             refresh_official_quota,

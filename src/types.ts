@@ -147,6 +147,17 @@ export type GlobalInstructionDto = {
   sources: GlobalInstructionSourceRow[];
 };
 
+export type WriteUserFileRequest = {
+  abs_path: string;
+  content: string;
+  expected_mtime: string | null;
+};
+
+export type WriteUserFileResult = {
+  modified_at: string | null;
+  byte_size: number;
+};
+
 export type BudgetConfig = {
   monthly_usd: number | null;
 };

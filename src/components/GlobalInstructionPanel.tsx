@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatBytes, formatClock, humanStatus } from "../lib/format";
 import type {
   GlobalInstructionDto,
@@ -8,6 +8,7 @@ import type {
   InstructionLoadStatus,
 } from "../types";
 import { EmptyState } from "./EmptyState";
+import { canEditInstruction, InstructionEditor } from "./InstructionEditor";
 import { Button } from "./ui/Button";
 
 const STATUS_LABEL: Record<InstructionLoadStatus, string> = {
@@ -29,13 +30,22 @@ export function GlobalInstructionPanel() {
   const [busy, setBusy] = useState(false);
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
 
-  const load = useCallback(() => {
+  const load = useCallback((force = false) => {
+    if (!force && Object.keys(draftsRef.current).length > 0) {
+      return;
+    }
     setBusy(true);
     setError(null);
     invoke<GlobalInstructionDto>("get_global_instructions")
       .then((next) => {
         setData(next);
+        if (force) {
+          setDrafts({});
+        }
       })
       .catch((err: unknown) => {
         setError(humanStatus(err));
@@ -81,7 +91,7 @@ export function GlobalInstructionPanel() {
           <h2>全局指令</h2>
           <p className="muted">每次进入或切回应用时重新读盘，不缓存。</p>
         </div>
-        <Button type="button" variant="ghost" disabled={busy} onClick={load}>
+        <Button type="button" variant="ghost" disabled={busy} onClick={() => load(true)}>
           重新读取
         </Button>
       </div>
@@ -95,20 +105,30 @@ export function GlobalInstructionPanel() {
             <section className="instruction-source" key={row.source}>
               <h3>{row.application}</h3>
               <ul className="instruction-list">
-                {row.files.map((file) => (
-                  <InstructionRow
-                    key={`${row.source}:${file.display_path}`}
-                    file={file}
-                    open={openPath === `${row.source}:${file.display_path}`}
-                    onToggle={() =>
-                      setOpenPath((current) => {
-                        const id = `${row.source}:${file.display_path}`;
-                        return current === id ? null : id;
-                      })
-                    }
-                    onCursorSettings={openCursorSettings}
-                  />
-                ))}
+                {row.files.map((file) => {
+                  const id = `${row.source}:${file.display_path}`;
+                  return (
+                    <InstructionRow
+                      key={id}
+                      file={file}
+                      draft={drafts[id] ?? file.content}
+                      open={openPath === id}
+                      onToggle={() => setOpenPath((current) => (current === id ? null : id))}
+                      onDraft={(value) =>
+                        setDrafts((current) => ({ ...current, [id]: value }))
+                      }
+                      onSaved={() => {
+                        setDrafts((current) => {
+                          const next = { ...current };
+                          delete next[id];
+                          return next;
+                        });
+                        load(true);
+                      }}
+                      onCursorSettings={openCursorSettings}
+                    />
+                  );
+                })}
               </ul>
             </section>
           ))
@@ -119,19 +139,23 @@ export function GlobalInstructionPanel() {
 
 function InstructionRow({
   file,
+  draft,
   open,
   onToggle,
+  onDraft,
+  onSaved,
   onCursorSettings,
 }: {
   file: GlobalInstructionFile;
+  draft: string;
   open: boolean;
   onToggle: () => void;
+  onDraft: (value: string) => void;
+  onSaved: () => void;
   onCursorSettings: () => void;
 }) {
   return (
-    <li
-      className={`instruction-row status-${file.load_status} evidence-${file.evidence}`}
-    >
+    <li className={`instruction-row status-${file.load_status} evidence-${file.evidence}`}>
       <button type="button" className="instruction-row-head" onClick={onToggle}>
         <div className="instruction-row-title">
           <strong>{file.display_path}</strong>
@@ -154,14 +178,16 @@ function InstructionRow({
               在 Cursor 中打开设置
             </Button>
           ) : null}
-          {file.load_status === "not_created" ? (
-            <p className="muted">文件尚未创建。</p>
-          ) : null}
           {file.load_status === "locally_invisible" ? (
             <p className="muted">内容在账号服务端，本机无法展示。</p>
           ) : null}
-          {file.load_status === "loaded" || file.load_status === "present_unloaded" ? (
-            <pre>{file.content || "（空文件）"}</pre>
+          {canEditInstruction(file) ? (
+            <InstructionEditor
+              file={file}
+              draft={draft}
+              onDraft={onDraft}
+              onSaved={onSaved}
+            />
           ) : null}
         </div>
       ) : null}

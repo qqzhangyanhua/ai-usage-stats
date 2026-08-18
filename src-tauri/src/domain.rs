@@ -302,6 +302,19 @@ pub struct GlobalInstructionDto {
     pub sources: Vec<GlobalInstructionSourceRow>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WriteUserFileRequest {
+    pub abs_path: String,
+    pub content: String,
+    pub expected_mtime: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WriteUserFileResult {
+    pub modified_at: Option<String>,
+    pub byte_size: u64,
+}
+
 /// 当前自然月的预算执行情况：仅本地估算，非官方账单，用于阈值提醒与设置页展示。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BudgetStatusDto {
