@@ -2678,6 +2678,92 @@ td.row-actions {
   overflow: auto;
 }
 
+.official-quota-panel {
+  flex: 0 0 auto;
+  padding: 12px 14px 10px;
+}
+
+.official-quota-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.official-quota-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.official-quota-head em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.official-quota-row.tone-ok .official-quota-head em {
+  color: var(--green-fg);
+}
+
+.official-quota-row.tone-warn .official-quota-head em {
+  color: #f59e0b;
+}
+
+.official-quota-windows {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.official-quota-window {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.official-quota-window strong {
+  font-variant-numeric: tabular-nums;
+  min-width: 2.5em;
+}
+
+.official-quota-status {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.official-quota-status li {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.official-quota-status em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.official-quota-hook {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.official-quota-snippet {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--overlay-recessed);
+  font-size: 12px;
+  overflow: auto;
+}
+
 .budget-status {
   margin-top: 14px;
   display: grid;

@@ -5,6 +5,7 @@ import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { BillingWindows } from "./BillingWindows";
+import { OfficialQuotaPanel } from "./OfficialQuotaPanel";
 import { WeeklyWindows } from "./WeeklyWindows";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
@@ -25,6 +26,7 @@ import {
 import type {
   BillingWindowsDto,
   Grain,
+  OfficialQuotaDto,
   NamedAmount,
   OverviewDto,
   SeriesPoint,
@@ -54,6 +56,7 @@ const emptyOverview: OverviewDto = {
 export const Overview = memo(function Overview({
   overview,
   billingWindows,
+  officialQuota,
   previous,
   trend,
   heatmap,
@@ -71,6 +74,7 @@ export const Overview = memo(function Overview({
 }: {
   overview: OverviewDto | null;
   billingWindows: BillingWindowsDto | null;
+  officialQuota: OfficialQuotaDto | null;
   previous: OverviewDto | null;
   trend: SeriesPoint[];
   heatmap: SeriesPoint[];
@@ -166,6 +170,8 @@ export const Overview = memo(function Overview({
           radar
         />
       </section>
+
+      <OfficialQuotaPanel data={officialQuota} />
 
       <BillingWindows data={billingWindows} />
 

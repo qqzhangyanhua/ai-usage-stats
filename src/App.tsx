@@ -66,6 +66,7 @@ export default function App() {
                   <LazyOverview
                     overview={data.overview}
                     billingWindows={data.billingWindows}
+                    officialQuota={data.officialQuota}
                     previous={data.previous}
                     trend={data.trend}
                     heatmap={data.heatmap}
@@ -156,6 +157,9 @@ export default function App() {
                     onSaveBudget={(monthlyUsd: number | null) =>
                       data.saveBudget({ monthly_usd: monthlyUsd }).catch(() => undefined)
                     }
+                    officialQuota={data.officialQuota}
+                    onOfficialQuota={data.setOfficialQuota}
+                    onQuotaError={data.reportError}
                   />
                 ) : null}
               </Suspense>

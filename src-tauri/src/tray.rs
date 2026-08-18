@@ -7,8 +7,8 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::domain::{Filter, OverviewDto};
-use crate::{ingest, query, AppState};
+use crate::domain::{Filter, OfficialQuotaDto, OverviewDto};
+use crate::{ingest, official_quota, query, AppState};
 
 const TRAY_ID: &str = "today-cost";
 const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
@@ -51,11 +51,29 @@ fn to_utc_z(dt: DateTime<Local>) -> String {
 }
 
 pub fn format_title(cost: Option<f64>, unpriced: bool) -> String {
-    match (cost, unpriced) {
+    format_title_with_quota(cost, unpriced, None)
+}
+
+pub fn format_title_with_quota(
+    cost: Option<f64>,
+    unpriced: bool,
+    quota: Option<&official_quota::TightestQuota>,
+) -> String {
+    let cost = match (cost, unpriced) {
         (None, true) => "—".to_string(),
         (None, false) => "$0.00".to_string(),
         (Some(amount), true) => format!("${amount:.2}*"),
         (Some(amount), false) => format!("${amount:.2}"),
+    };
+    match quota {
+        Some(item) => {
+            let mark = if item.stale { "*" } else { "" };
+            format!(
+                "{cost} · {} {} {:.0}%{mark}",
+                item.provider, item.label, item.used_percent
+            )
+        }
+        None => cost,
     }
 }
 
@@ -137,7 +155,8 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
     builder.build(app).map_err(|e| e.to_string())?;
 
     if let Ok(overview) = query_today(app) {
-        apply_labels_now(app, &overview);
+        let quota = load_quota_dto(app).ok();
+        apply_labels_now(app, &overview, quota.as_ref());
     }
 
     let handle = app.clone();
@@ -176,6 +195,7 @@ pub fn refresh_if_stale(app: &AppHandle) -> Result<(), String> {
     if ingest::scan_is_stale_from_cache(&cache, &ingest::default_home())? {
         refresh_with_ingest(app)
     } else {
+        let _ = sync_official_quota(app);
         refresh(app)
     }
 }
@@ -194,7 +214,22 @@ pub fn refresh_with_ingest(app: &AppHandle) -> Result<(), String> {
             &state.budget_notify_path,
         );
     }
+    let _ = sync_official_quota(app);
     refresh(app)
+}
+
+fn sync_official_quota(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let conn = state.lock_write()?;
+    let _ = official_quota::sync_claude_capture(&conn);
+    let config = official_quota::load_config(&state.official_quota_path);
+    let dto = official_quota::load_dto(&conn, &config, chrono::Utc::now());
+    official_quota::notify::check_and_notify_with_config(
+        app,
+        &dto,
+        &config,
+        &state.official_quota_notify_path,
+    )
 }
 
 fn query_today(app: &AppHandle) -> Result<OverviewDto, String> {
@@ -205,17 +240,26 @@ fn query_today(app: &AppHandle) -> Result<OverviewDto, String> {
 }
 
 fn apply_labels(app: &AppHandle, overview: &OverviewDto) -> Result<(), String> {
+    let quota = load_quota_dto(app).ok();
     let app = app.clone();
     let overview = overview.clone();
     app.clone()
         .run_on_main_thread(move || {
-            apply_labels_now(&app, &overview);
+            apply_labels_now(&app, &overview, quota.as_ref());
         })
         .map_err(|e| e.to_string())
 }
 
-fn apply_labels_now(app: &AppHandle, overview: &OverviewDto) {
-    let title = format_title(overview.cost, overview.unpriced);
+fn load_quota_dto(app: &AppHandle) -> Result<OfficialQuotaDto, String> {
+    let state = app.state::<AppState>();
+    let conn = state.lock_read()?;
+    let config = official_quota::load_config(&state.official_quota_path);
+    Ok(official_quota::load_dto(&conn, &config, chrono::Utc::now()))
+}
+
+fn apply_labels_now(app: &AppHandle, overview: &OverviewDto, quota: Option<&OfficialQuotaDto>) {
+    let tightest = quota.and_then(official_quota::tightest_window);
+    let title = format_title_with_quota(overview.cost, overview.unpriced, tightest.as_ref());
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let _ = tray.set_title(Some(title.as_str()));
         let _ = tray.set_tooltip(Some(format!("今日花费 {title}")));

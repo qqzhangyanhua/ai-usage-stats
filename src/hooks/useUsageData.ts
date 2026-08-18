@@ -15,6 +15,7 @@ import type {
   Grain,
   IngestReport,
   NamedAmount,
+  OfficialQuotaDto,
   OverviewDto,
   PriceTable,
   SeriesPoint,
@@ -58,6 +59,7 @@ export function useUsageData() {
   });
   const [overview, setOverview] = useState<OverviewDto | null>(null);
   const [billingWindows, setBillingWindows] = useState<BillingWindowsDto | null>(null);
+  const [officialQuota, setOfficialQuota] = useState<OfficialQuotaDto | null>(null);
   const [previous, setPrevious] = useState<OverviewDto | null>(null);
   const [trend, setTrend] = useState<SeriesPoint[]>([]);
   const [heatmap, setHeatmap] = useState<SeriesPoint[]>([]);
@@ -192,6 +194,7 @@ export function useUsageData() {
           invoke<BillingWindowsDto>("get_billing_windows", { filter: nextFilter }).then(
             commit(setBillingWindows),
           ),
+          invoke<OfficialQuotaDto>("refresh_official_quota").then(commit(setOfficialQuota)),
           invoke<BudgetStatusDto>("get_budget_status").then(commit(setBudgetStatus)),
           invoke<SeriesPoint[]>("get_trend", { filter: heat.filter, grain: "day" }).then(
             (points) => {
@@ -269,6 +272,7 @@ export function useUsageData() {
           invoke<PriceTable>("get_prices").then(commit(setPrices)),
           invoke<SourceDiagnostic[]>("get_source_diagnostics").then(commit(setDiagnostics)),
           invoke<BudgetStatusDto>("get_budget_status").then(commit(setBudgetStatus)),
+          invoke<OfficialQuotaDto>("get_official_quota").then(commit(setOfficialQuota)),
         );
       }
       try {
@@ -523,6 +527,8 @@ export function useUsageData() {
     options,
     overview,
     billingWindows,
+    officialQuota,
+    setOfficialQuota,
     previous,
     trend,
     heatmap,

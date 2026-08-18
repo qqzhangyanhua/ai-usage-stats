@@ -5,6 +5,7 @@ import { Field } from "./ui/Field";
 import { BackupPanel } from "./BackupPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
+import { OfficialQuotaSettingsPanel } from "./OfficialQuotaSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
 import {
   groupPresetsByProvider,
@@ -16,6 +17,7 @@ import { formatPerMillionInput, parsePerMillionInput } from "../lib/priceUnits";
 import type {
   BudgetStatusDto,
   IngestReport,
+  OfficialQuotaDto,
   PriceEntry,
   PriceTable,
   SourceDiagnostic,
@@ -38,6 +40,9 @@ export function Settings({
   onPurgeArchived,
   onSnapshotRefreshed,
   onSaveBudget,
+  officialQuota,
+  onOfficialQuota,
+  onQuotaError,
 }: {
   prices: PriceTable;
   diagnostics: SourceDiagnostic[];
@@ -54,6 +59,9 @@ export function Settings({
   onPurgeArchived: (source: string | null) => void;
   onSnapshotRefreshed: () => void;
   onSaveBudget: (monthlyUsd: number | null) => void;
+  officialQuota: OfficialQuotaDto | null;
+  onOfficialQuota: (value: OfficialQuotaDto) => void;
+  onQuotaError: (error: unknown) => void;
 }) {
   const totalArchived = diagnostics.reduce((sum, row) => sum + row.archived_record_count, 0);
   function update(index: number, patch: Partial<PriceEntry>) {
@@ -183,6 +191,12 @@ export function Settings({
       </section>
 
       <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
+
+      <OfficialQuotaSettingsPanel
+        quota={officialQuota}
+        onQuota={onOfficialQuota}
+        onError={onQuotaError}
+      />
 
       <BackupPanel onRestored={onSnapshotRefreshed} />
 

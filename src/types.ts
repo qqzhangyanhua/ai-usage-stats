@@ -79,6 +79,43 @@ export type BillingWindowsDto = {
   weekly: WeeklyWindowDto[];
 };
 
+export type OfficialQuotaFreshness = "official" | "stale" | "unavailable";
+
+export type OfficialQuotaWindow = {
+  kind: string;
+  label: string;
+  used_percent: number | null;
+  resets_at: string | null;
+};
+
+export type OfficialQuotaRow = {
+  provider: string;
+  application: string;
+  windows: OfficialQuotaWindow[];
+  freshness: OfficialQuotaFreshness;
+  captured_at: string | null;
+  error: string | null;
+};
+
+export type OfficialQuotaConfig = {
+  alerts_enabled: boolean;
+};
+
+export type OfficialQuotaDto = {
+  rows: OfficialQuotaRow[];
+  alerts_enabled: boolean;
+  stale_after_minutes: number;
+};
+
+export type OfficialQuotaHookDto = {
+  settings_path: string;
+  command: string;
+  snippet: string;
+  already_configured: boolean;
+  conflict: boolean;
+  conflict_command: string | null;
+};
+
 export type BudgetConfig = {
   monthly_usd: number | null;
 };

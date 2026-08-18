@@ -25,7 +25,7 @@ export function BackupPanel({ onRestored }: { onRestored?: () => void }) {
 
   async function handleRestore() {
     const confirmed = window.confirm(
-      "恢复会覆盖当前用量缓存、单价表、月度预算和通知状态，且成功后无法自动撤回。确定继续？",
+      "恢复会覆盖当前用量缓存、单价表、月度预算、官方额度配置和通知状态，且成功后无法自动撤回。确定继续？",
     );
     if (!confirmed) {
       return;

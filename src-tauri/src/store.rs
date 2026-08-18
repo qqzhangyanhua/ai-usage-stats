@@ -2,7 +2,9 @@ use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
-use crate::domain::{CursorSessionRecord, CursorUsageEvent, Source, UsageRecord};
+use crate::domain::{
+    CursorSessionRecord, CursorUsageEvent, OfficialQuotaWindow, Source, UsageRecord,
+};
 
 pub const ADAPTER_VERSION: i64 = 7;
 
@@ -129,6 +131,13 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS cursor_session_meta (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS official_quota (
+            provider TEXT PRIMARY KEY,
+            windows_json TEXT NOT NULL,
+            captured_at TEXT NOT NULL,
+            error TEXT
         );
         "#,
     )
@@ -684,6 +693,75 @@ pub fn clear_cursor_account_usage(conn: &Connection) -> Result<(), String> {
     conn.execute("DELETE FROM cursor_account_meta", [])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+pub fn upsert_official_quota(
+    conn: &Connection,
+    provider: &str,
+    windows: &[OfficialQuotaWindow],
+    captured_at: &str,
+    error: Option<&str>,
+) -> Result<(), String> {
+    let windows_json = serde_json::to_string(windows).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO official_quota(provider, windows_json, captured_at, error)
+         VALUES(?1, ?2, ?3, ?4)
+         ON CONFLICT(provider) DO UPDATE SET
+            windows_json = excluded.windows_json,
+            captured_at = excluded.captured_at,
+            error = excluded.error",
+        params![provider, windows_json, captured_at, error],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn set_official_quota_error(
+    conn: &Connection,
+    provider: &str,
+    error: &str,
+) -> Result<(), String> {
+    let updated = conn
+        .execute(
+            "UPDATE official_quota SET error = ?2 WHERE provider = ?1",
+            params![provider, error],
+        )
+        .map_err(|e| e.to_string())?;
+    if updated == 0 {
+        conn.execute(
+            "INSERT INTO official_quota(provider, windows_json, captured_at, error)
+             VALUES(?1, '[]', '', ?2)",
+            params![provider, error],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+pub fn load_official_quota_row(
+    conn: &Connection,
+    provider: &str,
+) -> Result<Option<(Vec<OfficialQuotaWindow>, String, Option<String>)>, String> {
+    let row = conn
+        .query_row(
+            "SELECT windows_json, captured_at, error FROM official_quota WHERE provider = ?1",
+            params![provider],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((windows_json, captured_at, error)) = row else {
+        return Ok(None);
+    };
+    let windows: Vec<OfficialQuotaWindow> =
+        serde_json::from_str(&windows_json).map_err(|e| format!("官方额度缓存损坏：{e}"))?;
+    Ok(Some((windows, captured_at, error)))
 }
 
 pub fn cursor_session_has_source_file(conn: &Connection, path: &str) -> Result<bool, String> {

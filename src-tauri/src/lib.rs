@@ -11,6 +11,7 @@ pub mod cursor_session_query;
 pub mod domain;
 pub mod ingest;
 pub mod litellm;
+pub mod official_quota;
 pub mod query;
 pub mod store;
 pub mod tray;
@@ -28,8 +29,9 @@ use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
     CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
     CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
-    IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable,
-    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
+    IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto, OfficialQuotaHookDto,
+    OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage,
+    SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
 };
 
 pub struct AppState {
@@ -38,6 +40,8 @@ pub struct AppState {
     pub snapshot_path: PathBuf,
     pub budget_path: PathBuf,
     pub budget_notify_path: PathBuf,
+    pub official_quota_path: PathBuf,
+    pub official_quota_notify_path: PathBuf,
     pub conn: Mutex<Connection>,
     pub read_conn: Mutex<Connection>,
     pub snapshot: Mutex<PriceSnapshot>,
@@ -549,7 +553,84 @@ fn app_data_paths(state: &AppState) -> backup::AppDataPaths {
         snapshot_path: state.snapshot_path.clone(),
         budget_path: state.budget_path.clone(),
         budget_notify_path: state.budget_notify_path.clone(),
+        official_quota_path: state.official_quota_path.clone(),
+        official_quota_notify_path: state.official_quota_notify_path.clone(),
     }
+}
+
+fn official_quota_snapshot(app: &tauri::AppHandle) -> Result<OfficialQuotaDto, String> {
+    let state = app.state::<AppState>();
+    let conn = state.lock_write()?;
+    let config = official_quota::load_config(&state.official_quota_path);
+    let dto = official_quota::load_dto(&conn, &config, chrono::Utc::now());
+    official_quota::notify::check_and_notify_with_config(
+        app,
+        &dto,
+        &config,
+        &state.official_quota_notify_path,
+    )?;
+    Ok(dto)
+}
+
+#[tauri::command]
+async fn get_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        {
+            let state = app.state::<AppState>();
+            let conn = state.lock_write()?;
+            let _ = official_quota::sync_claude_capture(&conn);
+        }
+        official_quota_snapshot(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn refresh_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let claude = official_quota::claude::refresh_from_capture(&official_quota::capture_path());
+        let codex = official_quota::codex::fetch_rate_limits();
+        let cursor = official_quota::cursor::fetch_usage_summary();
+        let state = app.state::<AppState>();
+        let conn = state.lock_write()?;
+        official_quota::apply_fetch_results(&conn, claude, codex, cursor)?;
+        let config = official_quota::load_config(&state.official_quota_path);
+        let dto = official_quota::load_dto(&conn, &config, chrono::Utc::now());
+        official_quota::notify::check_and_notify_with_config(
+            &app,
+            &dto,
+            &config,
+            &state.official_quota_notify_path,
+        )?;
+        Ok(dto)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_official_quota_hook() -> OfficialQuotaHookDto {
+    official_quota::hook::preview(
+        &official_quota::hook::default_settings_path(),
+        &official_quota::hook::hook_command(),
+    )
+}
+
+#[tauri::command]
+fn apply_official_quota_hook() -> Result<OfficialQuotaHookDto, String> {
+    official_quota::hook::apply(
+        &official_quota::hook::default_settings_path(),
+        &official_quota::hook::hook_command(),
+    )
+}
+
+#[tauri::command]
+fn save_official_quota_config(
+    state: tauri::State<AppState>,
+    config: OfficialQuotaConfig,
+) -> Result<(), String> {
+    official_quota::save_config(&state.official_quota_path, &config)
 }
 
 /// 备份 sqlite 与用户配置到用户选择的目录；不含 Cursor 钥匙串 token。返回 `false` 表示取消。
@@ -698,6 +779,8 @@ pub fn run() {
             let snapshot_path = dir.join("litellm_prices.json");
             let budget_path = dir.join("budget.json");
             let budget_notify_path = dir.join("budget_notify_state.json");
+            let official_quota_path = dir.join(official_quota::CONFIG_NAME);
+            let official_quota_notify_path = dir.join(official_quota::NOTIFY_NAME);
             let db_path_str = db_path.to_string_lossy().to_string();
             let conn = store::open_db(&db_path_str).map_err(std::io::Error::other)?;
             let read_conn = store::open_readonly(&db_path_str).map_err(std::io::Error::other)?;
@@ -708,6 +791,8 @@ pub fn run() {
                 snapshot_path,
                 budget_path,
                 budget_notify_path,
+                official_quota_path,
+                official_quota_notify_path,
                 conn: Mutex::new(conn),
                 read_conn: Mutex::new(read_conn),
                 snapshot: Mutex::new(snapshot),
@@ -742,6 +827,11 @@ pub fn run() {
             save_price_table,
             get_budget_status,
             save_budget,
+            get_official_quota,
+            refresh_official_quota,
+            get_official_quota_hook,
+            apply_official_quota_hook,
+            save_official_quota_config,
             get_price_snapshot,
             get_price_snapshot_url,
             refresh_price_snapshot,

@@ -1,0 +1,117 @@
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import type { OfficialQuotaDto, OfficialQuotaHookDto } from "../types";
+import { Button } from "./ui/Button";
+
+export function OfficialQuotaSettingsPanel({
+  quota,
+  onQuota,
+  onError,
+}: {
+  quota: OfficialQuotaDto | null;
+  onQuota: (value: OfficialQuotaDto) => void;
+  onError: (error: unknown) => void;
+}) {
+  const [hook, setHook] = useState<OfficialQuotaHookDto | null>(null);
+  const [busy, setBusy] = useState<"idle" | "refresh" | "hook" | "alerts">("idle");
+  const alertsEnabled = quota?.alerts_enabled ?? true;
+
+  useEffect(() => {
+    void invoke<OfficialQuotaHookDto>("get_official_quota_hook")
+      .then(setHook)
+      .catch(onError);
+  }, [onError]);
+
+  async function refresh() {
+    setBusy("refresh");
+    try {
+      onQuota(await invoke<OfficialQuotaDto>("refresh_official_quota"));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  async function applyHook() {
+    setBusy("hook");
+    try {
+      setHook(await invoke<OfficialQuotaHookDto>("apply_official_quota_hook"));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  async function toggleAlerts() {
+    setBusy("alerts");
+    try {
+      await invoke("save_official_quota_config", {
+        config: { alerts_enabled: !alertsEnabled },
+      });
+      const next = await invoke<OfficialQuotaDto>("get_official_quota");
+      onQuota(next);
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <h2>官方额度</h2>
+          <p className="panel-note">
+            Claude 通过 statusline 捕获本机官方百分比；Codex 问本机 app-server；Cursor
+            使用已有钥匙串打限额接口。已有 Claude statusLine 不会被覆盖。
+          </p>
+        </div>
+        <div className="row-actions">
+          <Button disabled={busy !== "idle"} onClick={() => void refresh()}>
+            {busy === "refresh" ? "刷新中…" : "刷新额度"}
+          </Button>
+          <Button variant="accent" disabled={busy !== "idle"} onClick={() => void toggleAlerts()}>
+            {alertsEnabled ? "关闭额度告警" : "开启额度告警"}
+          </Button>
+        </div>
+      </div>
+      {quota ? (
+        <ul className="official-quota-status">
+          {quota.rows.map((row) => (
+            <li key={row.provider}>
+              <strong>{row.application}</strong>
+              <span>{row.freshness === "official" ? "官方" : row.freshness === "stale" ? "已过期" : "暂无"}</span>
+              <em>{row.error ?? (row.windows.length > 0 ? `${row.windows.length} 个窗口` : "等待捕获")}</em>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {hook ? (
+        <div className="official-quota-hook">
+          <p className="panel-note">
+            Claude 设置：<code>{hook.settings_path}</code>
+            {hook.already_configured ? " · 已写入本应用 hook" : null}
+            {hook.conflict ? " · 已有自定义 statusLine，未覆盖" : null}
+          </p>
+          {hook.conflict ? (
+            <p className="panel-note">
+              当前 command：<code>{hook.conflict_command}</code>
+              。请自行把下面的命令接到现有 hook 里。
+            </p>
+          ) : null}
+          <pre className="official-quota-snippet">{hook.snippet}</pre>
+          <Button
+            variant="accent"
+            disabled={busy !== "idle" || hook.conflict || hook.already_configured}
+            onClick={() => void applyHook()}
+          >
+            {hook.already_configured ? "已配置" : hook.conflict ? "已有 hook，未写入" : "预览确认后写入"}
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
+}

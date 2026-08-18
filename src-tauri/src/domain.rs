@@ -147,6 +147,105 @@ pub struct BudgetConfig {
     pub monthly_usd: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OfficialQuotaProvider {
+    Claude,
+    Codex,
+    Cursor,
+}
+
+impl OfficialQuotaProvider {
+    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Cursor];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Cursor => "cursor",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Claude => "Claude",
+            Self::Codex => "Codex",
+            Self::Cursor => "Cursor",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "claude" => Some(Self::Claude),
+            "codex" => Some(Self::Codex),
+            "cursor" => Some(Self::Cursor),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OfficialQuotaFreshness {
+    Official,
+    Stale,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficialQuotaWindow {
+    pub kind: String,
+    pub label: String,
+    pub used_percent: Option<f64>,
+    pub resets_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficialQuotaRow {
+    pub provider: String,
+    pub application: String,
+    pub windows: Vec<OfficialQuotaWindow>,
+    pub freshness: OfficialQuotaFreshness,
+    pub captured_at: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficialQuotaConfig {
+    #[serde(default = "default_alerts_enabled")]
+    pub alerts_enabled: bool,
+}
+
+fn default_alerts_enabled() -> bool {
+    true
+}
+
+impl Default for OfficialQuotaConfig {
+    fn default() -> Self {
+        Self {
+            alerts_enabled: true,
+        }
+    }
+}
+
+/// 账号级官方额度快照：不进消耗记录，不与本机 5 小时/7 天估计窗混条。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficialQuotaDto {
+    pub rows: Vec<OfficialQuotaRow>,
+    pub alerts_enabled: bool,
+    pub stale_after_minutes: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficialQuotaHookDto {
+    pub settings_path: String,
+    pub command: String,
+    pub snippet: String,
+    pub already_configured: bool,
+    pub conflict: bool,
+    pub conflict_command: Option<String>,
+}
+
 /// 当前自然月的预算执行情况：仅本地估算，非官方账单，用于阈值提醒与设置页展示。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BudgetStatusDto {
