@@ -1,0 +1,70 @@
+src-tauri/src/domain.rs
+  s_aab3df05781610::t_83192f3d13e31a 249-293
+src/icons.tsx
+  s_aab3df05781610::t_61ad11ea879ef6 13
+  s_aab3df05781610::t_243387093bf72f 90-95
+src-tauri/src/instructions/mod.rs
+  s_aab3df05781610::t_48c60ec88fc987 1-15
+src/lib/format.ts
+  s_aab3df05781610::t_495e3cb840308b 167-170
+src/styles.css
+  s_aab3df05781610::t_acba481e5e4a6b 3135-3236
+src/components/Sidebar.tsx
+  s_aab3df05781610::t_523419eca4f199 189
+  s_aab3df05781610::t_f9af33613b36bc 190
+  s_aab3df05781610::t_fefb9e758b6a88 27
+src/components/Topbar.tsx
+  s_aab3df05781610::t_1c2e839ec824f5 48-52
+src-tauri/src/lib.rs
+  s_aab3df05781610::t_71ff7630ee0a19 846
+  s_aab3df05781610::t_874f3c195687c6 33
+  s_aab3df05781610::t_c1841d074d3357 34-36
+  s_aab3df05781610::t_ed041eebd76fa8 578-590
+  s_aab3df05781610::t_9fe7a7b1d0ec37 13
+  s_aab3df05781610::t_af0d80af102656 577
+src/hooks/viewCache.ts
+  s_aab3df05781610::t_7df6f68fd6d0fc 14
+src/hooks/useUsageData.ts
+  s_aab3df05781610::t_2042fb99c8507c 139-143
+src/lib/format.test.ts
+  s_aab3df05781610::t_997836451ce3dd 7
+  s_aab3df05781610::t_bc959bee146d24 146-152
+src-tauri/src/instructions/claude.rs
+  s_aab3df05781610::t_ce4232827e2f43 10-11,13,43,45-46,55-72,78
+  s_aab3df05781610::t_e350e7ccc44a5f 1-9,14-31,33-42,44,47-54,73-77,79
+  s_aab3df05781610::t_27703fe9f98494 32
+  s_aab3df05781610::t_79143a2a82f9ac 12
+src-tauri/src/tests.rs
+  s_aab3df05781610::t_61181bd20b7a66 6205-6227,6229-6246
+  s_aab3df05781610::t_4370dbeb56b61c 6247-6287
+  s_aab3df05781610::t_02ffdf82fb48b3 6228
+src/App.tsx
+  s_aab3df05781610::t_651bb4149e04c4 61-62
+  s_aab3df05781610::t_a6abb30c8dc658 136
+  s_aab3df05781610::t_e4bf94e8f81c78 15
+src/components/GlobalInstructionPanel.tsx
+  s_aab3df05781610::t_7dcb9a7727a7ae 3
+  s_aab3df05781610::t_b5c4f7deffc6aa 1-2,4-74,76-135
+  s_aab3df05781610::t_874589d68c4781 75
+src/views/lazyViews.tsx
+  s_aab3df05781610::t_9c2fe7027d4e9e 35-38
+src/types.ts
+  s_aab3df05781610::t_d1f8566d867480 174
+  s_aab3df05781610::t_81caf11eb14ef6 119-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "1dfddb0bf3d3aa55fa628c2d0334ee4344db0af9",
+  "prompts": {},
+  "sessions": {
+    "s_aab3df05781610": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f4d4d20-1457-420b-9020-edca79b04d63",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
