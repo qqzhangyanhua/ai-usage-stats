@@ -8,7 +8,6 @@ import {
   cursorAccountModelTable,
   cursorSessionProjectTable,
   cursorSessionToolTable,
-  overviewKpiTable,
   weeklyWindowTable,
 } from "./exportRows";
 import type {
@@ -17,37 +16,8 @@ import type {
   CodeVolumeSummary,
   CursorAccountUsageDto,
   CursorSessionSummaryDto,
-  OverviewDto,
   WeeklyWindowDto,
 } from "../types";
-
-const overview: OverviewDto = {
-  total_tokens: 1000,
-  input_tokens: 700,
-  output_tokens: 200,
-  cache_read_tokens: 80,
-  cache_creation_tokens: 10,
-  reasoning_tokens: 10,
-  session_count: 3,
-  cost: 1.25,
-  unpriced: false,
-};
-
-describe("overviewKpiTable", () => {
-  it("emits one row per KPI and leaves unpriced blank when priced", () => {
-    const table = overviewKpiTable(overview, 250.4);
-    expect(table.headers).toContain("指标");
-    expect(table.rows).toHaveLength(9);
-    expect(table.rows[0]).toEqual(["总 Token", 1000, ""]);
-    expect(table.rows[7]).toEqual(["费用", 1.25, ""]);
-    expect(table.rows[8]).toEqual(["日均 Token", 250, ""]);
-  });
-
-  it("marks cost as unpriced when cost is missing", () => {
-    const table = overviewKpiTable({ ...overview, cost: null, unpriced: true }, 0);
-    expect(table.rows[7]).toEqual(["费用", "", "是"]);
-  });
-});
 
 describe("billingWindowTable", () => {
   it("maps window, burn, and projection fields", () => {

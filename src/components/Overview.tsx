@@ -9,7 +9,6 @@ import { WeeklyWindows } from "./WeeklyWindows";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { EmptyState } from "./EmptyState";
-import { OverviewExport } from "./OverviewExport";
 import { KpiCard, LegendRow, Spark } from "./Kpi";
 import { Button } from "./ui/Button";
 import { GrainSwitch } from "./ui/GrainSwitch";
@@ -129,9 +128,6 @@ export const Overview = memo(function Overview({
 
   return (
     <div className="dash">
-      <div className="dash-export">
-        <OverviewExport data={data} dailyAvg={dailyAvg} />
-      </div>
       <section className="kpi-row">
         <KpiCard
           icon="tokens"

@@ -5,7 +5,6 @@ import type {
   CodeVolumeSummary,
   CursorAccountUsageDto,
   CursorSessionSummaryDto,
-  OverviewDto,
   WeeklyWindowDto,
 } from "../types";
 
@@ -20,23 +19,6 @@ function costCell(cost: number | null): string | number {
 
 function ratioCell(value: number | null): string | number {
   return value ?? "";
-}
-
-export function overviewKpiTable(data: OverviewDto, dailyAvg: number): ExportTable {
-  return {
-    headers: ["指标", "数值", "未定价"],
-    rows: [
-      ["总 Token", data.total_tokens, ""],
-      ["输入 Token", data.input_tokens, ""],
-      ["输出 Token", data.output_tokens, ""],
-      ["缓存读 Token", data.cache_read_tokens, ""],
-      ["缓存写 Token", data.cache_creation_tokens, ""],
-      ["推理 Token", data.reasoning_tokens, ""],
-      ["会话数", data.session_count, ""],
-      ["费用", costCell(data.cost), data.unpriced ? "是" : ""],
-      ["日均 Token", Math.round(dailyAvg), ""],
-    ],
-  };
 }
 
 export function billingWindowTable(windows: BillingWindowDto[]): ExportTable {
