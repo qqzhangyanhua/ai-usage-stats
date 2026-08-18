@@ -801,6 +801,11 @@ input[type="checkbox"] {
   width: 100%;
 }
 
+.dash-export {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -2125,6 +2130,39 @@ tr:hover .session-id-cell .table-icon-btn,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
+}
+
+.roi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.roi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--overlay-1);
+  border: 1px solid var(--line);
+}
+
+.roi-cell strong {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.roi-cell em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.roi-cell-highlight {
+  border-color: var(--purple-fg);
+  background: linear-gradient(180deg, var(--panel-grad-1), var(--panel-grad-2));
 }
 
 .mini-card {

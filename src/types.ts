@@ -192,6 +192,10 @@ export type SessionPage = {
   lastEnded: string | null;
 };
 
+export type CostSource = "native" | "user" | "snapshot" | "none";
+
+export type PriceOrigin = "user" | "snapshot";
+
 export type TurnRow = {
   occurred_at: string;
   model: string;
@@ -205,6 +209,7 @@ export type TurnRow = {
   source_file: string;
   cost: number | null;
   unpriced: boolean;
+  cost_source: CostSource;
   cost_note: string | null;
 };
 
@@ -215,6 +220,7 @@ export type PriceEntry = {
   output: number;
   cache_read: number;
   cache_creation: number;
+  origin?: PriceOrigin;
 };
 
 export type PriceTable = {
@@ -234,6 +240,9 @@ export type CodeVolumeSummary = {
   composer_lines_added: number;
   human_lines_added: number;
   ai_percentage: number | null;
+  total_cost: number | null;
+  cost_unpriced: boolean;
+  cost_per_thousand_ai_lines: number | null;
 };
 
 export type CursorAccountUsageDto = {

@@ -142,6 +142,177 @@ pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String
     ingest_all_with_overrides(conn, home, &env_overrides())
 }
 
+/// 与 ingest 使用同一套 cache fingerprint（主文件 metadata + sidecar）。
+/// 新文件、fingerprint 变化、或缓存路径已从磁盘消失时视为 stale。
+pub fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
+    scan_is_stale_with_overrides(conn, home, &env_overrides())
+}
+
+pub(crate) fn scan_is_stale_with_overrides(
+    conn: &Connection,
+    home: &Path,
+    overrides: &PathOverrides,
+) -> Result<bool, String> {
+    let watched = list_watched_inputs(home, overrides)?;
+    let cached = store::cached_file_stats(conn)?;
+    let seen: BTreeSet<String> = watched
+        .iter()
+        .map(|input| input.path.to_string_lossy().into_owned())
+        .collect();
+    if cached.len() != seen.len() || cached.iter().any(|(path, _, _)| !seen.contains(path)) {
+        return Ok(true);
+    }
+    for input in watched {
+        let loc = input.path.to_string_lossy().to_string();
+        let meta = match fs::metadata(&input.path) {
+            Ok(meta) => meta,
+            Err(_) => return Ok(true),
+        };
+        let key = cache_key(&input.path, &input.extra_fingerprint);
+        if !store::file_unchanged(
+            conn,
+            &loc,
+            modified_millis(&meta),
+            meta.len() as i64,
+            input.source,
+            &key,
+        )? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+struct WatchedInput {
+    source: Source,
+    path: PathBuf,
+    extra_fingerprint: String,
+}
+
+fn cache_key(path: &Path, extra_fingerprint: &str) -> String {
+    format!("{}|{extra_fingerprint}", metadata_fingerprint(path))
+}
+
+fn list_watched_inputs(
+    home: &Path,
+    overrides: &PathOverrides,
+) -> Result<Vec<WatchedInput>, String> {
+    let mut files = Vec::new();
+    for source in Source::ALL {
+        let dirs = source_scan_dirs_with(overrides, home, source);
+        for path in list_source_paths(source, &dirs)? {
+            let extra_fingerprint = sidecar_fingerprint(source, &path, &dirs);
+            files.push(WatchedInput {
+                source,
+                path,
+                extra_fingerprint,
+            });
+        }
+    }
+    Ok(files)
+}
+
+fn sidecar_fingerprint(source: Source, path: &Path, dirs: &[PathBuf]) -> String {
+    match source {
+        Source::Kimi => {
+            let root = dirs
+                .iter()
+                .find(|dir| path.starts_with(dir))
+                .cloned()
+                .unwrap_or_else(|| path.to_path_buf());
+            content_fingerprint(&root.join("kimi.json"))
+        }
+        Source::Grok => {
+            let summary = path
+                .parent()
+                .map(|parent| parent.join("summary.json"))
+                .unwrap_or_default();
+            content_fingerprint(&summary)
+        }
+        Source::Opencode => {
+            let wal = PathBuf::from(format!("{}-wal", path.to_string_lossy()));
+            metadata_fingerprint(&wal)
+        }
+        _ => String::new(),
+    }
+}
+
+fn list_source_paths(source: Source, dirs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    match source {
+        Source::Codex | Source::Claude | Source::Pi | Source::CursorAgent | Source::Copilot => {
+            list_ext_files(dirs, "jsonl")
+        }
+        Source::Kimi => {
+            let mut paths = Vec::new();
+            for root in dirs {
+                for path in walk_files(&root.join("sessions"), "jsonl")? {
+                    if path.file_name().and_then(|name| name.to_str()) == Some("wire.jsonl") {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Dsh => list_suffix_files(dirs, "session.jsonl.zstd"),
+        Source::Gemini => {
+            let mut paths = Vec::new();
+            for root in dirs {
+                for path in walk_files(root, "json")? {
+                    if path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("")
+                        .starts_with("session-")
+                    {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Grok => {
+            let mut paths = Vec::new();
+            for root in dirs {
+                for path in walk_files(root, "jsonl")? {
+                    if path.file_name().and_then(|name| name.to_str()) == Some("updates.jsonl") {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Qwen => {
+            let mut paths = Vec::new();
+            for root in dirs {
+                for path in walk_files(root, "json")? {
+                    if path.file_name().and_then(|name| name.to_str()) == Some("logs.json") {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Factory => list_suffix_files(dirs, ".settings.json"),
+        Source::Opencode => Ok(dirs.iter().filter(|path| path.exists()).cloned().collect()),
+    }
+}
+
+fn list_ext_files(roots: &[PathBuf], ext: &str) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in roots {
+        paths.extend(walk_files(root, ext)?);
+    }
+    Ok(paths)
+}
+
+fn list_suffix_files(roots: &[PathBuf], suffix: &str) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in roots {
+        paths.extend(walk_suffix(root, suffix)?);
+    }
+    Ok(paths)
+}
+
 /// 供测试直接注入路径覆盖表，绕开真实进程环境变量（并行跑测试改真实环境变量不安全）。
 pub(crate) fn ingest_all_with_overrides(
     conn: &Connection,
@@ -367,7 +538,7 @@ fn ingest_one(
     };
     let size = meta.len() as i64;
     let mtime_ms = modified_millis(&meta);
-    let cache_fingerprint = format!("{}|{fingerprint}", metadata_fingerprint(path));
+    let cache_fingerprint = cache_key(path, fingerprint);
     if store::file_unchanged(conn, &loc, mtime_ms, size, source, &cache_fingerprint)? {
         increment(report, source, |source_report| {
             source_report.files_skipped += 1
@@ -823,6 +994,9 @@ pub fn load_code_volume(home: &Path) -> Result<CodeVolumeSummary, String> {
             composer_lines_added: 0,
             human_lines_added: 0,
             ai_percentage: None,
+            total_cost: None,
+            cost_unpriced: false,
+            cost_per_thousand_ai_lines: None,
         });
     }
     let source_db = open_readonly(&db_path)?;

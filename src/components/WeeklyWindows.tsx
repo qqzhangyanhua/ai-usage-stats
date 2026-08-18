@@ -1,8 +1,10 @@
 import { memo } from "react";
 import { sourceTone } from "../icons";
 import { applicationLabel, formatCompact, formatUsd } from "../lib/format";
+import { weeklyWindowTable } from "../lib/exportRows";
 import type { WeeklyWindowDto } from "../types";
 import { EmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 
 export const WeeklyWindows = memo(function WeeklyWindows({
   windows,
@@ -12,12 +14,18 @@ export const WeeklyWindows = memo(function WeeklyWindows({
   windowDays: number;
 }) {
   const maxTokens = Math.max(1, ...windows.map((w) => w.total_tokens));
+  const exportTable = weeklyWindowTable(windows);
 
   return (
     <article className="panel weekly-panel">
       <div className="panel-head">
         <h2>{windowDays} 天滚动用量</h2>
         <span className="muted">按来源统计最近 {windowDays} 天的累计消耗，非官方配额</span>
+        <ExportButton
+          filename="滚动窗口"
+          headers={exportTable.headers}
+          rows={exportTable.rows}
+        />
       </div>
       {windows.length === 0 ? (
         <EmptyState compact icon="clock" title={`最近 ${windowDays} 天没有用量记录`} />

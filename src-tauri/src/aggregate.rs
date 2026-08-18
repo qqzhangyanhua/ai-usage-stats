@@ -425,11 +425,8 @@ pub fn session_turns(
                 source_file: record.source_file.clone(),
                 cost: derived.amount,
                 unpriced: derived.unpriced,
-                cost_note: if derived.unpriced {
-                    Some("单价未配置".to_string())
-                } else {
-                    None
-                },
+                cost_source: derived.cost_source,
+                cost_note: Some(derived.cost_note()),
             }
         })
         .collect();

@@ -265,6 +265,18 @@ pub fn file_unchanged(
     ))
 }
 
+/// 托盘心跳用的轻量对账：只取路径、mtime、大小，不读源文件内容。
+pub fn cached_file_stats(conn: &Connection) -> Result<Vec<(String, i64, i64)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT path, mtime_ms, size FROM ingested_files")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn mark_file(
     conn: &Connection,
     path: &str,

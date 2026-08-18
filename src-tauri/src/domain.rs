@@ -342,10 +342,74 @@ pub struct TurnRow {
     pub source_file: String,
     pub cost: Option<f64>,
     pub unpriced: bool,
+    /// 本轮费用来自哪一层：来源自带 / 用户单价 / LiteLLM 快照 / 未配置。
+    pub cost_source: CostSource,
     pub cost_note: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// 价目条目来源。缺省为用户配置，兼容旧 `prices.json`。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PriceOrigin {
+    #[default]
+    User,
+    Snapshot,
+}
+
+impl PriceOrigin {
+    pub fn is_user(&self) -> bool {
+        matches!(self, PriceOrigin::User)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PriceOrigin::User => "user",
+            PriceOrigin::Snapshot => "snapshot",
+        }
+    }
+}
+
+/// 单条消耗记录的费用来源，给界面展示用。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CostSource {
+    Native,
+    User,
+    Snapshot,
+    #[default]
+    None,
+}
+
+impl CostSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CostSource::Native => "native",
+            CostSource::User => "user",
+            CostSource::Snapshot => "snapshot",
+            CostSource::None => "none",
+        }
+    }
+
+    pub fn from_sql(value: &str) -> Self {
+        match value {
+            "native" => CostSource::Native,
+            "user" => CostSource::User,
+            "snapshot" => CostSource::Snapshot,
+            _ => CostSource::None,
+        }
+    }
+
+    pub fn note(self) -> &'static str {
+        match self {
+            CostSource::Native => "来源自带",
+            CostSource::User => "用户单价",
+            CostSource::Snapshot => "LiteLLM 快照",
+            CostSource::None => "单价未配置",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PriceEntry {
     pub model: String,
     pub provider: Option<String>,
@@ -353,6 +417,9 @@ pub struct PriceEntry {
     pub output: f64,
     pub cache_read: f64,
     pub cache_creation: f64,
+    /// 旧文件没有该字段时视为用户单价。
+    #[serde(default, skip_serializing_if = "PriceOrigin::is_user")]
+    pub origin: PriceOrigin,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -385,6 +452,13 @@ pub struct DerivedCost {
     pub amount: Option<f64>,
     pub unpriced: bool,
     pub source_native: bool,
+    pub cost_source: CostSource,
+}
+
+impl DerivedCost {
+    pub fn cost_note(&self) -> String {
+        self.cost_source.note().to_string()
+    }
 }
 
 /// Cursor 账号级用量事件：来自云端仪表盘，不是本机会话文件。
@@ -473,6 +547,13 @@ pub struct CodeVolumeSummary {
     pub composer_lines_added: i64,
     pub human_lines_added: i64,
     pub ai_percentage: Option<f64>,
+    /// 全部时间、全部来源的消耗记录费用估算；与代码量一样按「至今累计」口径，不受总览筛选影响。
+    /// 只用于下面的粗略 ROI 交叉指标，不代表 Cursor 单一来源的花费。
+    pub total_cost: Option<f64>,
+    pub cost_unpriced: bool,
+    /// = total_cost ÷ (composer_lines_added / 1000)。跨来源粗略口径：分子是全部 AI CLI 的费用，
+    /// 分母只是 Cursor 记录到的 AI 生成行数，两者不是同一统计边界，仅供参考，不做精确归因。
+    pub cost_per_thousand_ai_lines: Option<f64>,
 }
 
 /// 单条 Cursor 会话聚合（本机 agent-transcripts，不含正文）。

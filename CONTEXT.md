@@ -39,13 +39,13 @@ _Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混�
 | Codex | jsonl `~/.codex/sessions` | ✅ | ❌ |
 | Claude Code | jsonl `~/.claude/projects` | ✅ | ✅ 自带 `costUSD` |
 | pi | jsonl `~/.pi/agent/sessions` | ✅ | ✅ 自带 |
-| dsh | zstd jsonl `~/.dsh/sessions` | ✅(需解压) | 待确认 |
+| dsh | zstd jsonl `~/.dsh/sessions` | ✅(需解压) | ❌ |
 | opencode | sqlite+json `~/.local/share/opencode` | ✅ | ✅ 自带 |
 | kimi | jsonl `~/.kimi/sessions/*/wire.jsonl` | ✅ | ❌ |
-| gemini | json `~/.gemini/tmp/*/logs.json` | 待确认 | ❌ |
+| gemini | json `~/.gemini/tmp/*/chats/session-*.json` | ✅ | ❌ |
 | grok | `~/.grok/sessions` | ✅（`turn_completed.usage`） | ✅ 自带 `costUsdTicks` |
-| qwen | `~/.qwen` | 待确认 | ❌ |
-| Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
+| qwen | `~/.qwen/tmp/*/logs.json` | ❌（本地无 Token） | ❌ |
+| Factory/droid | `~/.factory/sessions/**/<id>.settings.json` | ✅（会话累计、无模型名） | ❌ |
 | Cursor | sqlite（代码量）+ 账号级 token（联网）+ 会话 transcript（行为统计） | ⚠️ 账号级（手动刷新） | ❌ |
 | cursor-agent | 会话与 IDE 共用 `~/.cursor/chats` + `agent-transcripts`；token 仅无头 stdout（需包装落盘到 `~/.cursor-agent-usage`） | ⚠️（仅包装） | ❌ |
 | copilot | jsonl `~/.copilot/session-state/<id>/events.jsonl` | ✅（仅会话结束时，按模型累计） | ❌ |

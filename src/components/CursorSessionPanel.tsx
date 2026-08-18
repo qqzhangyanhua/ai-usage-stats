@@ -6,6 +6,7 @@ import {
   modelPalette,
 } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
+import { cursorSessionProjectTable, cursorSessionToolTable } from "../lib/exportRows";
 import {
   formatClock,
   formatCompact,
@@ -17,6 +18,7 @@ import type { CursorSessionSummaryDto } from "../types";
 import { CursorSessionTable } from "./CursorSessionTable";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
 import { KpiCard, LegendRow } from "./Kpi";
 
@@ -156,6 +158,11 @@ export function CursorSessionPanel({
         <section className="panel partition">
           <div className="panel-head">
             <h2>工具调用 Top N</h2>
+            <ExportButton
+              filename="Cursor会话工具"
+              headers={cursorSessionToolTable(data).headers}
+              rows={cursorSessionToolTable(data).rows}
+            />
           </div>
           {data.top_tools.length > 0 ? (
             <ExportableChart
@@ -173,6 +180,11 @@ export function CursorSessionPanel({
         <div className="panel-head">
           <h2>按项目</h2>
           <span className="muted">点击项目可筛选上方会话明细</span>
+          <ExportButton
+            filename="Cursor会话项目"
+            headers={cursorSessionProjectTable(data).headers}
+            rows={cursorSessionProjectTable(data).rows}
+          />
         </div>
         {data.by_project.length > 0 ? (
           <>

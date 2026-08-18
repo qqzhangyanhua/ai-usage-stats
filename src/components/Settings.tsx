@@ -2,6 +2,7 @@ import { useState } from "react";
 import { applicationLabel, formatTokens } from "../lib/format";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { BackupPanel } from "./BackupPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
@@ -11,6 +12,7 @@ import {
   presetToPriceEntry,
   PRICE_PRESETS,
 } from "../lib/pricePresets";
+import { formatPerMillionInput, fromPerMillion } from "../lib/priceUnits";
 import type {
   BudgetStatusDto,
   IngestReport,
@@ -180,6 +182,8 @@ export function Settings({
 
       <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
 
+      <BackupPanel onRestored={onSnapshotRefreshed} />
+
       <CursorAccountSettingsPanel />
 
       <LiteLlmSnapshotPanel onRefreshed={onSnapshotRefreshed} />
@@ -190,7 +194,7 @@ export function Settings({
         <div className="panel-head">
           <div>
             <h2>单价配置</h2>
-            <p className="panel-note">当前单价按每 Token 美元计算；后续将迁移为 USD / 1M Token。</p>
+            <p className="panel-note">单价按 USD / 1M Token 填写；保存后仍按每 Token 存储。</p>
           </div>
           <div className="row-actions">
             <Button
@@ -230,36 +234,42 @@ export function Settings({
               onChange={(event) => update(index, { provider: event.target.value || null })}
             />
             <Field
-              label="输入"
+              label="输入 / 1M"
               type="number"
               min="0"
               step="any"
-              value={row.input}
-              onChange={(event) => update(index, { input: Number(event.target.value) })}
+              value={formatPerMillionInput(row.input)}
+              onChange={(event) => update(index, { input: fromPerMillion(Number(event.target.value)) })}
             />
             <Field
-              label="输出"
+              label="输出 / 1M"
               type="number"
               min="0"
               step="any"
-              value={row.output}
-              onChange={(event) => update(index, { output: Number(event.target.value) })}
+              value={formatPerMillionInput(row.output)}
+              onChange={(event) =>
+                update(index, { output: fromPerMillion(Number(event.target.value)) })
+              }
             />
             <Field
-              label="缓存读"
+              label="缓存读 / 1M"
               type="number"
               min="0"
               step="any"
-              value={row.cache_read}
-              onChange={(event) => update(index, { cache_read: Number(event.target.value) })}
+              value={formatPerMillionInput(row.cache_read)}
+              onChange={(event) =>
+                update(index, { cache_read: fromPerMillion(Number(event.target.value)) })
+              }
             />
             <Field
-              label="缓存写"
+              label="缓存写 / 1M"
               type="number"
               min="0"
               step="any"
-              value={row.cache_creation}
-              onChange={(event) => update(index, { cache_creation: Number(event.target.value) })}
+              value={formatPerMillionInput(row.cache_creation)}
+              onChange={(event) =>
+                update(index, { cache_creation: fromPerMillion(Number(event.target.value)) })
+              }
             />
             <Button
               variant="danger"

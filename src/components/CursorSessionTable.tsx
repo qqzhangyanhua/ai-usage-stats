@@ -254,7 +254,12 @@ export function CursorSessionTable({
                     <button
                       type="button"
                       className="sort-th"
-                      onClick={() => toggleSort(column.key)}
+                      onClick={() => {
+                        if (column.key === "model") {
+                          return;
+                        }
+                        toggleSort(column.key);
+                      }}
                     >
                       {column.label}
                       <SortArrow active={sortKey === column.key} dir={sortDir} />

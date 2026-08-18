@@ -1,7 +1,7 @@
 //! SQL 下推的聚合查询：把原先「load_all 全量载入内存再聚合」改为在 sqlite 里
 //! GROUP BY / 过滤，只返回聚合结果。费用通过临时价格表 `price_rows` LEFT JOIN 计算，
-//! 与 `cost::derive_cost` 保持同一语义（native_cost 优先，其次 model+provider 精确匹配，
-//! 再次 model 且 provider 为 NULL 的兜底，都没有则标记 unpriced）。
+//! 与 `cost::derive_cost` 保持同一语义（native_cost 优先，其次 model+provider 匹配，
+//! 再次 model 且 provider 为 NULL 的兜底，都没有则标记 unpriced；model/provider 大小写不敏感）。
 
 use std::collections::BTreeMap;
 
@@ -11,7 +11,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection};
 use crate::billing_window;
 use crate::domain::{
     ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, BillingWindowsDto,
-    EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
+    CostSource, EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
     ProjectApplicationRow, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, TurnRow,
     UsageRecord,
 };
@@ -36,10 +36,20 @@ const UNPRICED_EXPR: &str = "
         ELSE 1
     END";
 
-/// 价格表两次 LEFT JOIN：pe 精确匹配 model+provider，pf 兜底 model 且 provider 为空。
+/// 费用来源：native > 精确匹配条目 origin > 兜底条目 origin > none。
+const COST_SOURCE_EXPR: &str = "
+    CASE
+        WHEN r.native_cost IS NOT NULL THEN 'native'
+        WHEN pe.model IS NOT NULL THEN COALESCE(pe.origin, 'user')
+        WHEN pf.model IS NOT NULL THEN COALESCE(pf.origin, 'user')
+        ELSE 'none'
+    END";
+
+/// 价格表两次 LEFT JOIN：pe 匹配 model+provider，pf 兜底 model 且 provider 为空。
+/// 键在 `install_prices` 里已折成 ASCII 小写，与 `cost::model_matches` 一致。
 const PRICE_JOINS: &str = "
-    LEFT JOIN price_rows pe ON pe.model = r.model AND pe.provider = r.provider
-    LEFT JOIN price_rows pf ON pf.model = r.model AND pf.provider IS NULL";
+    LEFT JOIN price_rows pe ON pe.model = lower(r.model) AND pe.provider = lower(r.provider)
+    LEFT JOIN price_rows pf ON pf.model = lower(r.model) AND pf.provider IS NULL";
 
 fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> {
     conn.execute_batch(
@@ -50,7 +60,8 @@ fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> 
              input REAL NOT NULL DEFAULT 0,
              output REAL NOT NULL DEFAULT 0,
              cache_read REAL NOT NULL DEFAULT 0,
-             cache_creation REAL NOT NULL DEFAULT 0
+             cache_creation REAL NOT NULL DEFAULT 0,
+             origin TEXT NOT NULL DEFAULT 'user'
          );",
     )
     .map_err(|e| e.to_string())?;
@@ -59,18 +70,22 @@ fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> 
     }
     let mut stmt = conn
         .prepare(
-            "INSERT INTO price_rows (model, provider, input, output, cache_read, cache_creation)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO price_rows (model, provider, input, output, cache_read, cache_creation, origin)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )
         .map_err(|e| e.to_string())?;
     for entry in &prices.prices {
         stmt.execute(params![
-            entry.model.as_str(),
-            entry.provider.as_deref(),
+            entry.model.to_ascii_lowercase(),
+            entry
+                .provider
+                .as_ref()
+                .map(|value| value.to_ascii_lowercase()),
             entry.input,
             entry.output,
             entry.cache_read,
             entry.cache_creation,
+            entry.origin.as_str(),
         ])
         .map_err(|e| e.to_string())?;
     }
@@ -850,7 +865,8 @@ pub fn session_turns(
             r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_creation_tokens,
             r.reasoning_tokens, r.total_tokens, r.source_file,
             {COST_EXPR},
-            {UNPRICED_EXPR}
+            {UNPRICED_EXPR},
+            {COST_SOURCE_EXPR}
         FROM usage_records r
         {PRICE_JOINS}
         {}
@@ -862,6 +878,7 @@ pub fn session_turns(
         .query_map(params_from_iter(params.iter()), |row| {
             let cost: Option<f64> = row.get(10)?;
             let unpriced: i64 = row.get(11)?;
+            let cost_source = CostSource::from_sql(row.get::<_, String>(12)?.as_str());
             Ok(TurnRow {
                 occurred_at: row.get(0)?,
                 model: row.get(1)?,
@@ -875,11 +892,8 @@ pub fn session_turns(
                 source_file: row.get(9)?,
                 cost,
                 unpriced: unpriced > 0,
-                cost_note: if unpriced > 0 {
-                    Some("单价未配置".to_string())
-                } else {
-                    None
-                },
+                cost_source,
+                cost_note: Some(cost_source.note().to_string()),
             })
         })
         .map_err(|e| e.to_string())?;
