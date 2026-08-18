@@ -6,7 +6,7 @@ alwaysApply: false
 
 # 测试策略（src-tauri）
 
-运行：`cargo test --manifest-path src-tauri/Cargo.toml`（或在 `src-tauri` 目录下 `cargo test`）。所有测试集中在 `src-tauri/src/tests.rs`（单文件、按功能分节，目前 60+ 个 `#[test]`），没有单独的 `tests/` 集成测试 crate；`src-tauri/tests/fixtures/` 只放数据夹具。
+运行：`cargo test --manifest-path src-tauri/Cargo.toml`（或在 `src-tauri` 目录下 `cargo test`）。Rust 测试按域拆在 `src-tauri/src/tests/`（`adapters`、`ingest`、`query`、`parity`、`cursor_*` 等），共享辅助函数在 `src-tauri/src/test_support/`；`src-tauri/tests/fixtures/` 只放数据夹具。
 
 ## Adapter 测试
 

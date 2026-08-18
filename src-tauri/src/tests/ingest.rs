@@ -1,0 +1,753 @@
+use crate::test_support::*;
+
+#[test]
+fn ingest_skips_unchanged_file_on_second_pass() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    std::fs::write(session_dir.join("one.jsonl"), fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    let first = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(first.files_parsed, 1);
+    assert_eq!(first.files_skipped, 0);
+    assert_eq!(first.records_written, 2);
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.files_parsed, 0);
+    assert_eq!(second.files_skipped, 1);
+    assert_eq!(second.records_written, 0);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+}
+
+#[test]
+fn ingest_rewrites_changed_file_without_duplicates() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let mut changed = fixture("codex.jsonl");
+    changed.push('\n');
+    std::fs::write(&path, changed).unwrap();
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.files_parsed, 1);
+    assert_eq!(second.files_skipped, 0);
+    assert_eq!(second.records_written, 2);
+
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+}
+
+#[test]
+fn ingest_keeps_last_good_records_when_changed_jsonl_has_a_bad_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let broken = format!("{}\n{{not-json", fixture("codex.jsonl"));
+    std::fs::write(&path, broken).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(report.files_parsed, 0);
+    assert!(report.partial_success);
+    assert_eq!(report.issues.len(), 1);
+    assert_eq!(report.issues[0].source, "codex");
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+}
+
+#[test]
+fn ingest_keeps_last_good_records_when_valid_jsonl_loses_usage_events() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    let original = fixture("codex.jsonl");
+    std::fs::write(&path, &original).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let partial = original.lines().take(4).collect::<Vec<_>>().join("\n");
+    std::fs::write(&path, partial).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| record.total_tokens)
+            .sum::<i64>(),
+        19113
+    );
+}
+
+#[test]
+fn ingest_keeps_last_good_records_when_changed_file_has_no_usage_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::write(&path, "{}\n").unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+}
+
+#[test]
+fn source_with_a_failed_file_defers_deleted_file_reconciliation() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let first = session_dir.join("one.jsonl");
+    let second = session_dir.join("two.jsonl");
+    std::fs::write(&first, fixture("codex.jsonl")).unwrap();
+    std::fs::write(&second, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(store::load_all(&conn).unwrap().len(), 4);
+
+    std::fs::write(&first, "{not-json").unwrap();
+    std::fs::remove_file(second).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(report.records_removed, 0);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 4);
+}
+
+#[test]
+fn ingest_archives_records_after_a_source_file_is_deleted() {
+    // ADR 0004：源文件消失（工具自身清理/轮转）不再物理删除历史记录，只归档；
+    // 归档记录仍然计入统计，直到用户显式清理。
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(path).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.records_removed, 0);
+    assert_eq!(report.records_archived, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2, "archived records still count in totals");
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+
+    // 幂等：再摄取一次不会重复归档同一批记录。
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.records_archived, 0);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let codex = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "codex")
+        .unwrap();
+    assert_eq!(codex.archived_record_count, 2);
+    assert_eq!(codex.record_count, 2);
+}
+
+#[test]
+fn ingest_replaces_archived_records_when_the_same_path_reappears() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(&path).unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+
+    // 文件在同一路径重新出现（比如从备份恢复），不应和归档快照重复计数。
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(report.files_parsed, 1);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(
+        records.len(),
+        2,
+        "reappearing file replaces its archived snapshot"
+    );
+    assert!(records.iter().all(|r| r.total_tokens > 0));
+}
+
+#[test]
+fn purge_archived_permanently_deletes_only_archived_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    let claude_dir = home.join(".claude/projects/project");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let codex_path = codex_dir.join("one.jsonl");
+    std::fs::write(&codex_path, fixture("codex.jsonl")).unwrap();
+    std::fs::write(claude_dir.join("one.jsonl"), fixture("claude.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(&codex_path).unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    // 按来源清理：只删 codex 的归档记录，claude 的活跃记录不受影响。
+    let removed = store::purge_archived(&conn, Some(Source::Codex)).unwrap();
+    assert_eq!(removed, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert!(records.iter().all(|r| r.source == Source::Claude));
+
+    let removed_again = store::purge_archived(&conn, Some(Source::Codex)).unwrap();
+    assert_eq!(removed_again, 0);
+
+    let removed_all = store::purge_archived(&conn, None).unwrap();
+    assert_eq!(removed_all, 0, "claude records were never archived");
+}
+
+#[test]
+fn kimi_sidecar_change_invalidates_unchanged_session_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_id = "bd1ab6fc-768d-4cff-b4c4-221a583c3af8";
+    let wire = home.join(format!(".kimi/sessions/hash/{session_id}/wire.jsonl"));
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(
+        home.join(".kimi/kimi.json"),
+        format!(r#"{{"work_dirs":[{{"last_session_id":"{session_id}","path":"/project/one"}}]}}"#),
+    )
+    .unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(store::load_all(&conn)
+        .unwrap()
+        .iter()
+        .all(|record| record.project == "/project/one"));
+
+    std::fs::write(
+        home.join(".kimi/kimi.json"),
+        format!(r#"{{"work_dirs":[{{"last_session_id":"{session_id}","path":"/project/two"}}]}}"#),
+    )
+    .unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+
+    assert_eq!(report.files_parsed, 1);
+    assert!(store::load_all(&conn)
+        .unwrap()
+        .iter()
+        .all(|record| record.project == "/project/two"));
+}
+
+#[test]
+fn invalid_kimi_sidecar_keeps_last_good_project_mapping() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_id = "bd1ab6fc-768d-4cff-b4c4-221a583c3af8";
+    let wire = home.join(format!(".kimi/sessions/hash/{session_id}/wire.jsonl"));
+    let sidecar = home.join(".kimi/kimi.json");
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(
+        &sidecar,
+        format!(r#"{{"work_dirs":[{{"last_session_id":"{session_id}","path":"/project/good"}}]}}"#),
+    )
+    .unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::write(&sidecar, "{not-json").unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+    let records = store::load_all(&conn).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert!(records
+        .iter()
+        .all(|record| record.project == "/project/good"));
+}
+
+#[test]
+fn rebuilding_one_source_keeps_other_sources_and_reparses_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    let claude_dir = home.join(".claude/projects/project");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    std::fs::write(codex_dir.join("one.jsonl"), fixture("codex.jsonl")).unwrap();
+    std::fs::write(claude_dir.join("one.jsonl"), fixture("claude.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let report = ingest::rebuild_cache(&conn, home, Some(Source::Codex)).unwrap();
+    let records = store::load_all(&conn).unwrap();
+
+    assert_eq!(report.files_parsed, 1);
+    assert!(records.iter().any(|record| record.source == Source::Codex));
+    assert!(records.iter().any(|record| record.source == Source::Claude));
+}
+
+#[test]
+fn rebuild_keeps_last_good_records_when_target_file_is_broken() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    let path = codex_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    std::fs::write(&path, "{not-json").unwrap();
+
+    let report = ingest::rebuild_cache(&conn, home, Some(Source::Codex)).unwrap();
+    let records = store::load_all(&conn).unwrap();
+
+    assert_eq!(report.files_failed, 1);
+    assert_eq!(records.len(), 2);
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| record.total_tokens)
+            .sum::<i64>(),
+        19113
+    );
+}
+
+#[test]
+fn rebuilding_all_removes_unknown_source_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let conn = store::open_memory().unwrap();
+    conn.execute_batch(
+        r#"
+        INSERT INTO usage_records (
+            occurred_at, source, model, provider, project, session_id, source_file,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            reasoning_tokens, total_tokens, native_cost
+        ) VALUES ('2026-01-01T00:00:00Z', 'future-source', '', '', '', 's', '/future', 1, 0, 0, 0, 0, 1, NULL);
+        INSERT INTO ingested_files(path, mtime_ms, size, source, fingerprint, adapter_version)
+        VALUES('/future', 1, 1, 'future-source', '', 1);
+        "#,
+    )
+    .unwrap();
+    assert!(store::load_all(&conn).is_err());
+
+    let report = ingest::rebuild_cache(&conn, home, None).unwrap();
+
+    assert_eq!(report.records_removed, 1);
+    assert!(store::load_all(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn remove_unknown_sources_keeps_every_registered_source() {
+    let conn = store::open_memory().unwrap();
+    for source in Source::ALL {
+        conn.execute(
+            r#"
+            INSERT INTO usage_records (
+                occurred_at, source, model, provider, project, session_id, source_file,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                reasoning_tokens, total_tokens, native_cost
+            ) VALUES ('2026-01-01T00:00:00Z', ?1, '', '', '', ?1, ?2, 1, 0, 0, 0, 0, 1, NULL)
+            "#,
+            rusqlite::params![source.as_str(), format!("/{}.jsonl", source.as_str())],
+        )
+        .unwrap();
+        conn.execute(
+            r#"
+            INSERT INTO ingested_files(path, mtime_ms, size, source, fingerprint, adapter_version)
+            VALUES(?1, 1, 1, ?2, '', 1)
+            "#,
+            rusqlite::params![format!("/{}.jsonl", source.as_str()), source.as_str()],
+        )
+        .unwrap();
+    }
+
+    let removed = store::remove_unknown_sources(&conn).unwrap();
+    assert_eq!(removed, 0);
+
+    for source in Source::ALL {
+        let (cached_files, record_count, _, _) = store::source_cache_stats(&conn, source).unwrap();
+        assert_eq!(
+            cached_files,
+            1,
+            "{} cached files were wiped",
+            source.as_str()
+        );
+        assert_eq!(record_count, 1, "{} records were wiped", source.as_str());
+    }
+}
+
+#[test]
+fn source_diagnostics_explain_detection_cache_and_usage_coverage() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::write(codex_dir.join("one.jsonl"), fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let codex = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "codex")
+        .unwrap();
+    let qwen = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "qwen")
+        .unwrap();
+
+    assert!(codex.detected);
+    assert_eq!(codex.cached_files, 1);
+    assert_eq!(codex.record_count, 2);
+    assert_eq!(codex.total_tokens, 19113);
+    assert_eq!(codex.coverage, "轮级 Token");
+    assert!(!qwen.detected);
+    assert_eq!(qwen.coverage, "本地无 Token");
+
+    let cursor_agent = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "cursor_agent")
+        .unwrap();
+    assert!(
+        !cursor_agent.detected,
+        "empty home should not report a fake usage directory as detected"
+    );
+    assert_eq!(
+        cursor_agent.root_path,
+        format!(
+            "{}, {}",
+            home.join(".cursor/chats").display(),
+            home.join(".cursor/projects").display()
+        )
+    );
+    assert_eq!(
+        cursor_agent.coverage,
+        "会话与 IDE 共用本机目录；token 仅包装落盘"
+    );
+}
+
+#[test]
+fn cursor_agent_diagnostics_detect_shared_cursor_dirs_not_usage_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    std::fs::create_dir_all(home.join(".cursor/chats")).unwrap();
+    let conn = store::open_memory().unwrap();
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let cursor_agent = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "cursor_agent")
+        .unwrap();
+    assert!(cursor_agent.detected);
+    assert!(cursor_agent.root_path.contains(".cursor/chats"));
+    assert!(cursor_agent.root_path.contains(".cursor/projects"));
+    assert!(
+        !cursor_agent.root_path.contains(".cursor-agent-usage"),
+        "usage capture dir is optional and must not be advertised when absent"
+    );
+    assert_eq!(
+        ingest::source_scan_dirs_with(&ingest::PathOverrides::new(), home, Source::CursorAgent),
+        vec![home.join(".cursor-agent-usage")],
+    );
+}
+
+#[test]
+fn source_scan_dirs_default_to_home_relative_paths() {
+    let home = std::path::Path::new("/home/example");
+    let overrides = ingest::PathOverrides::new();
+
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Codex),
+        vec![home.join(".codex/sessions")],
+    );
+    // Claude Code 有的安装方式写到 XDG 目录而不是 ~/.claude，默认两个都扫。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Claude),
+        vec![
+            home.join(".claude/projects"),
+            home.join(".config/claude/projects"),
+        ],
+    );
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Copilot),
+        vec![home.join(".copilot/session-state")],
+    );
+}
+
+#[test]
+fn source_scan_dirs_env_override_replaces_defaults_with_same_leaf_join_rule() {
+    let home = std::path::Path::new("/home/example");
+    let overrides = ingest::PathOverrides::from([
+        ("CODEX_HOME", vec![PathBuf::from("/custom/codex")]),
+        (
+            "CLAUDE_CONFIG_DIR",
+            vec![
+                PathBuf::from("/custom/claude-a"),
+                PathBuf::from("/custom/claude-b"),
+            ],
+        ),
+    ]);
+
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Codex),
+        vec![PathBuf::from("/custom/codex/sessions")],
+    );
+    // 覆盖后不再回退到默认的 XDG 双路径，只扫用户显式给出的目录。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Claude),
+        vec![
+            PathBuf::from("/custom/claude-a/projects"),
+            PathBuf::from("/custom/claude-b/projects"),
+        ],
+    );
+    // 未覆盖的 Source 仍然用默认路径。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Grok),
+        vec![home.join(".grok/sessions")],
+    );
+}
+
+#[test]
+fn ingest_scans_multiple_overridden_directories_for_one_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    // 默认路径 home/.codex/sessions 放一份数据，用来验证覆盖后它不会再被扫到。
+    let default_sessions = home.join(".codex/sessions");
+    std::fs::create_dir_all(&default_sessions).unwrap();
+    std::fs::write(
+        default_sessions.join("ignored.jsonl"),
+        fixture("codex.jsonl"),
+    )
+    .unwrap();
+
+    // CODEX_HOME 覆盖为两个自定义根目录（逗号分隔多个），两个都要按同样的 /sessions
+    // 规则拼接、都要被扫到。
+    let root_a = home.join("codex-root-a");
+    let root_b = home.join("codex-root-b");
+    std::fs::create_dir_all(root_a.join("sessions")).unwrap();
+    std::fs::create_dir_all(root_b.join("sessions")).unwrap();
+    std::fs::write(root_a.join("sessions/a.jsonl"), fixture("codex.jsonl")).unwrap();
+    std::fs::write(root_b.join("sessions/b.jsonl"), fixture("codex.jsonl")).unwrap();
+
+    let overrides =
+        ingest::PathOverrides::from([("CODEX_HOME", vec![root_a.clone(), root_b.clone()])]);
+
+    let conn = store::open_memory().unwrap();
+    let report = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+
+    assert_eq!(report.files_parsed, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 4);
+    assert!(records.iter().all(|r| r.source == Source::Codex));
+    assert!(records
+        .iter()
+        .all(|r| !r.source_file.contains("ignored.jsonl")));
+
+    // 删掉其中一个根目录下的文件，reconcile 应该只处理那一份，另一份不受影响——
+    // 说明多目录是合并到同一次对账里的，而不是互相独立、互不感知。
+    // 按 ADR 0004，消失的文件只归档、不物理删除，归档记录仍计入统计。
+    std::fs::remove_file(root_a.join("sessions/a.jsonl")).unwrap();
+    let second = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+    assert_eq!(second.records_removed, 0);
+    assert_eq!(second.records_archived, 2);
+    assert_eq!(
+        store::load_all(&conn).unwrap().len(),
+        4,
+        "archived records still count in totals"
+    );
+
+    // 被归档的正好是 root_a 那一份：显式清理归档记录后，剩下的应当只有 root_b 的记录。
+    assert_eq!(
+        store::purge_archived(&conn, Some(Source::Codex)).unwrap(),
+        2
+    );
+    let remaining = store::load_all(&conn).unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining
+        .iter()
+        .all(|r| r.source_file.contains("codex-root-b")));
+}
+
+
+#[test]
+fn overview_matches_source_model_project_and_session_rollups() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let records = store::load_all(&conn).unwrap();
+    assert_rollups_match_overview(&records, &Filter::default());
+
+    let from_aug2 = Filter {
+        from: Some("2026-08-02T00:00:00Z".into()),
+        ..Filter::default()
+    };
+    let filtered = aggregate::overview(&records, &from_aug2, &PriceTable::default());
+    assert_eq!(filtered.total_tokens, 350);
+    assert_rollups_match_overview(&records, &from_aug2);
+}
+
+
+#[test]
+fn ingest_all_fixtures_is_stable_on_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    write_all_source_fixtures(home);
+    let conn = store::open_memory().unwrap();
+    let first = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(first.files_parsed, 10);
+    assert_eq!(first.records_written, 16);
+    let stored = store::load_all(&conn).unwrap();
+    assert_eq!(stored.len(), 16);
+    assert_eq!(stored.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
+    assert_rollups_match_overview(&stored, &Filter::default());
+
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.files_parsed, 0);
+    assert_eq!(second.files_skipped, 10);
+    assert_eq!(second.records_written, 0);
+    let again = store::load_all(&conn).unwrap();
+    assert_eq!(again.len(), 16);
+    assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
+}
+
+#[test]
+fn scan_is_stale_detects_new_changed_and_deleted_source_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let sessions = home.join(".codex/sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let first = sessions.join("one.jsonl");
+    std::fs::write(&first, fixture("codex.jsonl")).unwrap();
+
+    let conn = store::open_memory().unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "empty cache should be stale when source files exist"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    let file = std::fs::File::options().write(true).open(&first).unwrap();
+    file.set_modified(later).unwrap();
+    drop(file);
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "mtime change should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(sessions.join("two.jsonl"), fixture("codex.jsonl")).unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "new file should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::remove_file(sessions.join("two.jsonl")).unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "deleted cached file should be stale"
+    );
+}
+
+#[test]
+fn scan_is_stale_detects_kimi_and_grok_sidecar_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    let wire = home.join(".kimi/sessions/hash/sess/wire.jsonl");
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[]}").unwrap();
+
+    let updates = home.join(".grok/sessions/proj/sid/updates.jsonl");
+    std::fs::create_dir_all(updates.parent().unwrap()).unwrap();
+    std::fs::write(&updates, fixture("grok-updates.jsonl")).unwrap();
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\"}",
+    )
+    .unwrap();
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[],\"x\":1}").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "kimi.json content change should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\",\"note\":\"x\"}",
+    )
+    .unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "grok summary.json change should be stale"
+    );
+}
+
+#[test]
+fn scan_is_stale_detects_opencode_wal_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db_path = home.join(".local/share/opencode/opencode.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let db = rusqlite::Connection::open(&db_path).unwrap();
+    db.execute_batch("CREATE TABLE message (session_id TEXT, data TEXT);")
+        .unwrap();
+    drop(db);
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    let wal = PathBuf::from(format!("{}-wal", db_path.to_string_lossy()));
+    std::fs::write(&wal, b"wal").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "opencode.db-wal change should be stale"
+    );
+}

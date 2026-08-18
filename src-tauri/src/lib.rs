@@ -779,4 +779,7 @@ pub fn run() {
 }
 
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 mod tests;
