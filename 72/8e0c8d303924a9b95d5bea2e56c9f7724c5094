@@ -1,0 +1,122 @@
+README.md
+  s_aab3df05781610::t_f6d7438d08311c 21
+  s_aab3df05781610::t_717a92408b4101 25
+  s_aab3df05781610::t_51d8c7ffc97947 10-11
+src-tauri/src/official_quota/cursor.rs
+  s_aab3df05781610::t_4c5b02386e1c82 31
+  s_aab3df05781610::t_5d26d95a15c734 1-30,32-73
+src/components/Settings.tsx
+  s_aab3df05781610::t_431e0ef09390c9 20
+  s_aab3df05781610::t_9336963391b2c0 8
+  s_aab3df05781610::t_14f4f7b6fd6e8a 62-64
+  s_aab3df05781610::t_6891a05a9b23f7 195-200
+  s_aab3df05781610::t_f8e750d17d1dec 43-45
+src-tauri/src/official_quota/claude.rs
+  s_aab3df05781610::t_b3077f14b27fd4 76-80
+  s_aab3df05781610::t_d783678ddda8ac 1-30,35-53,56,60-75,81-113
+  s_aab3df05781610::t_4c5b02386e1c82 31-34,54-55,57-59
+src/components/Overview.tsx
+  s_aab3df05781610::t_093fae22ee1149 174-175
+  s_aab3df05781610::t_769af45e11bf99 29
+  s_aab3df05781610::t_d4ba55ce3806df 77
+  s_aab3df05781610::t_03734aea7428fb 59
+  s_aab3df05781610::t_a6718fedbf60a3 8
+src-tauri/src/lib.rs
+  s_aab3df05781610::t_1fcf5368026512 14
+  s_aab3df05781610::t_dcd0c24f436533 592-594,597,599
+  s_aab3df05781610::t_d94a1cfc4996a1 830-834
+  s_aab3df05781610::t_25743fc34c411c 578-582
+  s_aab3df05781610::t_cdf93df7bb9080 794-795
+  s_aab3df05781610::t_4c5b02386e1c82 33-34,629-632
+  s_aab3df05781610::t_474c7b93bccf31 32
+  s_aab3df05781610::t_b06cec1712ed30 43-44
+  s_aab3df05781610::t_798febf706baeb 556-557,561-577,583-591,595-596,598,600-628,633-634
+  s_aab3df05781610::t_09b71978128b2e 782-783
+  s_aab3df05781610::t_8a89ffde431153 635
+src/hooks/useUsageData.ts
+  s_aab3df05781610::t_a44e164ec7e766 62
+  s_aab3df05781610::t_9bf44654918db0 18
+  s_aab3df05781610::t_6b5adbf92b6658 197
+  s_aab3df05781610::t_23299b7863e159 275
+  s_aab3df05781610::t_3c7d2c030b0aaa 530-531
+src/components/OfficialQuotaSettingsPanel.tsx
+  s_aab3df05781610::t_2cdb4521d69922 1-117
+src-tauri/src/main.rs
+  s_aab3df05781610::t_812a4d528472cb 4-10
+src-tauri/src/official_quota/codex.rs
+  s_aab3df05781610::t_81ae63d294f83b 1-98,100-125,127-188
+  s_aab3df05781610::t_27ace5d61b9509 99
+  s_aab3df05781610::t_4c5b02386e1c82 126
+src-tauri/src/tests.rs
+  s_aab3df05781610::t_b5e5a74b526035 5963-6001,6010-6075,6080-6110,6115-6194,6198,6202-6204
+  s_aab3df05781610::t_4c5b02386e1c82 6002-6009,6076-6079,6111-6114,6195-6197,6199-6201
+  s_aab3df05781610::t_e1846e0cbb4bfe 4171-4172,4232-4233
+  s_aab3df05781610::t_37853a5ed31c7e 4066-4067
+  s_aab3df05781610::t_71e55a27a61df5 19
+src/types.ts
+  s_aab3df05781610::t_0f5501ac44d09f 82-118
+src-tauri/src/official_quota/notify.rs
+  s_aab3df05781610::t_4c5b02386e1c82 52-55,69-72,93-95,109-111,125-127
+  s_aab3df05781610::t_5de988dd51e4a3 1-51,56-68,73-92,96-108,112-124,128-181
+src/components/OfficialQuotaPanel.tsx
+  s_aab3df05781610::t_35068d30f5068d 1-73
+docs/adr/0008-official-quota-dimension.md
+  s_aab3df05781610::t_13bf22d8673595 1-23
+src-tauri/src/store.rs
+  s_aab3df05781610::t_2a6652e9e360ae 135-141
+  s_aab3df05781610::t_b8dbe8fb37fbce 5-7
+  s_aab3df05781610::t_4f2e2cb747a347 698-718,724-766
+  s_aab3df05781610::t_4c5b02386e1c82 719-723
+src-tauri/src/official_quota/mod.rs
+  s_aab3df05781610::t_2559326fe204b1 143-153,156,159,161
+  s_aab3df05781610::t_79656ac5945ba0 1-68,74-84,90-142,154-155,157-158,160,162-282
+  s_aab3df05781610::t_4c5b02386e1c82 69-73,85-89
+.cursor/rules/project-overview.mdc
+  s_aab3df05781610::t_ced0c63ce1acb5 45
+src-tauri/src/tray.rs
+  s_aab3df05781610::t_2faa47fd7d6654 54-62,67-76
+  s_aab3df05781610::t_48f6264ac4f95e 198
+  s_aab3df05781610::t_5a307d4751df8e 233,243,248,253-256,258-262
+  s_aab3df05781610::t_4c5b02386e1c82 257
+  s_aab3df05781610::t_e24298d7cc61c2 158-159
+  s_aab3df05781610::t_0aa37d2da5fe2c 217,221-232
+  s_aab3df05781610::t_72db334f2527b8 10-11
+  s_aab3df05781610::t_ef9bd5e4c9f5d0 234
+src-tauri/src/backup.rs
+  s_aab3df05781610::t_d2a05cb0b52c77 29-30
+  s_aab3df05781610::t_579bfa5de5c973 108-119
+  s_aab3df05781610::t_f391de25dd12d4 16-17
+  s_aab3df05781610::t_be2529536b6426 221-234
+docs/probe/official-quota.md
+  s_aab3df05781610::t_b9b25784407c3c 1-34
+src/components/BackupPanel.tsx
+  s_aab3df05781610::t_e270d55029cc1a 28
+src-tauri/src/official_quota/hook.rs
+  s_aab3df05781610::t_a4d899b98dfad8 1-42,45-67,72-105
+  s_aab3df05781610::t_4c5b02386e1c82 43-44,68-71
+src/styles.css
+  s_aab3df05781610::t_e461280ef751ef 2681-2766
+src-tauri/src/domain.rs
+  s_aab3df05781610::t_74312eaaedfd54 150-248
+CONTEXT.md
+  s_aab3df05781610::t_e7dd695104bcda 35-38
+src/App.tsx
+  s_aab3df05781610::t_04cd93e8fb0679 160-162
+  s_aab3df05781610::t_185722abfa4665 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "728e0c8d303924a9b95d5bea2e56c9f7724c5094",
+  "prompts": {},
+  "sessions": {
+    "s_aab3df05781610": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f4d4d20-1457-420b-9020-edca79b04d63",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
