@@ -1,0 +1,62 @@
+src-tauri/src/instructions/mod.rs
+  s_aab3df05781610::t_e9fff6fc557f52 2,4
+  s_aab3df05781610::t_f5242406e33fb1 17-22
+  s_aab3df05781610::t_d997cae28b30e7 3,5
+src/styles.css
+  s_aab3df05781610::t_b8607a89b1a795 3196-3203,3206-3208,3212,3216-3244
+  s_aab3df05781610::t_052fc3d9fded5e 3245
+src-tauri/src/instructions/gemini.rs
+  s_aab3df05781610::t_364aa5c0a893b7 1-2,4-14,16-19
+  s_aab3df05781610::t_5021c64508f71f 15
+  s_aab3df05781610::t_9ff9253a2817ff 3
+src-tauri/src/tests.rs
+  s_aab3df05781610::t_29046931a62daf 6307-6333,6338
+  s_aab3df05781610::t_06b6ce2bbc8ec0 6275
+  s_aab3df05781610::t_676a2efa79748c 6334-6337,6351-6354,6361-6364,6398-6401,6416-6420
+  s_aab3df05781610::t_6dd011c342591d 6206-6225
+  s_aab3df05781610::t_4e3066c25d5d80 6339-6350,6355-6360,6365-6397,6402-6415,6421-6422
+  s_aab3df05781610::t_aeafa7375dc112 6242-6244
+src-tauri/src/instructions/cursor.rs
+  s_aab3df05781610::t_3bf57ec3ce0097 1-34
+src/types.ts
+  s_aab3df05781610::t_88b21dafc8208f 125-126,133,136-137
+src-tauri/src/instructions/claude.rs
+  s_aab3df05781610::t_9ff9253a2817ff 3
+  s_aab3df05781610::t_c5d349321cbcc5 5,9,12,14,17-21,23-24
+  s_aab3df05781610::t_7379afac5d499b 13,22
+src-tauri/src/lib.rs
+  s_aab3df05781610::t_207c90cb45bcbf 592-597
+  s_aab3df05781610::t_0b73968d57eaae 854
+  s_aab3df05781610::t_2991f0976e9f4c 591
+src-tauri/src/instructions/codex.rs
+  s_aab3df05781610::t_0ade8767b0637e 1-2,4-18,20-35,37-44,46-55
+  s_aab3df05781610::t_6ab940aff88467 19
+  s_aab3df05781610::t_085de8717c4352 36,45
+  s_aab3df05781610::t_9ff9253a2817ff 3
+src-tauri/src/domain.rs
+  s_aab3df05781610::t_d627ea283dfadf 258-265
+  s_aab3df05781610::t_032a36119de504 285,288-289
+src/components/GlobalInstructionPanel.tsx
+  s_aab3df05781610::t_d1b251ce31b3ca 15
+  s_aab3df05781610::t_4fa780a04f1a9b 7,20-25,31,66-75,89-91,100,102,104-107,109,124,129,132-134,138-141,147,152-156,159-163,165
+src-tauri/src/instructions/file.rs
+  s_aab3df05781610::t_676a2efa79748c 6
+  s_aab3df05781610::t_24b86026f459d3 12,29,36-42,46,50,59
+  s_aab3df05781610::t_4136c1bf5d7575 1-5,7-11,13-28,30-35,43-45,47-49,51-58,60-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "13a9b890abf839a9315a2e0978c16442acdbefca",
+  "prompts": {},
+  "sessions": {
+    "s_aab3df05781610": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f4d4d20-1457-420b-9020-edca79b04d63",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
