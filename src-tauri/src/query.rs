@@ -1,7 +1,7 @@
 //! SQL 下推的聚合查询：把原先「load_all 全量载入内存再聚合」改为在 sqlite 里
 //! GROUP BY / 过滤，只返回聚合结果。费用通过临时价格表 `price_rows` LEFT JOIN 计算，
-//! 与 `cost::derive_cost` 保持同一语义（native_cost 优先，其次 model+provider 精确匹配，
-//! 再次 model 且 provider 为 NULL 的兜底，都没有则标记 unpriced）。
+//! 与 `cost::derive_cost` 保持同一语义（native_cost 优先，其次 model+provider 匹配，
+//! 再次 model 且 provider 为 NULL 的兜底，都没有则标记 unpriced；model/provider 大小写不敏感）。
 
 use std::collections::BTreeMap;
 
@@ -45,10 +45,11 @@ const COST_SOURCE_EXPR: &str = "
         ELSE 'none'
     END";
 
-/// 价格表两次 LEFT JOIN：pe 精确匹配 model+provider，pf 兜底 model 且 provider 为空。
+/// 价格表两次 LEFT JOIN：pe 匹配 model+provider，pf 兜底 model 且 provider 为空。
+/// 键在 `install_prices` 里已折成 ASCII 小写，与 `cost::model_matches` 一致。
 const PRICE_JOINS: &str = "
-    LEFT JOIN price_rows pe ON pe.model = r.model AND pe.provider = r.provider
-    LEFT JOIN price_rows pf ON pf.model = r.model AND pf.provider IS NULL";
+    LEFT JOIN price_rows pe ON pe.model = lower(r.model) AND pe.provider = lower(r.provider)
+    LEFT JOIN price_rows pf ON pf.model = lower(r.model) AND pf.provider IS NULL";
 
 fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> {
     conn.execute_batch(
@@ -75,8 +76,11 @@ fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> 
         .map_err(|e| e.to_string())?;
     for entry in &prices.prices {
         stmt.execute(params![
-            entry.model.as_str(),
-            entry.provider.as_deref(),
+            entry.model.to_ascii_lowercase(),
+            entry
+                .provider
+                .as_ref()
+                .map(|value| value.to_ascii_lowercase()),
             entry.input,
             entry.output,
             entry.cache_read,
