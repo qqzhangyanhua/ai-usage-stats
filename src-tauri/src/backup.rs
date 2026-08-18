@@ -13,6 +13,9 @@ pub const PRICES_NAME: &str = "prices.json";
 pub const SNAPSHOT_NAME: &str = "litellm_prices.json";
 pub const BUDGET_NAME: &str = "budget.json";
 
+const STAGING_DIR: &str = ".restore-staging";
+const BAK_SUFFIX: &str = ".restore-bak";
+
 #[derive(Debug, Clone)]
 pub struct AppDataPaths {
     pub db_path: PathBuf,
@@ -110,37 +113,158 @@ pub fn load_manifest(src_dir: &Path) -> Result<BackupManifest, String> {
     serde_json::from_str(&text).map_err(|e| format!("备份清单无效：{e}"))
 }
 
-/// 调用方必须先释放目标 sqlite 连接，否则 WAL 模式下无法安全覆盖。
-pub fn restore_from(src_dir: &Path, paths: &AppDataPaths) -> Result<BackupManifest, String> {
+/// 只读校验，不改目标文件，也不要求释放 sqlite 连接。
+pub fn validate_restore(src_dir: &Path) -> Result<BackupManifest, String> {
     let manifest = load_manifest(src_dir)?;
-    let src_db = src_dir.join(DB_NAME);
-    if !src_db.exists() {
+    if !src_dir.join(DB_NAME).exists() {
         return Err("备份目录缺少 usage.sqlite".to_string());
     }
-
-    if let Some(parent) = paths.db_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    fs::copy(&src_db, &paths.db_path).map_err(|e| format!("恢复数据库失败：{e}"))?;
-    remove_sidecar(&paths.db_path, "-wal");
-    remove_sidecar(&paths.db_path, "-shm");
-
-    restore_optional(src_dir, PRICES_NAME, &paths.prices_path)?;
-    restore_optional(src_dir, SNAPSHOT_NAME, &paths.snapshot_path)?;
-    restore_optional(src_dir, BUDGET_NAME, &paths.budget_path)?;
     Ok(manifest)
 }
 
-fn restore_optional(src_dir: &Path, name: &str, dest: &Path) -> Result<(), String> {
-    let src = src_dir.join(name);
-    if !src.exists() {
+/// 调用方必须先释放目标 sqlite 连接，否则 WAL 模式下无法安全覆盖。
+/// 先把全部文件拷到 staging，再逐个 rename 进位；失败时从 `.restore-bak` 回滚。
+pub fn restore_from(src_dir: &Path, paths: &AppDataPaths) -> Result<BackupManifest, String> {
+    let manifest = validate_restore(src_dir)?;
+    let dest_root = paths
+        .db_path
+        .parent()
+        .ok_or_else(|| "数据库路径没有父目录".to_string())?
+        .to_path_buf();
+    let staging = dest_root.join(STAGING_DIR);
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging).map_err(|e| format!("创建恢复暂存目录失败：{e}"))?;
+
+    let planned = match stage_restore(src_dir, paths, &staging) {
+        Ok(planned) => planned,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+    };
+
+    match apply_replacements(&planned, &paths.db_path) {
+        Ok(()) => {
+            for (dest, _) in &planned {
+                let _ = fs::remove_file(bak_path(dest));
+            }
+            let _ = fs::remove_dir_all(&staging);
+            Ok(manifest)
+        }
+        Err(error) => {
+            rollback_replacements(&planned);
+            let _ = fs::remove_dir_all(&staging);
+            Err(error)
+        }
+    }
+}
+
+fn stage_restore(
+    src_dir: &Path,
+    paths: &AppDataPaths,
+    staging: &Path,
+) -> Result<Vec<(PathBuf, PathBuf)>, String> {
+    let mut planned = Vec::new();
+    stage_required(src_dir, DB_NAME, &paths.db_path, staging, &mut planned)?;
+    stage_optional(
+        src_dir,
+        PRICES_NAME,
+        &paths.prices_path,
+        staging,
+        &mut planned,
+    )?;
+    stage_optional(
+        src_dir,
+        SNAPSHOT_NAME,
+        &paths.snapshot_path,
+        staging,
+        &mut planned,
+    )?;
+    stage_optional(
+        src_dir,
+        BUDGET_NAME,
+        &paths.budget_path,
+        staging,
+        &mut planned,
+    )?;
+    Ok(planned)
+}
+
+fn stage_required(
+    src_dir: &Path,
+    name: &str,
+    dest: &Path,
+    staging: &Path,
+    planned: &mut Vec<(PathBuf, PathBuf)>,
+) -> Result<(), String> {
+    let staged = staging.join(name);
+    fs::copy(src_dir.join(name), &staged).map_err(|e| format!("暂存 {name} 失败：{e}"))?;
+    planned.push((dest.to_path_buf(), staged));
+    Ok(())
+}
+
+fn stage_optional(
+    src_dir: &Path,
+    name: &str,
+    dest: &Path,
+    staging: &Path,
+    planned: &mut Vec<(PathBuf, PathBuf)>,
+) -> Result<(), String> {
+    if !src_dir.join(name).exists() {
         return Ok(());
     }
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    stage_required(src_dir, name, dest, staging, planned)
+}
+
+fn apply_replacements(planned: &[(PathBuf, PathBuf)], db_path: &Path) -> Result<(), String> {
+    for (dest, staged) in planned {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let bak = bak_path(dest);
+        if dest.exists() {
+            if dest.is_dir() {
+                return Err(format!("写入 {} 失败：目标是目录", dest.display()));
+            }
+            replace_file(dest, &bak)
+                .map_err(|e| format!("备份当前 {} 失败：{e}", dest.display()))?;
+        }
+        replace_file(staged, dest).map_err(|e| format!("写入 {} 失败：{e}", dest.display()))?;
     }
-    fs::copy(&src, dest).map_err(|e| format!("恢复 {name} 失败：{e}"))?;
+    remove_sidecar(db_path, "-wal");
+    remove_sidecar(db_path, "-shm");
     Ok(())
+}
+
+fn rollback_replacements(planned: &[(PathBuf, PathBuf)]) {
+    for (dest, _) in planned.iter().rev() {
+        let bak = bak_path(dest);
+        if bak.exists() {
+            let _ = fs::remove_file(dest);
+            let _ = replace_file(&bak, dest);
+            let _ = fs::remove_file(&bak);
+        }
+    }
+}
+
+fn bak_path(dest: &Path) -> PathBuf {
+    let mut name = dest
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    name.push_str(BAK_SUFFIX);
+    dest.with_file_name(name)
+}
+
+fn replace_file(from: &Path, to: &Path) -> Result<(), String> {
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            fs::copy(from, to).map_err(|e| e.to_string())?;
+            let _ = fs::remove_file(from);
+            Ok(())
+        }
+    }
 }
 
 fn remove_sidecar(db_path: &Path, suffix: &str) {
