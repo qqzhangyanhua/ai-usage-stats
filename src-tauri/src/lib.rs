@@ -403,10 +403,23 @@ async fn purge_archived_records(
 }
 
 #[tauri::command]
-async fn get_code_volume() -> Result<CodeVolumeSummary, String> {
-    tauri::async_runtime::spawn_blocking(move || ingest::load_code_volume(&ingest::default_home()))
-        .await
-        .map_err(|e| e.to_string())?
+async fn get_code_volume(app: tauri::AppHandle) -> Result<CodeVolumeSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let summary = ingest::load_code_volume(&ingest::default_home())?;
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        let prices = state.effective_prices();
+        // 代码量本身是「至今累计」口径、不受总览筛选影响，这里用同样不筛选的 Filter 取全量费用，
+        // 保证分子分母覆盖同一个时间窗口（都是全部时间）。
+        let overview = query::overview(&conn, &Filter::default(), &prices)?;
+        Ok(adapters::cursor::with_cost_roi(
+            summary,
+            overview.cost,
+            overview.unpriced,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

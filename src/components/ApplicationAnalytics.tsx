@@ -3,8 +3,10 @@ import { Icon } from "../icons";
 import { applicationStackedTrendOption } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { formatCompact, formatTokens, projectLabel } from "../lib/format";
+import { applicationEfficiencyTable, applicationProjectMatrixTable } from "../lib/exportRows";
 import type { ApplicationAnalyticsDto, Grain } from "../types";
 import { EmptyState } from "./EmptyState";
+import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
 import { GrainSwitch } from "./ui/GrainSwitch";
 
@@ -51,6 +53,8 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
       data.by_application.map((application) => row.values[application.source] ?? 0),
     ),
   );
+  const efficiencyExport = applicationEfficiencyTable(data);
+  const matrixExport = applicationProjectMatrixTable(data);
 
   return (
     <div className="stack application-analytics">
@@ -101,6 +105,11 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
             <h2>应用效率明细</h2>
             <p className="panel-note">按应用比较缓存复用、单会话规模与推理开销。</p>
           </div>
+          <ExportButton
+            filename="应用效率"
+            headers={efficiencyExport.headers}
+            rows={efficiencyExport.rows}
+          />
         </div>
         <div className="table-scroll">
           <table>
@@ -147,6 +156,11 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
               行按项目总 Token 排序，颜色越深表示该应用在项目中的消耗越高。
             </p>
           </div>
+          <ExportButton
+            filename="应用项目交叉"
+            headers={matrixExport.headers}
+            rows={matrixExport.rows}
+          />
         </div>
         <div className="table-scroll cross-table-wrap">
           <table className="cross-table">
