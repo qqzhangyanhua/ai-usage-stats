@@ -1,0 +1,27 @@
+src/components/CursorSessionPanel.tsx
+  s_da81064dba31c2::t_2ff6e09a76bd5e 9
+src/lib/exportRows.test.ts
+  s_da81064dba31c2::t_3b03d8be8c0c46 228,234-235,252-265
+  s_da81064dba31c2::t_10a5afa431d6d6 225-227
+  s_da81064dba31c2::t_88ccb36f7b511c 229-233
+  s_da81064dba31c2::t_829f83e727e22b 236-238,249-251
+  s_da81064dba31c2::t_f8edbbaf53856a 266-268
+src/components/CursorSessionTable.tsx
+  s_da81064dba31c2::t_27ec65326d7367 257-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "ad87f7e629182e26e2aeeef7164956de2494c1e4",
+  "prompts": {},
+  "sessions": {
+    "s_da81064dba31c2": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a01344-c634-7a51-b6a7-8b9665992256",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
