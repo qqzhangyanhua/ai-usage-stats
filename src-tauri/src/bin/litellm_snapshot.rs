@@ -25,8 +25,9 @@ fn main() {
     }
 
     let raw = match input_path {
-        Some(path) => std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("读取 {path} 失败：{e}")),
+        Some(path) => {
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读取 {path} 失败：{e}"))
+        }
         None => {
             let mut buf = String::new();
             std::io::stdin()
@@ -36,12 +37,14 @@ fn main() {
         }
     };
 
-    let as_of = as_of.unwrap_or_else(|| {
-        chrono::Utc::now().format("%Y-%m-%d").to_string()
-    });
+    let as_of = as_of.unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
 
     let snapshot = litellm::parse_litellm_raw(&raw, &as_of).expect("解析 LiteLLM 价目失败");
     let json = serde_json::to_string_pretty(&snapshot).expect("序列化快照失败");
     println!("{json}");
-    eprintln!("生成快照：as_of={} 条目={}", snapshot.as_of, snapshot.entries.len());
+    eprintln!(
+        "生成快照：as_of={} 条目={}",
+        snapshot.as_of,
+        snapshot.entries.len()
+    );
 }

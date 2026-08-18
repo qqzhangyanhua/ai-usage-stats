@@ -2882,8 +2882,11 @@ fn litellm_snapshot_normalizes_upstream_and_skips_noise() {
     assert_eq!(snapshot.as_of, "2026-08-17");
     assert_eq!(snapshot.source, "litellm");
 
-    let by_model: std::collections::HashMap<&str, &PriceEntry> =
-        snapshot.entries.iter().map(|e| (e.model.as_str(), e)).collect();
+    let by_model: std::collections::HashMap<&str, &PriceEntry> = snapshot
+        .entries
+        .iter()
+        .map(|e| (e.model.as_str(), e))
+        .collect();
 
     // sample_spec、embedding 模式、纯零价条目都应被跳过。
     assert!(!by_model.contains_key("sample_spec"));
@@ -2928,7 +2931,11 @@ fn litellm_merge_lets_user_prices_win_and_fills_the_rest() {
     let merged = crate::litellm::merge(&user, &snapshot);
 
     // 用户配置过的 gpt-4o 不被快照覆盖，只保留用户那条。
-    let gpt: Vec<&PriceEntry> = merged.prices.iter().filter(|e| e.model == "gpt-4o").collect();
+    let gpt: Vec<&PriceEntry> = merged
+        .prices
+        .iter()
+        .filter(|e| e.model == "gpt-4o")
+        .collect();
     assert_eq!(gpt.len(), 1);
     assert_eq!(gpt[0].input, 9.9);
     // 用户没配的模型由快照补齐。
