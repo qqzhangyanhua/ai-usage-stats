@@ -41,3 +41,5 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 | Cursor | sqlite（仅代码量） | ❌（云端） | ❌ |
 | cursor-agent | 无头 `stream-json`（本机会话无 token） | ✅（仅 stdout，需前瞻落盘） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |
+
+以上是各 Source 的默认扫描路径；每个 Source 都可以用环境变量整体覆盖（逗号分隔可指定多个目录，同时扫描），用于非默认安装位置或多份数据目录。默认路径与对应环境变量见 `docs/adr/0005-configurable-source-paths.md`。Claude Code 默认会同时扫 `~/.claude/projects` 和 XDG 路径 `~/.config/claude/projects`。
