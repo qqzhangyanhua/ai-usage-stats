@@ -205,7 +205,11 @@ export function CursorSessionPanel({
         onError={onError}
       />
       {selectedSourceFile ? (
-        <CursorSessionDetail sourceFile={selectedSourceFile} onError={onError} />
+        <CursorSessionDetail
+          key={selectedSourceFile}
+          sourceFile={selectedSourceFile}
+          onError={onError}
+        />
       ) : (
         <p className="note">点击上方会话行查看工具、读写路径和哈希文件。</p>
       )}

@@ -1,19 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
-import { ApplicationAnalytics } from "./components/ApplicationAnalytics";
-import { Breakdown } from "./components/Breakdown";
-import { CursorAccountUsagePanel } from "./components/CursorAccountUsagePanel";
-import { CursorPanel } from "./components/CursorPanel";
-import { CursorSessionPanel } from "./components/CursorSessionPanel";
+import { Suspense } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingOverlay } from "./components/LoadingOverlay";
-import { Overview } from "./components/Overview";
-import { Sessions } from "./components/Sessions";
-import { Settings } from "./components/Settings";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
-import { Trend } from "./components/Trend";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
+import {
+  LazyApplicationAnalytics,
+  LazyBreakdown,
+  LazyCursorAccountUsagePanel,
+  LazyCursorPanel,
+  LazyCursorSessionPanel,
+  LazyOverview,
+  LazySessions,
+  LazySettings,
+  LazyTrend,
+} from "./views/lazyViews";
+import { ViewFallback } from "./views/ViewFallback";
 
 export default function App() {
   const data = useUsageData();
@@ -56,117 +60,121 @@ export default function App() {
             }
           >
             <ErrorBoundary fullscreen={false}>
-              {view === "overview" ? (
-                <Overview
-                  overview={data.overview}
-                  billingWindows={data.billingWindows}
-                  previous={data.previous}
-                  trend={data.trend}
-                  heatmap={data.heatmap}
-                  heatmapRange={data.heatmapRange}
-                  models={data.models}
-                  projects={data.projects}
-                  sessions={data.sessions}
-                  grain={data.grain}
-                  preset={data.preset}
-                  updatedAt={data.updatedAt}
-                  live={data.connected}
-                  theme={theme}
-                  onGrain={data.setGrain}
-                  onOpenSessions={data.openSessions}
-                />
-              ) : null}
-              {view === "trend" ? (
-                <Trend
-                  grain={data.grain}
-                  setGrain={data.setGrain}
-                  points={data.trend}
-                  theme={theme}
-                />
-              ) : null}
-              {view === "application" ? (
-                <ApplicationAnalytics
-                  analytics={data.applicationAnalytics}
-                  grain={data.grain}
-                  setGrain={data.setGrain}
-                  theme={theme}
-                />
-              ) : null}
-              {["model", "provider", "project"].includes(view) ? (
-                <Breakdown
-                  title={
-                    view === "model" ? "按模型" : view === "provider" ? "按 provider" : "按项目"
-                  }
-                  icon={view === "model" ? "model" : view === "provider" ? "provider" : "project"}
-                  rows={data.breakdown}
-                  showProviderChannel={view === "provider"}
-                  showVendorIcon={view === "model" || view === "provider"}
-                  projectNames={view === "project"}
-                  theme={theme}
-                />
-              ) : null}
-              {view === "cursor" ? (
-                <div className="stack">
-                  <CursorAccountUsagePanel theme={theme} />
-                  <CursorPanel
-                    summary={data.codeVolume}
-                    loading={data.codeVolumeLoading}
+              <Suspense fallback={<ViewFallback />}>
+                {view === "overview" ? (
+                  <LazyOverview
+                    overview={data.overview}
+                    billingWindows={data.billingWindows}
+                    previous={data.previous}
+                    trend={data.trend}
+                    heatmap={data.heatmap}
+                    heatmapRange={data.heatmapRange}
+                    models={data.models}
+                    projects={data.projects}
+                    sessions={data.sessions}
+                    grain={data.grain}
+                    preset={data.preset}
+                    updatedAt={data.updatedAt}
+                    live={data.connected}
+                    theme={theme}
+                    onGrain={data.setGrain}
+                    onOpenSessions={data.openSessions}
+                  />
+                ) : null}
+                {view === "trend" ? (
+                  <LazyTrend
+                    grain={data.grain}
+                    setGrain={data.setGrain}
+                    points={data.trend}
                     theme={theme}
                   />
-                </div>
-              ) : null}
-              {view === "cursor-sessions" ? (
-                <CursorSessionPanel
-                  summary={data.cursorSessionSummary}
-                  loading={data.cursorSessionLoading}
-                  theme={theme}
-                  revision={data.sessionsRevision}
-                  onError={data.reportError}
-                />
-              ) : null}
-              {view === "settings" ? (
-                <Settings
-                  prices={data.prices}
-                  diagnostics={data.diagnostics}
-                  ingestReport={data.lastIngestReport}
-                  rebuilding={data.rebuilding}
-                  purging={data.purging}
-                  operationBusy={data.busy}
-                  observedModels={data.options.models}
-                  budgetStatus={data.budgetStatus}
-                  savingBudget={data.savingBudget}
-                  onChange={data.setPrices}
-                  onRebuild={data.runRebuild}
-                  onPurgeArchived={data.runPurgeArchived}
-                  onSave={async () => {
-                    try {
-                      await invoke("save_price_table", { prices: data.prices });
-                      data.setStatus("单价已保存");
-                    } catch (error) {
-                      data.reportError(error);
+                ) : null}
+                {view === "application" ? (
+                  <LazyApplicationAnalytics
+                    analytics={data.applicationAnalytics}
+                    grain={data.grain}
+                    setGrain={data.setGrain}
+                    theme={theme}
+                  />
+                ) : null}
+                {["model", "provider", "project"].includes(view) ? (
+                  <LazyBreakdown
+                    title={
+                      view === "model" ? "按模型" : view === "provider" ? "按 provider" : "按项目"
                     }
-                  }}
-                  onSnapshotRefreshed={() => data.runIngest("刷新")}
-                  onSaveBudget={(monthlyUsd) =>
-                    data.saveBudget({ monthly_usd: monthlyUsd }).catch(() => undefined)
-                  }
-                />
-              ) : null}
+                    icon={view === "model" ? "model" : view === "provider" ? "provider" : "project"}
+                    rows={data.breakdown}
+                    showProviderChannel={view === "provider"}
+                    showVendorIcon={view === "model" || view === "provider"}
+                    projectNames={view === "project"}
+                    theme={theme}
+                  />
+                ) : null}
+                {view === "cursor" ? (
+                  <div className="stack">
+                    <LazyCursorAccountUsagePanel theme={theme} />
+                    <LazyCursorPanel
+                      summary={data.codeVolume}
+                      loading={data.codeVolumeLoading}
+                      theme={theme}
+                    />
+                  </div>
+                ) : null}
+                {view === "cursor-sessions" ? (
+                  <LazyCursorSessionPanel
+                    summary={data.cursorSessionSummary}
+                    loading={data.cursorSessionLoading}
+                    theme={theme}
+                    revision={data.sessionsRevision}
+                    onError={data.reportError}
+                  />
+                ) : null}
+                {view === "settings" ? (
+                  <LazySettings
+                    prices={data.prices}
+                    diagnostics={data.diagnostics}
+                    ingestReport={data.lastIngestReport}
+                    rebuilding={data.rebuilding}
+                    purging={data.purging}
+                    operationBusy={data.busy}
+                    observedModels={data.options.models}
+                    budgetStatus={data.budgetStatus}
+                    savingBudget={data.savingBudget}
+                    onChange={data.setPrices}
+                    onRebuild={data.runRebuild}
+                    onPurgeArchived={data.runPurgeArchived}
+                    onSave={async () => {
+                      try {
+                        await invoke("save_price_table", { prices: data.prices });
+                        data.setStatus("单价已保存");
+                      } catch (error) {
+                        data.reportError(error);
+                      }
+                    }}
+                    onSnapshotRefreshed={() => data.runIngest("刷新")}
+                    onSaveBudget={(monthlyUsd: number | null) =>
+                      data.saveBudget({ monthly_usd: monthlyUsd }).catch(() => undefined)
+                    }
+                  />
+                ) : null}
+              </Suspense>
             </ErrorBoundary>
             {data.sessionsVisited ? (
               <div hidden={view !== "sessions"}>
                 <ErrorBoundary fullscreen={false}>
-                  <Sessions
-                    filter={data.filter}
-                    options={data.options}
-                    revision={data.sessionsRevision}
-                    turns={data.turns}
-                    turnsLoading={data.turnsLoading}
-                    selected={data.selectedSession}
-                    onSelect={data.setSelectedSession}
-                    onFilterChange={data.applyFilter}
-                    onError={data.reportError}
-                  />
+                  <Suspense fallback={<ViewFallback />}>
+                    <LazySessions
+                      filter={data.filter}
+                      options={data.options}
+                      revision={data.sessionsRevision}
+                      turns={data.turns}
+                      turnsLoading={data.turnsLoading}
+                      selected={data.selectedSession}
+                      onSelect={data.setSelectedSession}
+                      onFilterChange={data.applyFilter}
+                      onError={data.reportError}
+                    />
+                  </Suspense>
                 </ErrorBoundary>
               </div>
             ) : null}
