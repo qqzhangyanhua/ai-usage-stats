@@ -1,4 +1,4 @@
-use crate::domain::{DerivedCost, PriceTable, UsageRecord};
+use crate::domain::{CostSource, DerivedCost, PriceOrigin, PriceTable, UsageRecord};
 
 pub fn derive_cost(record: &UsageRecord, prices: &PriceTable) -> DerivedCost {
     if let Some(amount) = record.native_cost {
@@ -6,6 +6,7 @@ pub fn derive_cost(record: &UsageRecord, prices: &PriceTable) -> DerivedCost {
             amount: Some(amount),
             unpriced: false,
             source_native: true,
+            cost_source: CostSource::Native,
         };
     }
     if let Some(entry) = find_price(record, prices) {
@@ -13,16 +14,22 @@ pub fn derive_cost(record: &UsageRecord, prices: &PriceTable) -> DerivedCost {
             + (record.output_tokens as f64) * entry.output
             + (record.cache_read_tokens as f64) * entry.cache_read
             + (record.cache_creation_tokens as f64) * entry.cache_creation;
+        let cost_source = match entry.origin {
+            PriceOrigin::Snapshot => CostSource::Snapshot,
+            PriceOrigin::User => CostSource::User,
+        };
         return DerivedCost {
             amount: Some(amount),
             unpriced: false,
             source_native: false,
+            cost_source,
         };
     }
     DerivedCost {
         amount: None,
         unpriced: true,
         source_native: false,
+        cost_source: CostSource::None,
     }
 }
 

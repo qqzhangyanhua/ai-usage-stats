@@ -38,7 +38,18 @@ const TOKEN_FIELDS: TokenField[] = [
   { key: "total_tokens", label: "总量" },
 ];
 
-const EXPORT_HEADERS = ["时间", "模型", "输入", "输出", "缓存读", "缓存写", "推理", "总量", "费用"];
+const EXPORT_HEADERS = [
+  "时间",
+  "模型",
+  "输入",
+  "输出",
+  "缓存读",
+  "缓存写",
+  "推理",
+  "总量",
+  "费用",
+  "费用来源",
+];
 
 export function SessionTurns({
   sessionId,
@@ -110,6 +121,7 @@ export function SessionTurns({
               turn.reasoning_tokens,
               turn.total_tokens,
               turn.cost ?? "",
+              turn.cost_note ?? "",
             ])}
           />
         </div>
@@ -266,10 +278,11 @@ function TurnDetailDialog({ turn, onClose }: { turn: TurnRow; onClose: () => voi
         <dl className="turn-detail-meta">
           <div>
             <dt>费用</dt>
-            <dd>
-              {formatCost(turn.cost, turn.unpriced)}
-              {turn.cost_note ? ` · ${turn.cost_note}` : ""}
-            </dd>
+            <dd>{formatCost(turn.cost, turn.unpriced)}</dd>
+          </div>
+          <div>
+            <dt>费用来源</dt>
+            <dd>{turn.cost_note ?? "—"}</dd>
           </div>
           <div className="turn-detail-file">
             <dt>原始文件</dt>
