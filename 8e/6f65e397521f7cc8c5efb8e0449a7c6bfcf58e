@@ -1,0 +1,54 @@
+src/components/CursorSessionPanel.tsx
+  s_da81064dba31c2::t_f280623c448906 1,17,34,46,114-119,175,184-185,190-193,197-199,201-210,213-217
+  s_da81064dba31c2::t_040d5e00a94ed8 9-15,200
+src-tauri/src/cursor_session.rs
+  s_da81064dba31c2::t_c485ce677d434e 13-14,163-171,186-191,193-240,242-248,252-259,312-346
+  s_da81064dba31c2::t_da3dbe013118e4 62-73
+  s_da81064dba31c2::t_c70bcacc699f6d 427-497
+src-tauri/src/tests.rs
+  s_da81064dba31c2::t_e33954d60cfb9e 2509-2554,4088-4116
+  s_da81064dba31c2::t_10aa1880411a37 4053-4059
+  s_da81064dba31c2::t_561e9a56e4aa6f 4117
+docs/adr/0005-configurable-source-paths.md
+  s_da81064dba31c2::t_c9c0319baaa836 24
+src-tauri/src/ingest.rs
+  s_da81064dba31c2::t_17db9853a9d759 127,165,187-190,192-202,276
+  s_da81064dba31c2::t_82943594385d4a 191
+src/components/type.ts
+  s_da81064dba31c2::t_4184a1a25af371 1
+  s_da81064dba31c2::t_040d5e00a94ed8 2
+CONTEXT.md
+  s_da81064dba31c2::t_e6bd6ad4fc7afa 32-33,50
+docs/adr/0005-cursor-session-local-ingest.md
+  s_da81064dba31c2::t_caf2fb367d197d 3
+src-tauri/src/domain.rs
+  s_da81064dba31c2::t_3053fbde74a948 495-511,517-519,553,568
+src/components/CursorSessionTable.tsx
+  s_da81064dba31c2::t_69e57179e6f03c 220,224,251-252,279
+  s_da81064dba31c2::t_954081a334acd8 161
+  s_da81064dba31c2::t_92e90631e059f3 15-25
+  s_da81064dba31c2::t_44a66701bae44c 1-14,26-160,162-183,185-219,221-223,225-250,253-278,280-324
+  s_da81064dba31c2::t_040d5e00a94ed8 184
+src/styles.css
+  s_da81064dba31c2::t_a3d7d849733546 2645-2667
+src-tauri/src/store.rs
+  s_da81064dba31c2::t_ab3c7c5d70eefb 577-587
+src/types.ts
+  s_da81064dba31c2::t_0d7902dea88f79 254-268,273-275,304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "8e6f65e397521f7cc8c5efb8e0449a7c6bfcf58e",
+  "prompts": {},
+  "sessions": {
+    "s_da81064dba31c2": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a01344-c634-7a51-b6a7-8b9665992256",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
