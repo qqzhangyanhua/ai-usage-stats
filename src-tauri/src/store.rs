@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::domain::{Source, UsageRecord};
+use crate::domain::{CursorSessionRecord, CursorUsageEvent, Source, UsageRecord};
 
 pub const ADAPTER_VERSION: i64 = 7;
 
@@ -73,6 +73,52 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source TEXT NOT NULL DEFAULT '',
             fingerprint TEXT NOT NULL DEFAULT '',
             adapter_version INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS cursor_account_usage (
+            fingerprint TEXT PRIMARY KEY,
+            occurred_at TEXT NOT NULL,
+            model TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            cache_read_tokens INTEGER NOT NULL,
+            cache_creation_tokens INTEGER NOT NULL,
+            is_headless INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cursor_account_occurred
+            ON cursor_account_usage(occurred_at);
+
+        CREATE TABLE IF NOT EXISTS cursor_account_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cursor_sessions (
+            source_file TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            project TEXT NOT NULL,
+            turn_count INTEGER NOT NULL,
+            success_count INTEGER NOT NULL,
+            error_count INTEGER NOT NULL,
+            aborted_count INTEGER NOT NULL,
+            tool_calls_json TEXT NOT NULL,
+            models_json TEXT NOT NULL DEFAULT '[]',
+            first_seen_at TEXT,
+            last_seen_at TEXT,
+            files_touched INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_cursor_sessions_project ON cursor_sessions(project);
+        CREATE INDEX IF NOT EXISTS idx_cursor_sessions_last_seen ON cursor_sessions(last_seen_at);
+
+        CREATE TABLE IF NOT EXISTS cursor_session_files (
+            path TEXT PRIMARY KEY,
+            mtime_ms INTEGER NOT NULL,
+            size INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cursor_session_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );
         "#,
     )
@@ -416,4 +462,269 @@ pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+/// 按指纹去重写入 Cursor 账号用量事件，返回新插入的行数。
+pub fn upsert_cursor_account_events(
+    conn: &Connection,
+    events: &[CursorUsageEvent],
+) -> Result<u64, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            INSERT OR IGNORE INTO cursor_account_usage (
+                fingerprint, occurred_at, model,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                is_headless
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+    let mut written = 0u64;
+    for event in events {
+        let changed = stmt
+            .execute(params![
+                event.fingerprint(),
+                event.occurred_at,
+                event.model,
+                event.input_tokens,
+                event.output_tokens,
+                event.cache_read_tokens,
+                event.cache_creation_tokens,
+                i64::from(event.is_headless),
+            ])
+            .map_err(|e| e.to_string())?;
+        written += changed as u64;
+    }
+    Ok(written)
+}
+
+pub fn load_cursor_account_events(conn: &Connection) -> Result<Vec<CursorUsageEvent>, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT occurred_at, model, input_tokens, output_tokens,
+                   cache_read_tokens, cache_creation_tokens, is_headless
+            FROM cursor_account_usage
+            ORDER BY occurred_at ASC
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CursorUsageEvent {
+                occurred_at: row.get(0)?,
+                model: row.get(1)?,
+                input_tokens: row.get(2)?,
+                output_tokens: row.get(3)?,
+                cache_read_tokens: row.get(4)?,
+                cache_creation_tokens: row.get(5)?,
+                is_headless: row.get::<_, i64>(6)? != 0,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn set_cursor_account_as_of(conn: &Connection, as_of: &str) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_account_meta(key, value) VALUES('as_of', ?1)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![as_of],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn cursor_account_as_of(conn: &Connection) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM cursor_account_meta WHERE key = 'as_of'",
+        [],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn max_cursor_account_occurred_ms(conn: &Connection) -> Result<Option<i64>, String> {
+    let occurred_at: Option<String> = conn
+        .query_row(
+            "SELECT MAX(occurred_at) FROM cursor_account_usage",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let Some(occurred_at) = occurred_at else {
+        return Ok(None);
+    };
+    let millis = chrono::DateTime::parse_from_rfc3339(&occurred_at)
+        .map_err(|e| format!("Cursor 账号用量时间戳无法解析：{e}"))?
+        .timestamp_millis();
+    Ok(Some(millis))
+}
+
+pub fn clear_cursor_account_usage(conn: &Connection) -> Result<(), String> {
+    conn.execute("DELETE FROM cursor_account_usage", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM cursor_account_meta", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn cursor_session_file_fingerprint(
+    conn: &Connection,
+    path: &str,
+) -> Result<Option<(i64, i64)>, String> {
+    conn.query_row(
+        "SELECT mtime_ms, size FROM cursor_session_files WHERE path = ?1",
+        params![path],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn upsert_cursor_session(conn: &Connection, record: &CursorSessionRecord) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_sessions (
+            source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
+            tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+        ON CONFLICT(source_file) DO UPDATE SET
+            session_id = excluded.session_id,
+            project = excluded.project,
+            turn_count = excluded.turn_count,
+            success_count = excluded.success_count,
+            error_count = excluded.error_count,
+            aborted_count = excluded.aborted_count,
+            tool_calls_json = excluded.tool_calls_json,
+            models_json = excluded.models_json,
+            first_seen_at = COALESCE(cursor_sessions.first_seen_at, excluded.first_seen_at),
+            last_seen_at = excluded.last_seen_at,
+            files_touched = excluded.files_touched
+        "#,
+        params![
+            record.source_file,
+            record.session_id,
+            record.project,
+            record.turn_count,
+            record.success_count,
+            record.error_count,
+            record.aborted_count,
+            record.tool_calls_json,
+            record.models_json,
+            record.first_seen_at,
+            record.last_seen_at,
+            record.files_touched,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn upsert_cursor_session_file(
+    conn: &Connection,
+    path: &str,
+    mtime_ms: i64,
+    size: i64,
+) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_session_files(path, mtime_ms, size) VALUES(?1,?2,?3)
+        ON CONFLICT(path) DO UPDATE SET mtime_ms = excluded.mtime_ms, size = excluded.size
+        "#,
+        params![path, mtime_ms, size],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn load_cursor_sessions(conn: &Connection) -> Result<Vec<CursorSessionRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT source_file, session_id, project, turn_count, success_count, error_count, aborted_count,
+                   tool_calls_json, models_json, first_seen_at, last_seen_at, files_touched
+            FROM cursor_sessions
+            ORDER BY last_seen_at ASC, source_file ASC
+            "#,
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CursorSessionRecord {
+                source_file: row.get(0)?,
+                session_id: row.get(1)?,
+                project: row.get(2)?,
+                turn_count: row.get(3)?,
+                success_count: row.get(4)?,
+                error_count: row.get(5)?,
+                aborted_count: row.get(6)?,
+                tool_calls_json: row.get(7)?,
+                models_json: row.get(8)?,
+                first_seen_at: row.get(9)?,
+                last_seen_at: row.get(10)?,
+                files_touched: row.get(11)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn reconcile_cursor_sessions(
+    conn: &Connection,
+    seen_paths: &BTreeSet<String>,
+) -> Result<u64, String> {
+    let cached: Vec<String> = conn
+        .prepare("SELECT source_file FROM cursor_sessions")
+        .map_err(|e| e.to_string())?
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let mut removed = 0u64;
+    for path in cached {
+        if seen_paths.contains(&path) {
+            continue;
+        }
+        conn.execute(
+            "DELETE FROM cursor_sessions WHERE source_file = ?1",
+            params![path],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM cursor_session_files WHERE path = ?1",
+            params![path],
+        )
+        .map_err(|e| e.to_string())?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+pub fn set_cursor_session_as_of(conn: &Connection, as_of: &str) -> Result<(), String> {
+    conn.execute(
+        r#"
+        INSERT INTO cursor_session_meta(key, value) VALUES('as_of', ?1)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![as_of],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn cursor_session_as_of(conn: &Connection) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM cursor_session_meta WHERE key = 'as_of'",
+        [],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }

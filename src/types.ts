@@ -90,6 +90,7 @@ export type View =
   | "project"
   | "sessions"
   | "cursor"
+  | "cursor-sessions"
   | "settings";
 
 export type SeriesPoint = {
@@ -216,6 +217,55 @@ export type CodeVolumeSummary = {
   composer_lines_added: number;
   human_lines_added: number;
   ai_percentage: number | null;
+};
+
+export type CursorAccountUsageDto = {
+  as_of: string | null;
+  event_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  total_tokens: number;
+  daily: SeriesPoint[];
+  by_model: NamedAmount[];
+  headless_tokens: number;
+  interactive_tokens: number;
+  headless_share: number | null;
+};
+
+export type CursorSessionProjectRow = {
+  name: string;
+  session_count: number;
+  turn_count: number;
+};
+
+export type CursorSessionDailyPoint = {
+  bucket: string;
+  session_count: number;
+  turn_count: number;
+};
+
+export type CursorSessionModelRow = {
+  name: string;
+  session_count: number;
+};
+
+export type CursorSessionToolRow = {
+  name: string;
+  call_count: number;
+};
+
+export type CursorSessionSummaryDto = {
+  as_of: string | null;
+  session_count: number;
+  turn_count: number;
+  error_rate: number | null;
+  active_project_count: number;
+  by_project: CursorSessionProjectRow[];
+  by_model: CursorSessionModelRow[];
+  top_tools: CursorSessionToolRow[];
+  daily: CursorSessionDailyPoint[];
 };
 
 export type FilterOptions = {

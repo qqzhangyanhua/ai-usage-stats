@@ -8,6 +8,7 @@ use rusqlite::Connection;
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
 use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
+use crate::cursor_session;
 use crate::domain::{
     CodeVolumeSummary, IngestIssue, IngestReport, Source, SourceDiagnostic, SourceIngestReport,
     UsageRecord,
@@ -214,6 +215,7 @@ fn ingest_all_inner(
 ) -> Result<IngestReport, String> {
     let mut report = IngestReport::default();
     ingest_all_sources(conn, home, overrides, &mut report)?;
+    cursor_session::ingest(conn, home, &mut report);
     Ok(report)
 }
 

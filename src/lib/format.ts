@@ -1,5 +1,13 @@
 import type { Filter } from "../types";
 
+export function humanStatus(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/ipc|webview|transformCallback|not allowed|unavailable|Cannot read/i.test(text)) {
+    return "IPC 未连通";
+  }
+  return text;
+}
+
 export function formatTokens(n: number): string {
   return n.toLocaleString("zh-CN");
 }

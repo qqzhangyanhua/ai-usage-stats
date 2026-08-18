@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heatmapFilter } from "../lib/calendar";
-import { previousFilter, rangeFromPreset } from "../lib/format";
+import { humanStatus, previousFilter, rangeFromPreset } from "../lib/format";
 import type {
   ApplicationAnalyticsDto,
   BillingWindowsDto,
   CodeVolumeSummary,
+  CursorSessionSummaryDto,
   Filter,
   FilterOptions,
   Grain,
@@ -48,6 +49,7 @@ export const views: View[] = [
   "project",
   "sessions",
   "cursor",
+  "cursor-sessions",
   "settings",
 ];
 
@@ -57,14 +59,6 @@ export function viewFromHash(): View {
     return "application";
   }
   return views.find((item) => item === raw) ?? "overview";
-}
-
-function humanStatus(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  if (/ipc|webview|transformCallback|not allowed|unavailable|Cannot read/i.test(text)) {
-    return "IPC 未连通";
-  }
-  return text;
 }
 
 type SelectedSession = { id: string; source: string };
@@ -112,6 +106,9 @@ export function useUsageData() {
   const [rebuilding, setRebuilding] = useState<string | null>(null);
   const [purging, setPurging] = useState<string | null>(null);
   const [codeVolume, setCodeVolume] = useState<CodeVolumeSummary | null>(null);
+  const [cursorSessionSummary, setCursorSessionSummary] = useState<CursorSessionSummaryDto | null>(
+    null,
+  );
   const [status, setStatus] = useState("正在连接…");
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -223,6 +220,13 @@ export function useUsageData() {
       }
       if (view === "cursor") {
         tasks.push(invoke<CodeVolumeSummary>("get_code_volume").then(commit(setCodeVolume)));
+      }
+      if (view === "cursor-sessions") {
+        tasks.push(
+          invoke<CursorSessionSummaryDto>("get_cursor_session_summary").then(
+            commit(setCursorSessionSummary),
+          ),
+        );
       }
       if (view === "settings") {
         tasks.push(
@@ -518,6 +522,7 @@ export function useUsageData() {
     rebuilding,
     purging,
     codeVolume,
+    cursorSessionSummary,
     status,
     setStatus,
     connected,

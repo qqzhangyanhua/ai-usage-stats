@@ -361,6 +361,74 @@ pub struct DerivedCost {
     pub source_native: bool,
 }
 
+/// Cursor 账号级用量事件：来自云端仪表盘，不是本机会话文件。
+/// 独立于 `UsageRecord`，不含 session_id / source_file。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorUsageEvent {
+    pub occurred_at: String,
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub is_headless: bool,
+}
+
+impl CursorUsageEvent {
+    pub fn total_tokens(&self) -> i64 {
+        self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_creation_tokens
+    }
+
+    pub fn fingerprint(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            self.occurred_at,
+            self.model,
+            self.input_tokens,
+            self.output_tokens,
+            self.cache_read_tokens,
+            self.cache_creation_tokens,
+            self.is_headless
+        )
+    }
+}
+
+/// Cursor 账号用量聚合：独立维度，不并入本机 token 总量。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorAccountUsageDto {
+    pub as_of: Option<String>,
+    pub event_count: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub total_tokens: i64,
+    pub daily: Vec<SeriesPoint>,
+    pub by_model: Vec<NamedAmount>,
+    pub headless_tokens: i64,
+    pub interactive_tokens: i64,
+    pub headless_share: Option<f64>,
+}
+
+impl CursorAccountUsageDto {
+    pub fn empty() -> Self {
+        Self {
+            as_of: None,
+            event_count: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            total_tokens: 0,
+            daily: Vec::new(),
+            by_model: Vec::new(),
+            headless_tokens: 0,
+            interactive_tokens: 0,
+            headless_share: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CodeVolumeCommit {
     pub commit_hash: String,
@@ -379,6 +447,79 @@ pub struct CodeVolumeSummary {
     pub composer_lines_added: i64,
     pub human_lines_added: i64,
     pub ai_percentage: Option<f64>,
+}
+
+/// 单条 Cursor 会话聚合（本机 agent-transcripts，不含正文）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionRecord {
+    pub session_id: String,
+    pub project: String,
+    pub turn_count: i64,
+    pub success_count: i64,
+    pub error_count: i64,
+    pub aborted_count: i64,
+    pub tool_calls_json: String,
+    pub models_json: String,
+    pub first_seen_at: Option<String>,
+    pub last_seen_at: Option<String>,
+    pub files_touched: i64,
+    pub source_file: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionProjectRow {
+    pub name: String,
+    pub session_count: i64,
+    pub turn_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionDailyPoint {
+    pub bucket: String,
+    pub session_count: i64,
+    pub turn_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionModelRow {
+    pub name: String,
+    pub session_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionToolRow {
+    pub name: String,
+    pub call_count: i64,
+}
+
+/// Cursor 会话汇总：独立维度，不并入本机 token 总量。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionSummaryDto {
+    pub as_of: Option<String>,
+    pub session_count: i64,
+    pub turn_count: i64,
+    pub error_rate: Option<f64>,
+    pub active_project_count: i64,
+    pub by_project: Vec<CursorSessionProjectRow>,
+    pub by_model: Vec<CursorSessionModelRow>,
+    pub top_tools: Vec<CursorSessionToolRow>,
+    pub daily: Vec<CursorSessionDailyPoint>,
+}
+
+impl CursorSessionSummaryDto {
+    pub fn empty() -> Self {
+        Self {
+            as_of: None,
+            session_count: 0,
+            turn_count: 0,
+            error_rate: None,
+            active_project_count: 0,
+            by_project: Vec::new(),
+            by_model: Vec::new(),
+            top_tools: Vec::new(),
+            daily: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

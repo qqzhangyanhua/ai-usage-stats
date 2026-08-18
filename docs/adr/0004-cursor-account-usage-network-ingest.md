@@ -1,0 +1,21 @@
+# Cursor 账号用量走联网采集、独立维度
+
+Cursor 的真实 token 用量只存在于云端账号，本机会话文件里没有。用户需要看到 Cursor 实际消耗了多少 token，但这与「本机离线扫描本地文件」的立身前提冲突。
+
+**决定**：新增独立维度「Cursor 账号用量 (Cursor Account Usage)」。仅在用户手动点「刷新」时，由 Rust 侧携带本机钥匙串中的 `WorkosCursorSessionToken`，调用 Cursor 非公开仪表盘接口 `POST /api/dashboard/get-filtered-usage-events`，把账号级事件解析后写入独立缓存表。self-serve 计划只采 token、不采费用。
+
+这是对 ADR 0001 / 0002 / 0003 的**显式破例**，边界如下：
+
+- **仅此一处**：其它来源仍只扫描本机文件。不得把联网采集扩散成通用摄取路径。
+- **手动 opt-in**：刷新是独立按钮，不进入 `ingest_all` / 启动摄取 / 定时刷新。离线时只读上次缓存，不阻塞其它来源。
+- **独立维度**：数据不进入 `UsageRecord`、`Source` 枚举或本机 token 聚合。处理方式对齐「代码量」。
+- **凭证不落明文**：会话 token 存 macOS 钥匙串，不写 `prices.json` 或其它可读配置。
+- **缓存语义**：没有本机文件指纹。用 `时间戳+模型+各口径token+isHeadless` 做事件去重；解析失败不以残缺结果覆盖旧缓存（对齐 ADR 0003「最后一次正确结果」精神）。
+
+**理由**：账号级数据语义（全设备、全时段、云端）与本机会话用量不是一回事，硬塞进统一聚合会污染「本机 token 总量」。接口又必须带 `Cookie` 头，webview `fetch` 做不到，所以联网落在 Rust。
+
+## Consequences
+
+- 接口是逆向的、非官方，Cursor 随时可改坏（2026-07-31 已追溯清零 self-serve 费用字段）。失败必须降级为可读中文提示。
+- cookie 会过期，用户需重新粘贴。自动解密本机 Chromium Cookies 不在本次范围。
+- `usage.sqlite` 新增 `cursor_account_usage` / `cursor_account_meta`，可独立清空，不参与 `ADAPTER_VERSION` 对账。

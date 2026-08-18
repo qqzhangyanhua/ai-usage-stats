@@ -2,6 +2,7 @@ import { useState } from "react";
 import { applicationLabel, formatTokens } from "../lib/format";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
 import {
   groupPresetsByProvider,
@@ -163,6 +164,8 @@ export function Settings({
           </div>
         ) : null}
       </section>
+
+      <CursorAccountSettingsPanel />
 
       <LiteLlmSnapshotPanel onRefreshed={onSnapshotRefreshed} />
 
