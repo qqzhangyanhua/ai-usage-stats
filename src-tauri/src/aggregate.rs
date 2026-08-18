@@ -315,7 +315,7 @@ pub fn by_name(
             unpriced,
         })
         .collect();
-    rows.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens));
+    rows.sort_by_key(|b| std::cmp::Reverse(b.total_tokens));
     rows
 }
 
@@ -377,7 +377,7 @@ pub fn top_sessions(
             unpriced: acc.unpriced,
         })
         .collect();
-    rows.sort_by(|a, b| b.total_tokens.cmp(&a.total_tokens));
+    rows.sort_by_key(|b| std::cmp::Reverse(b.total_tokens));
     rows.truncate(limit);
     rows
 }
