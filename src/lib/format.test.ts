@@ -1,0 +1,252 @@
+import { describe, expect, it } from "vitest";
+import type { Filter } from "../types";
+import {
+  applicationLabel,
+  customRangeFilter,
+  deltaPct,
+  formatClock,
+  formatCompact,
+  formatCost,
+  formatDelta,
+  formatHoursMinutes,
+  formatRangeLabel,
+  formatTokens,
+  formatUsd,
+  formatWindowClock,
+  previousFilter,
+  projectLabel,
+  providerChannel,
+  rangeFromPreset,
+  relativeTime,
+  shortId,
+} from "./format";
+
+const emptyFilter: Filter = {
+  from: null,
+  to: null,
+  sources: [],
+  models: [],
+  projects: [],
+  providers: [],
+};
+
+describe("formatTokens", () => {
+  it("uses zh-CN grouping", () => {
+    expect(formatTokens(1234567)).toBe("1,234,567");
+    expect(formatTokens(0)).toBe("0");
+  });
+});
+
+describe("formatCompact", () => {
+  it("keeps small numbers as-is", () => {
+    expect(formatCompact(0)).toBe("0");
+    expect(formatCompact(9999)).toBe("9,999");
+  });
+
+  it("compacts thousands/millions/billions with trimmed decimals", () => {
+    expect(formatCompact(12_000)).toBe("12K");
+    expect(formatCompact(12_500)).toBe("12.5K");
+    expect(formatCompact(1_234_000)).toBe("1.23M");
+    expect(formatCompact(2_000_000_000)).toBe("2B");
+  });
+
+  it("handles negative numbers using the absolute value for thresholds", () => {
+    expect(formatCompact(-12_000)).toBe("-12K");
+  });
+});
+
+describe("formatUsd", () => {
+  it("shows a dash only when null and unpriced", () => {
+    expect(formatUsd(null, true)).toBe("—");
+    expect(formatUsd(null, false)).toBe("$0.00");
+    expect(formatUsd(1.5, false)).toBe("$1.50");
+  });
+});
+
+describe("formatCost", () => {
+  it("shows a dash only when unpriced and null, else 4 decimals", () => {
+    expect(formatCost(null, true)).toBe("—");
+    expect(formatCost(null, false)).toBe("0");
+    expect(formatCost(0.06434, false)).toBe("0.0643");
+  });
+});
+
+describe("deltaPct", () => {
+  it("returns null when there is no previous value", () => {
+    expect(deltaPct(10, null)).toBeNull();
+  });
+
+  it("treats previous=0 as 0% only when current is also 0, else null (undefined growth)", () => {
+    expect(deltaPct(0, 0)).toBe(0);
+    expect(deltaPct(5, 0)).toBeNull();
+  });
+
+  it("computes signed percentage change", () => {
+    expect(deltaPct(150, 100)).toBe(50);
+    expect(deltaPct(50, 100)).toBe(-50);
+  });
+});
+
+describe("formatDelta", () => {
+  it("passes through null", () => {
+    expect(formatDelta(null)).toBeNull();
+  });
+
+  it("treats tiny changes as flat", () => {
+    expect(formatDelta(0.01)).toEqual({ text: "持平 vs 上期", tone: "flat" });
+  });
+
+  it("formats up/down with an arrow and one decimal", () => {
+    expect(formatDelta(12.34)).toEqual({ text: "↑ 12.3% vs 上期", tone: "up" });
+    expect(formatDelta(-12.34)).toEqual({ text: "↓ 12.3% vs 上期", tone: "down" });
+  });
+});
+
+describe("applicationLabel", () => {
+  it("maps known sources to display names", () => {
+    expect(applicationLabel("claude")).toBe("Claude Code");
+    expect(applicationLabel("codex")).toBe("Codex");
+  });
+
+  it("falls back to the raw source id when unknown", () => {
+    expect(applicationLabel("some_new_source")).toBe("some_new_source");
+  });
+});
+
+describe("projectLabel", () => {
+  it("shows a placeholder for empty paths", () => {
+    expect(projectLabel("")).toBe("未标注");
+  });
+
+  it("takes the last path segment, handling both slash styles", () => {
+    expect(projectLabel("/Users/dev/workCode/ruoyi-ui-vue3")).toBe("ruoyi-ui-vue3");
+    expect(projectLabel("C:\\Users\\dev\\project")).toBe("project");
+  });
+});
+
+describe("shortId", () => {
+  it("keeps short ids untouched", () => {
+    expect(shortId("abc123")).toBe("abc123");
+  });
+
+  it("truncates long ids with an ellipsis", () => {
+    expect(shortId("019f5abc-b360-79e4-bd7d-9a794da8cfc5")).toBe("019f5abc…");
+  });
+});
+
+describe("relativeTime", () => {
+  it("returns the input as-is for unparsable dates", () => {
+    expect(relativeTime("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("formatWindowClock / formatClock", () => {
+  it("returns the raw string for invalid dates", () => {
+    expect(formatWindowClock("nope")).toBe("nope");
+    expect(formatClock("nope")).toBe("nope");
+  });
+
+  it("returns a dash for a null clock value", () => {
+    expect(formatClock(null)).toBe("—");
+  });
+
+  it("formats a valid ISO timestamp", () => {
+    expect(formatClock("2026-08-17T05:31:13.000Z")).toMatch(/^2026-08-17 \d{2}:31:13$/);
+  });
+});
+
+describe("formatHoursMinutes", () => {
+  it("omits the hour part when under an hour", () => {
+    expect(formatHoursMinutes(45)).toBe("45m");
+  });
+
+  it("includes both parts when an hour or more", () => {
+    expect(formatHoursMinutes(125)).toBe("2h 5m");
+  });
+
+  it("clamps negative input to 0", () => {
+    expect(formatHoursMinutes(-10)).toBe("0m");
+  });
+});
+
+describe("formatRangeLabel", () => {
+  it("shows 全部历史 for the all preset or a missing range", () => {
+    expect(formatRangeLabel(emptyFilter, "all")).toBe("全部历史");
+    expect(formatRangeLabel(emptyFilter, "7")).toBe("全部历史");
+  });
+
+  it("shows the date-only range for a bounded preset", () => {
+    const filter: Filter = {
+      ...emptyFilter,
+      from: "2026-08-01T00:00:00Z",
+      to: "2026-08-07T23:59:59Z",
+    };
+    expect(formatRangeLabel(filter, "7")).toBe("2026-08-01 ~ 2026-08-07");
+  });
+});
+
+describe("providerChannel", () => {
+  it("labels unset providers as 未标注", () => {
+    expect(providerChannel("")).toBe("未标注");
+    expect(providerChannel("（未标注）")).toBe("未标注");
+  });
+
+  it("recognizes well-known official providers", () => {
+    expect(providerChannel("anthropic")).toBe("官方");
+    expect(providerChannel("openai")).toBe("官方");
+  });
+
+  it("treats anything else as a relay/中转", () => {
+    expect(providerChannel("some-third-party")).toBe("中转");
+  });
+});
+
+describe("rangeFromPreset", () => {
+  it("returns an open range for the all preset", () => {
+    expect(rangeFromPreset("all")).toEqual({ from: null, to: null });
+  });
+
+  it("computes a from/to window for numeric-day presets", () => {
+    const { from, to } = rangeFromPreset("7");
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    const spanMs = Date.parse(to!) - Date.parse(from!);
+    expect(Math.round(spanMs / (24 * 3600 * 1000))).toBe(7);
+  });
+});
+
+describe("customRangeFilter", () => {
+  it("expands two date-only inputs to cover the full days", () => {
+    const { from, to } = customRangeFilter("2026-08-01", "2026-08-01");
+    expect(from).not.toBeNull();
+    expect(to).not.toBeNull();
+    expect(new Date(from!).getHours()).toBe(0);
+    expect(new Date(to!).getHours()).toBe(23);
+  });
+
+  it("returns nulls for unparsable input", () => {
+    expect(customRangeFilter("not-a-date", "also-not")).toEqual({ from: null, to: null });
+  });
+});
+
+describe("previousFilter", () => {
+  it("returns null outside of the 7/30/custom presets", () => {
+    expect(previousFilter(emptyFilter, "all")).toBeNull();
+  });
+
+  it("returns null when the filter has no bounded range", () => {
+    expect(previousFilter(emptyFilter, "7")).toBeNull();
+  });
+
+  it("shifts the window back by its own length, ending where it started", () => {
+    const filter: Filter = {
+      ...emptyFilter,
+      from: "2026-08-08T00:00:00.000Z",
+      to: "2026-08-15T00:00:00.000Z",
+    };
+    const previous = previousFilter(filter, "7");
+    expect(previous).not.toBeNull();
+    expect(previous!.to).toBe(filter.from);
+    expect(previous!.from).toBe("2026-08-01T00:00:00.000Z");
+  });
+});
