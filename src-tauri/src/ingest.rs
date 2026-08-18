@@ -141,8 +141,8 @@ pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String
     ingest_all_with_overrides(conn, home, &env_overrides())
 }
 
-/// 只比源文件元数据（路径 / mtime / size），不读文件内容。
-/// 有新文件、mtime/size 变化、或缓存里有路径但磁盘已消失时视为 stale。
+/// 与 ingest 使用同一套 cache fingerprint（主文件 metadata + sidecar）。
+/// 新文件、fingerprint 变化、或缓存路径已从磁盘消失时视为 stale。
 pub fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
     scan_is_stale_with_overrides(conn, home, &env_overrides())
 }
@@ -152,60 +152,98 @@ pub(crate) fn scan_is_stale_with_overrides(
     home: &Path,
     overrides: &PathOverrides,
 ) -> Result<bool, String> {
-    let seen = list_source_files(home, overrides)?;
+    let watched = list_watched_inputs(home, overrides)?;
     let cached = store::cached_file_stats(conn)?;
-    if cached.len() != seen.len() {
-        return Ok(true);
-    }
-    let cached_map: BTreeMap<String, (i64, i64)> = cached
-        .into_iter()
-        .map(|(path, mtime_ms, size)| (path, (mtime_ms, size)))
+    let seen: BTreeSet<String> = watched
+        .iter()
+        .map(|input| input.path.to_string_lossy().into_owned())
         .collect();
-    if cached_map.len() != seen.len() {
+    if cached.len() != seen.len() || cached.iter().any(|(path, _, _)| !seen.contains(path)) {
         return Ok(true);
     }
-    for (path, meta) in &seen {
-        match cached_map.get(path) {
-            Some(cached_meta) if cached_meta == meta => {}
-            _ => return Ok(true),
+    for input in watched {
+        let loc = input.path.to_string_lossy().to_string();
+        let meta = match fs::metadata(&input.path) {
+            Ok(meta) => meta,
+            Err(_) => return Ok(true),
+        };
+        let key = cache_key(&input.path, &input.extra_fingerprint);
+        if !store::file_unchanged(
+            conn,
+            &loc,
+            modified_millis(&meta),
+            meta.len() as i64,
+            input.source,
+            &key,
+        )? {
+            return Ok(true);
         }
     }
     Ok(false)
 }
 
-fn list_source_files(
+struct WatchedInput {
+    source: Source,
+    path: PathBuf,
+    extra_fingerprint: String,
+}
+
+fn cache_key(path: &Path, extra_fingerprint: &str) -> String {
+    format!("{}|{extra_fingerprint}", metadata_fingerprint(path))
+}
+
+fn list_watched_inputs(
     home: &Path,
     overrides: &PathOverrides,
-) -> Result<BTreeMap<String, (i64, i64)>, String> {
-    let mut files = BTreeMap::new();
+) -> Result<Vec<WatchedInput>, String> {
+    let mut files = Vec::new();
     for source in Source::ALL {
-        for path in list_source_paths(home, overrides, source)? {
-            let meta = match fs::metadata(&path) {
-                Ok(meta) => meta,
-                Err(_) => continue,
-            };
-            files.insert(
-                path.to_string_lossy().to_string(),
-                (modified_millis(&meta), meta.len() as i64),
-            );
+        let dirs = source_scan_dirs_with(overrides, home, source);
+        for path in list_source_paths(source, &dirs)? {
+            let extra_fingerprint = sidecar_fingerprint(source, &path, &dirs);
+            files.push(WatchedInput {
+                source,
+                path,
+                extra_fingerprint,
+            });
         }
     }
     Ok(files)
 }
 
-fn list_source_paths(
-    home: &Path,
-    overrides: &PathOverrides,
-    source: Source,
-) -> Result<Vec<PathBuf>, String> {
-    let dirs = source_scan_dirs_with(overrides, home, source);
+fn sidecar_fingerprint(source: Source, path: &Path, dirs: &[PathBuf]) -> String {
+    match source {
+        Source::Kimi => {
+            let root = dirs
+                .iter()
+                .find(|dir| path.starts_with(dir))
+                .cloned()
+                .unwrap_or_else(|| path.to_path_buf());
+            content_fingerprint(&root.join("kimi.json"))
+        }
+        Source::Grok => {
+            let summary = path
+                .parent()
+                .map(|parent| parent.join("summary.json"))
+                .unwrap_or_default();
+            content_fingerprint(&summary)
+        }
+        Source::Opencode => {
+            let wal = PathBuf::from(format!("{}-wal", path.to_string_lossy()));
+            metadata_fingerprint(&wal)
+        }
+        _ => String::new(),
+    }
+}
+
+fn list_source_paths(source: Source, dirs: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     match source {
         Source::Codex | Source::Claude | Source::Pi | Source::CursorAgent | Source::Copilot => {
-            list_ext_files(&dirs, "jsonl")
+            list_ext_files(dirs, "jsonl")
         }
         Source::Kimi => {
             let mut paths = Vec::new();
-            for root in &dirs {
+            for root in dirs {
                 for path in walk_files(&root.join("sessions"), "jsonl")? {
                     if path.file_name().and_then(|name| name.to_str()) == Some("wire.jsonl") {
                         paths.push(path);
@@ -214,10 +252,10 @@ fn list_source_paths(
             }
             Ok(paths)
         }
-        Source::Dsh => list_suffix_files(&dirs, "session.jsonl.zstd"),
+        Source::Dsh => list_suffix_files(dirs, "session.jsonl.zstd"),
         Source::Gemini => {
             let mut paths = Vec::new();
-            for root in &dirs {
+            for root in dirs {
                 for path in walk_files(root, "json")? {
                     if path
                         .file_name()
@@ -233,7 +271,7 @@ fn list_source_paths(
         }
         Source::Grok => {
             let mut paths = Vec::new();
-            for root in &dirs {
+            for root in dirs {
                 for path in walk_files(root, "jsonl")? {
                     if path.file_name().and_then(|name| name.to_str()) == Some("updates.jsonl") {
                         paths.push(path);
@@ -244,7 +282,7 @@ fn list_source_paths(
         }
         Source::Qwen => {
             let mut paths = Vec::new();
-            for root in &dirs {
+            for root in dirs {
                 for path in walk_files(root, "json")? {
                     if path.file_name().and_then(|name| name.to_str()) == Some("logs.json") {
                         paths.push(path);
@@ -253,8 +291,8 @@ fn list_source_paths(
             }
             Ok(paths)
         }
-        Source::Factory => list_suffix_files(&dirs, ".settings.json"),
-        Source::Opencode => Ok(dirs.into_iter().filter(|path| path.exists()).collect()),
+        Source::Factory => list_suffix_files(dirs, ".settings.json"),
+        Source::Opencode => Ok(dirs.iter().filter(|path| path.exists()).cloned().collect()),
     }
 }
 
@@ -483,7 +521,7 @@ fn ingest_one(
     };
     let size = meta.len() as i64;
     let mtime_ms = modified_millis(&meta);
-    let cache_fingerprint = format!("{}|{fingerprint}", metadata_fingerprint(path));
+    let cache_fingerprint = cache_key(path, fingerprint);
     if store::file_unchanged(conn, &loc, mtime_ms, size, source, &cache_fingerprint)? {
         increment(report, source, |source_report| {
             source_report.files_skipped += 1
