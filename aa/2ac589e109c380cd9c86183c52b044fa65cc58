@@ -1,0 +1,75 @@
+.github/workflows/ci.yml
+  s_96aa1317ab1de5::t_b58dd1598acb90 1-73
+docs/adr/0004-archive-missing-source-files.md
+  s_96aa1317ab1de5::t_9ba86f7bf33e8d 1-21
+package.json
+  s_96aa1317ab1de5::t_7bb0b4068a9d87 14-15,38-39
+pnpm-lock.yaml
+  s_96aa1317ab1de5::t_2a06468f5ed532 69-71,523-525,612-617,700-728,742-745,767-770,805-807,876-878,883-886,1002-1004,1024-1027,1048-1050,1113-1115,1123-1135,1140-1143,1218-1258,1264-1268,1633-1634,1705-1711,1829-1869,1883-1884,1903-1904,1935-1936,2051-2054,2057-2058,2145-2148,2161-2162,2184-2185,2255-2256,2261-2268,2274-2275,2320-2344,2349-2353
+src-tauri/src/adapters/opencode.rs
+  s_96aa1317ab1de5::t_f4eed2ef27669f 26
+src-tauri/src/adapters/pi.rs
+  s_96aa1317ab1de5::t_d9710344a94e33 2,37,60-65
+src-tauri/src/aggregate.rs
+  s_96aa1317ab1de5::t_2cca7f47a850ba 318,380
+src-tauri/src/bin/litellm_snapshot.rs
+  s_96aa1317ab1de5::t_f009b62ffd91d3 28-30,40,45-49
+src-tauri/src/cost.rs
+  s_96aa1317ab1de5::t_2965f3d3a76e2c 37,39-40,47,51-59
+src-tauri/src/domain.rs
+  s_96aa1317ab1de5::t_b988c62bb53c2c 511-512,532-533,544,559,573
+src-tauri/src/ingest.rs
+  s_96aa1317ab1de5::t_3a8fedf17c31d3 37,48,129-131,548-549,551
+src-tauri/src/lib.rs
+  s_96aa1317ab1de5::t_a1565ff9109b45 355-373,570,586-587
+src-tauri/src/store.rs
+  s_96aa1317ab1de5::t_6df0d7f086deee 7,11,22-36,64-67,139-149,300-303,319,322,327-355,387-391,399,401-405,407-413,416-421
+src-tauri/src/tests.rs
+  s_96aa1317ab1de5::t_57c6457359ff21 176-187,1756-1797,1963-2015,2156-2158,2171-2246,2411
+src-tauri/tests/fixtures/pi.jsonl
+  s_96aa1317ab1de5::t_2da3c9d96d62f6 6
+src/App.tsx
+  s_96aa1317ab1de5::t_1e4c317c7f5466 114,119,121-126,144
+src/components/BillingWindows.tsx
+  s_96aa1317ab1de5::t_b80edb03230737 31-34
+src/components/Overview.tsx
+  s_96aa1317ab1de5::t_e90e8b6c3f7a84 41,45-51,92,106-108,117-126,151
+src/components/SessionTurns.tsx
+  s_96aa1317ab1de5::t_aeeea3834b2c39 41,59-68,70,72,74,142,194,226-231
+src/components/Sessions.tsx
+  s_96aa1317ab1de5::t_027958d3b7481f 80,92,139-143,151
+src/components/Settings.tsx
+  s_96aa1317ab1de5::t_7a624afd088db9 21,27,34,40,43,57,60-76,87,107-115,120,127-136,142
+src/hooks/useUsageData.ts
+  s_96aa1317ab1de5::t_3925f24e4fd459 107,312,314,347,349,369-393,523,540
+src/lib/calendar.test.ts
+  s_96aa1317ab1de5::t_6374837b9463d2 1-181
+src/lib/exportFile.test.ts
+  s_96aa1317ab1de5::t_cb64844a74633f 1-58
+src/lib/format.test.ts
+  s_96aa1317ab1de5::t_c1e9712a364c04 1-252
+src/lib/pricePresets.test.ts
+  s_96aa1317ab1de5::t_8d7ff739e910cc 1-74
+src/types.ts
+  s_96aa1317ab1de5::t_0c4831f16565a0 272,282,297
+tsconfig.json
+  s_96aa1317ab1de5::t_65dfcb662e24d6 3,5
+vitest.config.ts
+  s_96aa1317ab1de5::t_6f255f98a8c1ac 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "aa2ac589e109c380cd9c86183c52b044fa65cc58",
+  "prompts": {},
+  "sessions": {
+    "s_96aa1317ab1de5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ff98d24a-2c41-4943-bdaa-3d270f6b4bdb",
+        "model": "unknown"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
