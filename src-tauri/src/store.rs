@@ -4,10 +4,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::domain::{Source, UsageRecord};
 
-pub const ADAPTER_VERSION: i64 = 6;
+pub const ADAPTER_VERSION: i64 = 7;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    configure_connection(&conn)?;
     init_schema(&conn)?;
     Ok(conn)
 }
@@ -16,6 +17,21 @@ pub fn open_memory() -> Result<Connection, String> {
     let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
     init_schema(&conn)?;
     Ok(conn)
+}
+
+/// 只对真实文件落盘的连接生效：`:memory:` 数据库本来就没有并发读写者，WAL/NORMAL 这两个
+/// pragma 在内存模式下会被 SQLite 静默忽略甚至报错，所以不对 `open_memory` 调用。
+///
+/// - `journal_mode=WAL`：托盘后台线程每隔几分钟跑一次完整 ingest，会长时间持有写事务；
+///   WAL 让前端查询（读者）不必等这次写事务提交就能读到旧版本页，避免 UI 卡顿。
+/// - `synchronous=NORMAL`：WAL 模式下官方推荐搭配 NORMAL，牺牲的持久性仅在系统级崩溃
+///   （断电/内核崩溃，而非应用崩溃）时才可能丢最后几条已提交事务，可接受，换来显著更少的 fsync。
+fn configure_connection(conn: &Connection) -> Result<(), String> {
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn init_schema(conn: &Connection) -> Result<(), String> {
@@ -45,6 +61,10 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_records(session_id);
         -- Ingestion replaces records by file; without this index every changed file scans the full cache.
         CREATE INDEX IF NOT EXISTS idx_usage_source_file ON usage_records(source_file);
+        -- Almost every aggregate query in query.rs filters by source and/or occurred_at together
+        -- (overview/trend/billing_windows); a composite index lets those use one index instead of
+        -- a full scan + occurred_at index-only scan.
+        CREATE INDEX IF NOT EXISTS idx_usage_source_occurred ON usage_records(source, occurred_at);
 
         CREATE TABLE IF NOT EXISTS ingested_files (
             path TEXT PRIMARY KEY,
@@ -70,6 +90,17 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "adapter_version",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    // 源文件被工具自身清理后不再物理删除历史记录，只打时间戳归档（ADR 0004）。
+    ensure_column(conn, "usage_records", "archived_at", "TEXT")?;
+    // 必须放在上面的 ensure_column 之后：老版本缓存库的 ingested_files 表可能还没有
+    // source 列，若把这条建索引语句挪进最上面的初始 CREATE TABLE batch，会在旧库上先于
+    // ALTER TABLE 执行而报错。
+    // reconcile_source 每个来源每轮 ingest 都要 "SELECT path FROM ingested_files WHERE
+    // source = ?"，没有这个索引就是全表扫描。
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_ingested_files_source ON ingested_files(source);",
+    )
+    .map_err(|e| e.to_string())?;
     conn.execute_batch(
         r#"
         UPDATE ingested_files
@@ -220,6 +251,10 @@ pub fn mark_file(
     Ok(())
 }
 
+/// 本轮扫描已看不到的文件不再物理删除其历史记录：工具自身的日志清理/轮转不应抹掉
+/// 本地已经统计过的用量。改为给对应记录打归档时间戳，记录仍计入所有统计查询；
+/// 只清理 `ingested_files` 的缓存指纹（文件既已消失，也没有 mtime/大小可再对比）。
+/// 见 `docs/adr/0004-archive-missing-source-files.md`。
 pub fn reconcile_source(
     conn: &Connection,
     source: Source,
@@ -235,15 +270,43 @@ pub fn reconcile_source(
         .map_err(|e| e.to_string())?;
     drop(stmt);
 
-    let mut removed = 0;
+    let mut archived = 0;
     for path in cached {
         if !seen_paths.contains(&path) {
-            removed += delete_records_for_file(conn, &path)?;
+            archived += archive_records_for_file(conn, &path)?;
             conn.execute("DELETE FROM ingested_files WHERE path = ?1", params![path])
                 .map_err(|e| e.to_string())?;
         }
     }
-    Ok(removed)
+    Ok(archived)
+}
+
+/// 把某源文件名下尚未归档的记录标记为已归档（幂等：重复调用不会改写已有的归档时间）。
+/// 返回本次新归档的记录数。
+pub fn archive_records_for_file(conn: &Connection, source_file: &str) -> Result<u64, String> {
+    conn.execute(
+        "UPDATE usage_records SET archived_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE source_file = ?1 AND archived_at IS NULL",
+        params![source_file],
+    )
+    .map(|count| count as u64)
+    .map_err(|e| e.to_string())
+}
+
+/// 永久删除某个来源（或全部来源）已归档的记录。用户在设置页显式触发，不参与常规摄取流程。
+pub fn purge_archived(conn: &Connection, source: Option<Source>) -> Result<u64, String> {
+    let removed = match source {
+        Some(source) => conn.execute(
+            "DELETE FROM usage_records WHERE archived_at IS NOT NULL AND source = ?1",
+            params![source.as_str()],
+        ),
+        None => conn.execute(
+            "DELETE FROM usage_records WHERE archived_at IS NOT NULL",
+            [],
+        ),
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(removed as u64)
 }
 
 pub fn invalidate_source(conn: &Connection, source: Source) -> Result<(), String> {
@@ -275,7 +338,11 @@ pub fn remove_unknown_sources(conn: &Connection) -> Result<u64, String> {
     Ok(removed)
 }
 
-pub fn source_cache_stats(conn: &Connection, source: Source) -> Result<(u64, u64, i64), String> {
+/// 返回 (缓存文件数, 记录总数（含已归档）, Token 总数（含已归档）, 已归档记录数)。
+pub fn source_cache_stats(
+    conn: &Connection,
+    source: Source,
+) -> Result<(u64, u64, i64, u64), String> {
     let cached_files = conn
         .query_row(
             "SELECT COUNT(*) FROM ingested_files WHERE source = ?1",
@@ -283,14 +350,29 @@ pub fn source_cache_stats(conn: &Connection, source: Source) -> Result<(u64, u64
             |row| row.get::<_, i64>(0),
         )
         .map_err(|e| e.to_string())? as u64;
-    let (record_count, total_tokens) = conn
+    let (record_count, total_tokens, archived_record_count) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) FROM usage_records WHERE source = ?1",
+            r#"
+            SELECT COUNT(*), COALESCE(SUM(total_tokens), 0),
+                   COUNT(*) FILTER (WHERE archived_at IS NOT NULL)
+            FROM usage_records WHERE source = ?1
+            "#,
             params![source.as_str()],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
         )
         .map_err(|e| e.to_string())?;
-    Ok((cached_files, record_count as u64, total_tokens))
+    Ok((
+        cached_files,
+        record_count as u64,
+        total_tokens,
+        archived_record_count as u64,
+    ))
 }
 
 pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {
