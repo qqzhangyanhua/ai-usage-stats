@@ -574,6 +574,17 @@ pub fn clear_cursor_account_usage(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+pub fn cursor_session_has_source_file(conn: &Connection, path: &str) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT 1 FROM cursor_sessions WHERE source_file = ?1",
+        params![path],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|row| row.is_some())
+    .map_err(|e| e.to_string())
+}
+
 pub fn cursor_session_file_fingerprint(
     conn: &Connection,
     path: &str,

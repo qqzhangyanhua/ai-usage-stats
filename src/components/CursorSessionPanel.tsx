@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   breakdownBarOption,
   cursorSessionDailyOption,
@@ -6,8 +6,15 @@ import {
   modelPalette,
 } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
-import { formatCompact, formatTokens, projectLabel } from "../lib/format";
+import {
+  formatClock,
+  formatCompact,
+  formatTokens,
+  projectLabel,
+  relativeTime,
+} from "../lib/format";
 import type { CursorSessionSummaryDto } from "../types";
+import { CursorSessionTable } from "./CursorSessionTable";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { ExportableChart } from "./ExportableChart";
@@ -24,6 +31,7 @@ function emptySummary(): CursorSessionSummaryDto {
     by_model: [],
     top_tools: [],
     daily: [],
+    sessions: [],
   };
 }
 
@@ -35,6 +43,7 @@ export function CursorSessionPanel({
   theme: ResolvedTheme;
 }) {
   const data = summary ?? emptySummary();
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
   const trendOption = useMemo(
     () => cursorSessionDailyOption(data.daily, theme),
@@ -102,6 +111,12 @@ export function CursorSessionPanel({
         />
       </section>
 
+      <CursorSessionTable
+        sessions={data.sessions}
+        selectedProject={selectedProject}
+        onSelectProject={setSelectedProject}
+      />
+
       <section className="panel partition">
         <div className="panel-head">
           <h2>按天趋势</h2>
@@ -157,6 +172,7 @@ export function CursorSessionPanel({
       <section className="panel partition">
         <div className="panel-head">
           <h2>按项目</h2>
+          <span className="muted">点击项目可筛选上方会话明细</span>
         </div>
         {data.by_project.length > 0 ? (
           <>
@@ -165,21 +181,40 @@ export function CursorSessionPanel({
               filename="cursor-session-projects"
               style={{ height: Math.max(220, data.by_project.slice(0, 8).length * 36) }}
             />
-            <div className="table-wrap">
-              <table className="data-table compact">
+            <div className="table-scroll cursor-session-table-scroll">
+              <table>
                 <thead>
                   <tr>
                     <th>项目</th>
                     <th>会话数</th>
-                    <th>轮次数</th>
+                    <th>轮次</th>
+                    <th>失败</th>
+                    <th>文件</th>
+                    <th>最近活跃</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.by_project.slice(0, 12).map((row) => (
-                    <tr key={row.name}>
-                      <td title={row.name}>{projectLabel(row.name)}</td>
+                  {data.by_project.map((row) => (
+                    <tr
+                      key={row.name}
+                      className={selectedProject === row.name ? "clickable selected" : "clickable"}
+                      onClick={() =>
+                        setSelectedProject((current) => (current === row.name ? null : row.name))
+                      }
+                    >
+                      <td title={row.name}>
+                        <div className="cell-stack">
+                          <span>{projectLabel(row.name)}</span>
+                          <span className="muted">{row.name}</span>
+                        </div>
+                      </td>
                       <td>{formatTokens(row.session_count)}</td>
                       <td>{formatTokens(row.turn_count)}</td>
+                      <td>{formatTokens(row.error_count)}</td>
+                      <td>{formatTokens(row.files_touched)}</td>
+                      <td title={row.last_seen_at ? formatClock(row.last_seen_at) : undefined}>
+                        {row.last_seen_at ? relativeTime(row.last_seen_at) : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

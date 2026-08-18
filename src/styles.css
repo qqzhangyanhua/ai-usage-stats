@@ -2642,6 +2642,29 @@ tr.selected {
   font-weight: 600;
 }
 
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cell-stack .muted {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}
+
+.cursor-session-table-scroll {
+  max-height: 560px;
+}
+
+.cursor-session-table .session-id-cell .mono {
+  max-width: 360px;
+}
+
 .cross-table-wrap {
   max-height: 520px;
 }

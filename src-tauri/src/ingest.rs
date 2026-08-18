@@ -124,6 +124,7 @@ pub(crate) fn source_scan_dirs_with(
             ".factory/sessions",
             "",
         ),
+        // token 包装目录，不是 CLI 原生会话库。会话与 IDE 共用 ~/.cursor。
         Source::CursorAgent => resolve_dirs(
             overrides,
             home,
@@ -161,7 +162,7 @@ pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDi
     Source::ALL
         .iter()
         .map(|source| {
-            let dirs = source_scan_dirs_with(&overrides, home, *source);
+            let dirs = source_display_dirs(&overrides, home, *source);
             let (cached_files, record_count, total_tokens, archived_record_count) =
                 store::source_cache_stats(conn, *source)?;
             Ok(SourceDiagnostic {
@@ -181,6 +182,22 @@ pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDi
             })
         })
         .collect()
+}
+
+/// 设置页展示的路径：Cursor Agent 先展示与 IDE 共用的原生目录，包装目录只在实际存在时追加。
+fn source_display_dirs(overrides: &PathOverrides, home: &Path, source: Source) -> Vec<PathBuf> {
+    match source {
+        Source::CursorAgent => {
+            let mut dirs = vec![home.join(".cursor/chats"), home.join(".cursor/projects")];
+            for dir in source_scan_dirs_with(overrides, home, source) {
+                if dir.exists() && !dirs.contains(&dir) {
+                    dirs.push(dir);
+                }
+            }
+            dirs
+        }
+        _ => source_scan_dirs_with(overrides, home, source),
+    }
 }
 
 pub fn rebuild_cache(
@@ -256,7 +273,7 @@ fn source_coverage(source: Source) -> &'static str {
         // Factory/Kimi 本机存储都不含模型名字段，只能按 token 统计，无法按模型定价。
         Source::Factory => "会话累计 Token（无模型名）",
         Source::Kimi => "轮级 Token（无模型名）",
-        Source::CursorAgent => "仅无头调用",
+        Source::CursorAgent => "会话与 IDE 共用本机目录；token 仅包装落盘",
         Source::Copilot => "仅会话结束时上报（累计）",
         _ => "轮级 Token",
     }

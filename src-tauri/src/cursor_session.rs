@@ -10,8 +10,8 @@ use crate::adapters::cursor_session::{
     parse_cursor_session_transcript,
 };
 use crate::domain::{
-    CursorSessionDailyPoint, CursorSessionModelRow, CursorSessionProjectRow, CursorSessionRecord,
-    CursorSessionSummaryDto, CursorSessionToolRow, IngestIssue, IngestReport,
+    CursorSessionDailyPoint, CursorSessionListRow, CursorSessionModelRow, CursorSessionProjectRow,
+    CursorSessionRecord, CursorSessionSummaryDto, CursorSessionToolRow, IngestIssue, IngestReport,
 };
 use crate::store;
 
@@ -59,8 +59,18 @@ pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
             store::cursor_session_file_fingerprint(conn, &path_key)
         {
             if cached_mtime == mtime_ms && cached_size == size {
-                report.files_skipped += 1;
-                continue;
+                match store::cursor_session_has_source_file(conn, &path_key) {
+                    Ok(true) => {
+                        report.files_skipped += 1;
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        record_issue(report, &path_key, &error);
+                        any_failed = true;
+                        continue;
+                    }
+                }
             }
         }
 
@@ -150,6 +160,15 @@ pub fn load_summary(conn: &Connection) -> Result<CursorSessionSummaryDto, String
     Ok(summary)
 }
 
+#[derive(Default)]
+struct ProjectAgg {
+    session_count: i64,
+    turn_count: i64,
+    error_count: i64,
+    files_touched: i64,
+    last_seen_at: Option<String>,
+}
+
 pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSessionSummaryDto {
     if sessions.is_empty() {
         return CursorSessionSummaryDto::empty();
@@ -164,27 +183,80 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         None
     };
 
-    let mut projects: BTreeMap<String, (i64, i64)> = BTreeMap::new();
+    let mut projects: BTreeMap<String, ProjectAgg> = BTreeMap::new();
+    let mut daily: BTreeMap<String, (i64, i64)> = BTreeMap::new();
+    let mut models: BTreeMap<String, i64> = BTreeMap::new();
+    let mut tools: BTreeMap<String, i64> = BTreeMap::new();
+    let mut list_rows: Vec<CursorSessionListRow> = Vec::with_capacity(sessions.len());
+
     for session in sessions {
-        let project = if session.project.is_empty() {
-            "未知项目".to_string()
-        } else {
-            session.project.clone()
-        };
-        let entry = projects.entry(project).or_insert((0, 0));
-        entry.0 += 1;
-        entry.1 += session.turn_count;
+        let project = display_project(&session.project);
+        let entry = projects.entry(project.clone()).or_default();
+        entry.session_count += 1;
+        entry.turn_count += session.turn_count;
+        entry.error_count += session.error_count;
+        entry.files_touched += session.files_touched;
+        entry.last_seen_at = later_ts(&entry.last_seen_at, &session.last_seen_at);
+
+        if let Some(day) = session
+            .last_seen_at
+            .as_deref()
+            .map(local_day)
+            .filter(|day| !day.is_empty())
+        {
+            let bucket = daily.entry(day).or_insert((0, 0));
+            bucket.0 += 1;
+            bucket.1 += session.turn_count;
+        }
+
+        let session_models = parse_models(&session.models_json);
+        for name in &session_models {
+            if name.is_empty() {
+                continue;
+            }
+            *models.entry(name.clone()).or_insert(0) += 1;
+        }
+
+        let session_tools = parse_tools(&session.tool_calls_json);
+        let mut tool_call_count = 0i64;
+        for (name, count) in session_tools {
+            *tools.entry(name).or_insert(0) += count;
+            tool_call_count += count;
+        }
+
+        list_rows.push(CursorSessionListRow {
+            session_id: session.session_id.clone(),
+            project,
+            turn_count: session.turn_count,
+            success_count: session.success_count,
+            error_count: session.error_count,
+            aborted_count: session.aborted_count,
+            models: session_models,
+            tool_call_count,
+            first_seen_at: session.first_seen_at.clone(),
+            last_seen_at: session.last_seen_at.clone(),
+            files_touched: session.files_touched,
+            source_file: session.source_file.clone(),
+        });
     }
+
+    list_rows.sort_by(|a, b| {
+        b.last_seen_at
+            .cmp(&a.last_seen_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+
     let active_project_count = projects.len() as i64;
     let mut by_project: Vec<CursorSessionProjectRow> = projects
         .into_iter()
-        .map(
-            |(name, (session_count, turn_count))| CursorSessionProjectRow {
-                name,
-                session_count,
-                turn_count,
-            },
-        )
+        .map(|(name, agg)| CursorSessionProjectRow {
+            name,
+            session_count: agg.session_count,
+            turn_count: agg.turn_count,
+            error_count: agg.error_count,
+            files_touched: agg.files_touched,
+            last_seen_at: agg.last_seen_at,
+        })
         .collect();
     by_project.sort_by(|a, b| {
         b.session_count
@@ -193,20 +265,6 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
             .then_with(|| a.name.cmp(&b.name))
     });
 
-    let mut daily: BTreeMap<String, (i64, i64)> = BTreeMap::new();
-    for session in sessions {
-        let Some(day) = session
-            .last_seen_at
-            .as_deref()
-            .map(local_day)
-            .filter(|day| !day.is_empty())
-        else {
-            continue;
-        };
-        let entry = daily.entry(day).or_insert((0, 0));
-        entry.0 += 1;
-        entry.1 += session.turn_count;
-    }
     let daily = daily
         .into_iter()
         .map(
@@ -218,23 +276,6 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         )
         .collect();
 
-    let mut models: BTreeMap<String, i64> = BTreeMap::new();
-    let mut tools: BTreeMap<String, i64> = BTreeMap::new();
-    for session in sessions {
-        if let Ok(names) = serde_json::from_str::<Vec<String>>(&session.models_json) {
-            for name in names {
-                if name.is_empty() {
-                    continue;
-                }
-                *models.entry(name).or_insert(0) += 1;
-            }
-        }
-        if let Ok(calls) = serde_json::from_str::<BTreeMap<String, i64>>(&session.tool_calls_json) {
-            for (name, count) in calls {
-                *tools.entry(name).or_insert(0) += count;
-            }
-        }
-    }
     let mut by_model: Vec<CursorSessionModelRow> = models
         .into_iter()
         .map(|(name, session_count)| CursorSessionModelRow {
@@ -268,6 +309,41 @@ pub fn summarize_cursor_sessions(sessions: &[CursorSessionRecord]) -> CursorSess
         by_model,
         top_tools,
         daily,
+        sessions: list_rows,
+    }
+}
+
+fn display_project(project: &str) -> String {
+    if project.is_empty() {
+        "未知项目".to_string()
+    } else {
+        project.to_string()
+    }
+}
+
+fn parse_models(raw: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(raw).unwrap_or_default()
+}
+
+fn parse_tools(raw: &str) -> BTreeMap<String, i64> {
+    serde_json::from_str::<BTreeMap<String, i64>>(raw).unwrap_or_default()
+}
+
+fn later_ts(current: &Option<String>, candidate: &Option<String>) -> Option<String> {
+    match (current.as_deref(), candidate.as_deref()) {
+        (None, None) => None,
+        (Some(value), None) => Some(value.to_string()),
+        (None, Some(value)) => Some(value.to_string()),
+        (Some(left), Some(right)) => {
+            let pick_right = match (
+                chrono::DateTime::parse_from_rfc3339(left).ok(),
+                chrono::DateTime::parse_from_rfc3339(right).ok(),
+            ) {
+                (Some(left_dt), Some(right_dt)) => right_dt > left_dt,
+                _ => right > left,
+            };
+            Some(if pick_right { right } else { left }.to_string())
+        }
     }
 }
 
@@ -347,5 +423,76 @@ mod tests {
         let path =
             Path::new("/home/.cursor/projects/Users-test-project/agent-transcripts/s1/s1.jsonl");
         assert_eq!(project_from_transcript_path(path), "/Users/test/project");
+    }
+
+    fn sample_session(
+        session_id: &str,
+        project: &str,
+        last_seen_at: &str,
+        turn_count: i64,
+        error_count: i64,
+        models_json: &str,
+        tool_calls_json: &str,
+    ) -> CursorSessionRecord {
+        CursorSessionRecord {
+            session_id: session_id.to_string(),
+            project: project.to_string(),
+            turn_count,
+            success_count: turn_count - error_count,
+            error_count,
+            aborted_count: 0,
+            tool_calls_json: tool_calls_json.to_string(),
+            models_json: models_json.to_string(),
+            first_seen_at: Some(last_seen_at.to_string()),
+            last_seen_at: Some(last_seen_at.to_string()),
+            files_touched: 1,
+            source_file: format!("/tmp/{session_id}.jsonl"),
+        }
+    }
+
+    #[test]
+    fn summarize_includes_session_ids_newest_first() {
+        let summary = summarize_cursor_sessions(&[
+            sample_session(
+                "sess-old",
+                "/Users/test/alpha",
+                "2026-08-16T10:00:00+00:00",
+                2,
+                1,
+                r#"["grok-4.6"]"#,
+                r#"{"Read":1}"#,
+            ),
+            sample_session(
+                "sess-new",
+                "/Users/test/beta",
+                "2026-08-18T10:00:00+00:00",
+                3,
+                0,
+                r#"["grok-4.6"]"#,
+                r#"{"Read":2,"Shell":1}"#,
+            ),
+        ]);
+
+        assert_eq!(summary.session_count, 2);
+        assert_eq!(summary.active_project_count, 2);
+        assert_eq!(summary.sessions.len(), 2);
+        assert_eq!(summary.sessions[0].session_id, "sess-new");
+        assert_eq!(summary.sessions[0].project, "/Users/test/beta");
+        assert_eq!(summary.sessions[0].tool_call_count, 3);
+        assert_eq!(summary.sessions[1].session_id, "sess-old");
+        assert_eq!(summary.by_project.len(), 2);
+        let beta = summary
+            .by_project
+            .iter()
+            .find(|row| row.name == "/Users/test/beta")
+            .expect("beta project");
+        assert_eq!(beta.session_count, 1);
+        assert_eq!(beta.turn_count, 3);
+        assert_eq!(beta.error_count, 0);
+        assert_eq!(beta.files_touched, 1);
+        assert_eq!(
+            beta.last_seen_at.as_deref(),
+            Some("2026-08-18T10:00:00+00:00")
+        );
     }
 }

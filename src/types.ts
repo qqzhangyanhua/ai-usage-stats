@@ -251,10 +251,28 @@ export type CursorAccountUsageDto = {
   headless_share: number | null;
 };
 
+export type CursorSessionListRow = {
+  session_id: string;
+  project: string;
+  turn_count: number;
+  success_count: number;
+  error_count: number;
+  aborted_count: number;
+  models: string[];
+  tool_call_count: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  files_touched: number;
+  source_file: string;
+};
+
 export type CursorSessionProjectRow = {
   name: string;
   session_count: number;
   turn_count: number;
+  error_count: number;
+  files_touched: number;
+  last_seen_at: string | null;
 };
 
 export type CursorSessionDailyPoint = {
@@ -283,6 +301,7 @@ export type CursorSessionSummaryDto = {
   by_model: CursorSessionModelRow[];
   top_tools: CursorSessionToolRow[];
   daily: CursorSessionDailyPoint[];
+  sessions: CursorSessionListRow[];
 };
 
 export type FilterOptions = {

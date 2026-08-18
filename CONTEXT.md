@@ -29,8 +29,8 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 _Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
 
 **Cursor 会话 (Cursor Session)**：
-从本机 `agent-transcripts` jsonl 解析的 Cursor Agent 行为统计（会话数、轮次、工具调用、失败率等），只存聚合、不含对话正文。独立于消耗记录、代码量与账号用量；随 `ingest_all` 自动扫描，不进总览 token KPI。
-_Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混称
+从本机 `~/.cursor/projects/*/agent-transcripts` jsonl 解析的行为统计（会话数、轮次、工具调用、失败率等）。Cursor IDE Agent 与 `cursor-agent` CLI 写同一套目录，无法从路径区分来源。只存聚合、不含对话正文。独立于消耗记录、代码量与账号用量；随 `ingest_all` 自动扫描，不进总览 token KPI。
+_Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混称；不要把 `~/.cursor-agent-usage` 当成官方会话目录
 
 ## 采集源现状
 
@@ -47,7 +47,7 @@ _Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混�
 | qwen | `~/.qwen` | 待确认 | ❌ |
 | Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
 | Cursor | sqlite（代码量）+ 账号级 token（联网）+ 会话 transcript（行为统计） | ⚠️ 账号级（手动刷新） | ❌ |
-| cursor-agent | 无头 `stream-json`（本机会话无 token） | ✅（仅 stdout，需前瞻落盘） | ❌ |
+| cursor-agent | 会话与 IDE 共用 `~/.cursor/chats` + `agent-transcripts`；token 仅无头 stdout（需包装落盘到 `~/.cursor-agent-usage`） | ⚠️（仅包装） | ❌ |
 | copilot | jsonl `~/.copilot/session-state/<id>/events.jsonl` | ✅（仅会话结束时，按模型累计） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |
 

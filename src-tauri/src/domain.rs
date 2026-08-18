@@ -492,11 +492,31 @@ pub struct CursorSessionRecord {
     pub source_file: String,
 }
 
+/// 单条 Cursor 会话的界面明细（已解析 models / 工具次数，不含正文）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionListRow {
+    pub session_id: String,
+    pub project: String,
+    pub turn_count: i64,
+    pub success_count: i64,
+    pub error_count: i64,
+    pub aborted_count: i64,
+    pub models: Vec<String>,
+    pub tool_call_count: i64,
+    pub first_seen_at: Option<String>,
+    pub last_seen_at: Option<String>,
+    pub files_touched: i64,
+    pub source_file: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CursorSessionProjectRow {
     pub name: String,
     pub session_count: i64,
     pub turn_count: i64,
+    pub error_count: i64,
+    pub files_touched: i64,
+    pub last_seen_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -530,6 +550,7 @@ pub struct CursorSessionSummaryDto {
     pub by_model: Vec<CursorSessionModelRow>,
     pub top_tools: Vec<CursorSessionToolRow>,
     pub daily: Vec<CursorSessionDailyPoint>,
+    pub sessions: Vec<CursorSessionListRow>,
 }
 
 impl CursorSessionSummaryDto {
@@ -544,6 +565,7 @@ impl CursorSessionSummaryDto {
             by_model: Vec::new(),
             top_tools: Vec::new(),
             daily: Vec::new(),
+            sessions: Vec::new(),
         }
     }
 }

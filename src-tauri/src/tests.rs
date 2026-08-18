@@ -2506,6 +2506,52 @@ fn source_diagnostics_explain_detection_cache_and_usage_coverage() {
     assert_eq!(codex.coverage, "轮级 Token");
     assert!(!qwen.detected);
     assert_eq!(qwen.coverage, "本地无 Token");
+
+    let cursor_agent = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "cursor_agent")
+        .unwrap();
+    assert!(
+        !cursor_agent.detected,
+        "empty home should not report a fake usage directory as detected"
+    );
+    assert_eq!(
+        cursor_agent.root_path,
+        format!(
+            "{}, {}",
+            home.join(".cursor/chats").display(),
+            home.join(".cursor/projects").display()
+        )
+    );
+    assert_eq!(
+        cursor_agent.coverage,
+        "会话与 IDE 共用本机目录；token 仅包装落盘"
+    );
+}
+
+#[test]
+fn cursor_agent_diagnostics_detect_shared_cursor_dirs_not_usage_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    std::fs::create_dir_all(home.join(".cursor/chats")).unwrap();
+    let conn = store::open_memory().unwrap();
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let cursor_agent = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "cursor_agent")
+        .unwrap();
+    assert!(cursor_agent.detected);
+    assert!(cursor_agent.root_path.contains(".cursor/chats"));
+    assert!(cursor_agent.root_path.contains(".cursor/projects"));
+    assert!(
+        !cursor_agent.root_path.contains(".cursor-agent-usage"),
+        "usage capture dir is optional and must not be advertised when absent"
+    );
+    assert_eq!(
+        ingest::source_scan_dirs_with(&ingest::PathOverrides::new(), home, Source::CursorAgent),
+        vec![home.join(".cursor-agent-usage")],
+    );
 }
 
 #[test]
@@ -4004,6 +4050,13 @@ fn cursor_session_ingest_summarize_does_not_touch_usage_records() {
     assert_eq!(summary.by_project[0].name, "/Users/test/project");
     assert_eq!(summary.by_project[0].session_count, 1);
     assert_eq!(summary.by_project[0].turn_count, 2);
+    assert_eq!(summary.by_project[0].error_count, 1);
+    assert_eq!(summary.sessions.len(), 1);
+    assert_eq!(summary.sessions[0].session_id, "sess-1");
+    assert_eq!(summary.sessions[0].project, "/Users/test/project");
+    assert_eq!(summary.sessions[0].turn_count, 2);
+    assert_eq!(summary.sessions[0].error_count, 1);
+    assert_eq!(summary.sessions[0].tool_call_count, 2);
     assert_eq!(summary.daily.len(), 1);
     assert_eq!(summary.daily[0].session_count, 1);
     assert_eq!(summary.daily[0].turn_count, 2);
@@ -4030,6 +4083,36 @@ fn cursor_session_ingest_skips_unchanged_transcripts() {
     crate::cursor_session::ingest(&conn, home, &mut second);
     assert_eq!(second.files_parsed, 0);
     assert_eq!(second.files_skipped, 1);
+}
+
+#[test]
+fn cursor_session_ingest_reparses_when_fingerprint_exists_but_session_row_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(first.files_parsed, 1);
+    assert_eq!(store::load_cursor_sessions(&conn).unwrap().len(), 1);
+
+    conn.execute("DELETE FROM cursor_sessions", [])
+        .expect("drop orphan session row");
+    assert!(store::load_cursor_sessions(&conn).unwrap().is_empty());
+
+    let mut again = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut again);
+    assert_eq!(again.files_skipped, 0);
+    assert_eq!(again.files_parsed, 1);
+    let sessions = store::load_cursor_sessions(&conn).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_id, "sess-1");
 }
 
 #[test]
