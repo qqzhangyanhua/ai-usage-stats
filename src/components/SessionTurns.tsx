@@ -66,11 +66,22 @@ export function SessionTurns({
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<TurnRow | null>(null);
 
+  // 会话切换时重置分页与详情，改在渲染期间"调整状态"而非 effect 里同步 setState，
+  // 避免多触发一次级联渲染（见 react-hooks/set-state-in-effect）。
+  const [turnsKey, setTurnsKey] = useState(() => `${source}:${sessionId}`);
+  const nextTurnsKey = `${source}:${sessionId}`;
+  if (turnsKey !== nextTurnsKey) {
+    setTurnsKey(nextTurnsKey);
+    setPage(1);
+    setDetail(null);
+  }
+
   const pageCount = Math.max(1, Math.ceil(turns.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
   const pagedTurns = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
+    const start = (currentPage - 1) * PAGE_SIZE;
     return turns.slice(start, start + PAGE_SIZE);
-  }, [page, turns]);
+  }, [currentPage, turns]);
 
   const stats = useMemo(() => {
     const totalTokens = turns.reduce((sum, turn) => sum + turn.total_tokens, 0);
@@ -78,15 +89,6 @@ export function SessionTurns({
     const hasCost = turns.some((turn) => turn.cost != null);
     return { totalTokens, totalCost, hasCost };
   }, [turns]);
-
-  useEffect(() => {
-    setPage(1);
-    setDetail(null);
-  }, [sessionId, source]);
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, pageCount));
-  }, [pageCount]);
 
   return (
     <div className="panel">
@@ -147,7 +149,7 @@ export function SessionTurns({
                 detail.total_tokens === turn.total_tokens;
               return (
                 <tr
-                  key={`${turn.occurred_at}-${(page - 1) * PAGE_SIZE + index}`}
+                  key={`${turn.occurred_at}-${(currentPage - 1) * PAGE_SIZE + index}`}
                   className={selected ? "clickable selected" : "clickable"}
                   onClick={() => setDetail(turn)}
                 >
@@ -199,7 +201,7 @@ export function SessionTurns({
         </table>
       </LoadingOverlay>
       <Pagination
-        page={page}
+        page={currentPage}
         pageCount={pageCount}
         totalCount={turns.length}
         onPageChange={setPage}
