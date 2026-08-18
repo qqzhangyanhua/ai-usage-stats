@@ -3,6 +3,7 @@ pub mod aggregate;
 pub mod billing_window;
 pub mod cost;
 pub mod cursor_account;
+pub mod cursor_session;
 pub mod domain;
 pub mod ingest;
 pub mod litellm;
@@ -20,7 +21,8 @@ use serde::Deserialize;
 use tauri::Manager;
 
 use crate::domain::{
-    ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, CursorAccountUsageDto, Filter,
+    ApplicationAnalyticsDto, BillingWindowsDto, CodeVolumeSummary, CursorAccountUsageDto,
+    CursorSessionSummaryDto, Filter,
     FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
     PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
     TurnRow,
@@ -358,6 +360,19 @@ async fn get_code_volume() -> Result<CodeVolumeSummary, String> {
 }
 
 #[tauri::command]
+async fn get_cursor_session_summary(
+    app: tauri::AppHandle,
+) -> Result<CursorSessionSummaryDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_session::load_summary(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn refresh_cursor_account_usage(
     app: tauri::AppHandle,
     token: Option<String>,
@@ -534,6 +549,7 @@ pub fn run() {
             get_source_diagnostics,
             rebuild_cache,
             get_code_volume,
+            get_cursor_session_summary,
             refresh_cursor_account_usage,
             get_cursor_account_usage,
             save_cursor_session_token,

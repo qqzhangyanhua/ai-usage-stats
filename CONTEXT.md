@@ -28,6 +28,10 @@ _Avoid_: 用量、消耗（避免与 token 混淆）
 从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量。会话 token 在设置页或 Cursor 页粘贴进钥匙串；缓存可在设置页独立清空，不参与本机文件对账。
 _Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
 
+**Cursor 会话 (Cursor Session)**：
+从本机 `agent-transcripts` jsonl 解析的 Cursor Agent 行为统计（会话数、轮次、工具调用、失败率等），只存聚合、不含对话正文。独立于消耗记录、代码量与账号用量；随 `ingest_all` 自动扫描，不进总览 token KPI。
+_Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混称
+
 ## 采集源现状
 
 | Source | 存储 | 本机 token | 本机费用 |
@@ -42,6 +46,6 @@ _Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
 | grok | `~/.grok/sessions` | ✅（`turn_completed.usage`） | ✅ 自带 `costUsdTicks` |
 | qwen | `~/.qwen` | 待确认 | ❌ |
 | Factory/droid | `~/.factory/sessions` | 待确认 | ❌ |
-| Cursor | sqlite（仅代码量）+ 账号级 token（联网，self-serve 无费用） | ⚠️ 账号级（手动刷新） | ❌ |
+| Cursor | sqlite（代码量）+ 账号级 token（联网）+ 会话 transcript（行为统计） | ⚠️ 账号级（手动刷新） | ❌ |
 | cursor-agent | 无头 `stream-json`（本机会话无 token） | ✅（仅 stdout，需前瞻落盘） | ❌ |
 | amp | 本机仅配置 | ❌（云端） | ❌ |

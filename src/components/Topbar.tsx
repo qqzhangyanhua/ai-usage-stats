@@ -43,7 +43,7 @@ export function Topbar({
   onRefresh: () => void;
 }) {
   const { title, subtitle } = viewTitle(view);
-  const hideFilters = view === "cursor" || view === "settings";
+  const hideFilters = view === "cursor" || view === "cursor-sessions" || view === "settings";
   const [customOpen, setCustomOpen] = useState(preset === "custom");
   const [customFrom, setCustomFrom] = useState(() => (filter.from ?? "").slice(0, 10));
   const [customTo, setCustomTo] = useState(() => (filter.to ?? "").slice(0, 10));

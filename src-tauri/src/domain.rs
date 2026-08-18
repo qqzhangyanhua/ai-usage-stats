@@ -425,6 +425,63 @@ pub struct CodeVolumeSummary {
     pub ai_percentage: Option<f64>,
 }
 
+/// 单条 Cursor 会话聚合（本机 agent-transcripts，不含正文）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionRecord {
+    pub session_id: String,
+    pub project: String,
+    pub turn_count: i64,
+    pub success_count: i64,
+    pub error_count: i64,
+    pub aborted_count: i64,
+    pub tool_calls_json: String,
+    pub models_json: String,
+    pub first_seen_at: Option<String>,
+    pub last_seen_at: Option<String>,
+    pub files_touched: i64,
+    pub source_file: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionProjectRow {
+    pub name: String,
+    pub session_count: i64,
+    pub turn_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionDailyPoint {
+    pub bucket: String,
+    pub session_count: i64,
+    pub turn_count: i64,
+}
+
+/// Cursor 会话汇总：独立维度，不并入本机 token 总量。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CursorSessionSummaryDto {
+    pub as_of: Option<String>,
+    pub session_count: i64,
+    pub turn_count: i64,
+    pub error_rate: Option<f64>,
+    pub active_project_count: i64,
+    pub by_project: Vec<CursorSessionProjectRow>,
+    pub daily: Vec<CursorSessionDailyPoint>,
+}
+
+impl CursorSessionSummaryDto {
+    pub fn empty() -> Self {
+        Self {
+            as_of: None,
+            session_count: 0,
+            turn_count: 0,
+            error_rate: None,
+            active_project_count: 0,
+            by_project: Vec::new(),
+            daily: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceDiagnostic {
     pub source: String,

@@ -69,6 +69,7 @@ export type View =
   | "project"
   | "sessions"
   | "cursor"
+  | "cursor-sessions"
   | "settings";
 
 export type SeriesPoint = {
@@ -210,6 +211,28 @@ export type CursorAccountUsageDto = {
   headless_tokens: number;
   interactive_tokens: number;
   headless_share: number | null;
+};
+
+export type CursorSessionProjectRow = {
+  name: string;
+  session_count: number;
+  turn_count: number;
+};
+
+export type CursorSessionDailyPoint = {
+  bucket: string;
+  session_count: number;
+  turn_count: number;
+};
+
+export type CursorSessionSummaryDto = {
+  as_of: string | null;
+  session_count: number;
+  turn_count: number;
+  error_rate: number | null;
+  active_project_count: number;
+  by_project: CursorSessionProjectRow[];
+  daily: CursorSessionDailyPoint[];
 };
 
 export type FilterOptions = {

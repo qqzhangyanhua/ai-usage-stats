@@ -3410,3 +3410,143 @@ fn cursor_account_failed_refresh_keeps_last_good_cache() {
     assert_eq!(empty.event_count, 2);
     assert_eq!(empty.total_tokens, 465);
 }
+
+#[test]
+fn cursor_session_adapter_counts_turns_tools_and_status() {
+    let parsed = crate::adapters::cursor_session::parse_cursor_session_transcript(&fixture(
+        "cursor-session-transcript.jsonl",
+    ))
+    .expect("fixture should parse");
+    assert_eq!(parsed.turn_count, 2);
+    assert_eq!(parsed.success_count, 1);
+    assert_eq!(parsed.error_count, 1);
+    assert_eq!(parsed.aborted_count, 0);
+    assert_eq!(parsed.tool_calls.get("Read"), Some(&1));
+    assert_eq!(parsed.tool_calls.get("Shell"), Some(&1));
+}
+
+fn seed_cursor_transcript(
+    home: &std::path::Path,
+    project_slug: &str,
+    session_id: &str,
+    content: &str,
+) -> std::path::PathBuf {
+    let path = home.join(format!(
+        ".cursor/projects/{project_slug}/agent-transcripts/{session_id}/{session_id}.jsonl"
+    ));
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
+    std::fs::write(&path, content).expect("write transcript");
+    path
+}
+
+#[test]
+fn cursor_session_ingest_summarize_does_not_touch_usage_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(report.files_parsed, 1);
+    assert!(store::load_all(&conn).unwrap().is_empty());
+
+    let summary = crate::cursor_session::load_summary(&conn).unwrap();
+    assert_eq!(summary.session_count, 1);
+    assert_eq!(summary.turn_count, 2);
+    assert_eq!(summary.error_rate, Some(0.5));
+    assert_eq!(summary.active_project_count, 1);
+    assert_eq!(summary.by_project.len(), 1);
+    assert_eq!(summary.by_project[0].name, "/Users/test/project");
+    assert_eq!(summary.by_project[0].session_count, 1);
+    assert_eq!(summary.by_project[0].turn_count, 2);
+    assert_eq!(summary.daily.len(), 1);
+    assert_eq!(summary.daily[0].session_count, 1);
+    assert_eq!(summary.daily[0].turn_count, 2);
+}
+
+#[test]
+fn cursor_session_ingest_skips_unchanged_transcripts() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut first = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut first);
+    assert_eq!(first.files_parsed, 1);
+    assert_eq!(first.files_skipped, 0);
+
+    let mut second = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut second);
+    assert_eq!(second.files_parsed, 0);
+    assert_eq!(second.files_skipped, 1);
+}
+
+#[test]
+fn cursor_session_ingest_reconciles_deleted_transcripts() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        1
+    );
+
+    std::fs::remove_file(path).expect("remove transcript");
+    let mut again = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut again);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().session_count,
+        0
+    );
+    assert_eq!(again.records_removed, 1);
+}
+
+#[test]
+fn cursor_session_parse_failure_keeps_last_good_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let path = seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().turn_count,
+        2
+    );
+
+    std::fs::write(&path, "{not-json").expect("write bad json");
+    let mut bad = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut bad);
+    assert_eq!(bad.files_failed, 1);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn).unwrap().turn_count,
+        2
+    );
+}

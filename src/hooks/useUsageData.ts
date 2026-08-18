@@ -6,6 +6,7 @@ import type {
   ApplicationAnalyticsDto,
   BillingWindowsDto,
   CodeVolumeSummary,
+  CursorSessionSummaryDto,
   Filter,
   FilterOptions,
   Grain,
@@ -48,6 +49,7 @@ export const views: View[] = [
   "project",
   "sessions",
   "cursor",
+  "cursor-sessions",
   "settings",
 ];
 
@@ -103,6 +105,9 @@ export function useUsageData() {
   const [lastIngestReport, setLastIngestReport] = useState<IngestReport | null>(null);
   const [rebuilding, setRebuilding] = useState<string | null>(null);
   const [codeVolume, setCodeVolume] = useState<CodeVolumeSummary | null>(null);
+  const [cursorSessionSummary, setCursorSessionSummary] = useState<CursorSessionSummaryDto | null>(
+    null,
+  );
   const [status, setStatus] = useState("正在连接…");
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -214,6 +219,13 @@ export function useUsageData() {
       }
       if (view === "cursor") {
         tasks.push(invoke<CodeVolumeSummary>("get_code_volume").then(commit(setCodeVolume)));
+      }
+      if (view === "cursor-sessions") {
+        tasks.push(
+          invoke<CursorSessionSummaryDto>("get_cursor_session_summary").then(
+            commit(setCursorSessionSummary),
+          ),
+        );
       }
       if (view === "settings") {
         tasks.push(
@@ -481,6 +493,7 @@ export function useUsageData() {
     lastIngestReport,
     rebuilding,
     codeVolume,
+    cursorSessionSummary,
     status,
     setStatus,
     connected,
