@@ -136,6 +136,7 @@ export function Settings({
                   </td>
                   <td className="row-actions">
                     <Button
+                      size="sm"
                       disabled={operationBusy || rebuilding !== null || !row.detected}
                       onClick={() => onRebuild(row.source)}
                     >
@@ -144,6 +145,7 @@ export function Settings({
                     {row.archived_record_count > 0 ? (
                       <Button
                         variant="danger"
+                        size="sm"
                         disabled={operationBusy || purging !== null}
                         onClick={() => onPurgeArchived(row.source)}
                         title="永久删除该来源已归档的记录，此操作不可撤销"
@@ -216,7 +218,9 @@ export function Settings({
             >
               新增
             </Button>
-            <Button onClick={onSave}>保存</Button>
+            <Button variant="accent" onClick={onSave}>
+              保存
+            </Button>
           </div>
         </div>
         {prices.prices.map((row, index) => (
@@ -361,7 +365,7 @@ function PricePresetPanel({
             价格来自各官网公开信息，仅作配置起点，请以官方最新价目为准；能匹配到本地已出现的模型名时会自动带入。
           </p>
         </div>
-        <Button disabled={selectedCount === 0} onClick={importSelected}>
+        <Button variant="accent" disabled={selectedCount === 0} onClick={importSelected}>
           导入所选（{selectedCount}）
         </Button>
       </div>

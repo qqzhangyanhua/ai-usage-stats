@@ -145,7 +145,11 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
             value={tokenDraft}
             onChange={(event) => setTokenDraft(event.target.value)}
           />
-          <Button disabled={busy || !tokenDraft.trim()} onClick={() => void handleSaveToken()}>
+          <Button
+            variant="accent"
+            disabled={busy || !tokenDraft.trim()}
+            onClick={() => void handleSaveToken()}
+          >
             保存到钥匙串
           </Button>
         </div>
@@ -226,10 +230,7 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
                 />
               </div>
               <div className="donut-wrap">
-                <DonutChart
-                  option={modelOption}
-                  centerValue={formatCompact(data.total_tokens)}
-                />
+                <DonutChart option={modelOption} centerValue={formatCompact(data.total_tokens)} />
                 <div className="legend-col">
                   {modelSlices(data.by_model).map((item) => (
                     <LegendRow

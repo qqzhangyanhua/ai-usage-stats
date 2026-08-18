@@ -78,11 +78,7 @@ export function CursorAccountSettingsPanel() {
             token，也不触发联网，更不动本机消耗记录。
           </p>
         </div>
-        <Button
-          variant="danger"
-          disabled={busy !== "idle"}
-          onClick={() => void handleClearCache()}
-        >
+        <Button variant="danger" disabled={busy !== "idle"} onClick={() => void handleClearCache()}>
           {busy === "clearing" ? "清空中…" : "清空账号用量缓存"}
         </Button>
       </div>
@@ -96,6 +92,7 @@ export function CursorAccountSettingsPanel() {
           onChange={(event) => setTokenDraft(event.target.value)}
         />
         <Button
+          variant="accent"
           disabled={busy !== "idle" || !tokenDraft.trim()}
           onClick={() => void handleSaveToken()}
         >

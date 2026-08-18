@@ -52,15 +52,15 @@ export function BackupPanel({ onRestored }: { onRestored?: () => void }) {
         <div>
           <h2>数据备份与恢复</h2>
           <p className="panel-note">
-            备份本机用量缓存（sqlite）、单价表、月度预算、预算通知状态和 LiteLLM
-            价目快照。不含 Cursor 钥匙串里的会话 token。恢复会覆盖当前缓存。
+            备份本机用量缓存（sqlite）、单价表、月度预算、预算通知状态和 LiteLLM 价目快照。不含
+            Cursor 钥匙串里的会话 token。恢复会覆盖当前缓存。
           </p>
         </div>
         <div className="row-actions">
-          <Button disabled={busy !== "idle"} onClick={() => void handleBackup()}>
+          <Button variant="accent" disabled={busy !== "idle"} onClick={() => void handleBackup()}>
             {busy === "backup" ? "备份中…" : "备份"}
           </Button>
-          <Button variant="accent" disabled={busy !== "idle"} onClick={() => void handleRestore()}>
+          <Button disabled={busy !== "idle"} onClick={() => void handleRestore()}>
             {busy === "restore" ? "恢复中…" : "恢复"}
           </Button>
         </div>

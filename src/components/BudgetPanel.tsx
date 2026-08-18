@@ -74,7 +74,7 @@ export function BudgetPanel({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
-          <Button disabled={saving} onClick={submit}>
+          <Button variant="accent" disabled={saving} onClick={submit}>
             {saving ? "保存中…" : "保存"}
           </Button>
         </div>

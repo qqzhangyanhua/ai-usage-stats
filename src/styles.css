@@ -2260,7 +2260,7 @@ tr.selected {
 }
 
 .price-row-delete {
-  min-height: 34px;
+  min-width: 64px;
 }
 
 .error-boundary {
@@ -2315,36 +2315,65 @@ tr.selected {
   gap: 10px;
 }
 
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--overlay-1);
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ghost-btn-sm {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
 .ghost-btn-accent {
-  background: var(--tone-claude-bg);
-  color: var(--tone-claude-fg);
+  border-color: transparent;
+  background: linear-gradient(90deg, #6d4aff 0%, #4f46e5 100%);
+  color: #fff;
+  box-shadow: 0 8px 18px rgb(109 74 255 / 22%);
 }
 
 .ghost-btn-danger {
-  background: rgba(251, 113, 133, 0.14);
+  border-color: rgba(251, 113, 133, 0.28);
+  background: transparent;
   color: var(--red-fg);
 }
 
-.ghost-btn {
-  width: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 6px 10px;
-  background: var(--tone-codex-bg);
-  color: var(--purple-fg);
-}
-
 .ghost-btn:hover:not(:disabled) {
-  border-color: rgba(139, 108, 255, 0.45);
-  filter: brightness(1.08);
+  border-color: rgba(139, 108, 255, 0.4);
+  background: var(--overlay-2);
+  color: var(--text);
 }
 
 .ghost-btn-accent:hover:not(:disabled) {
-  border-color: rgba(249, 115, 22, 0.4);
+  border-color: transparent;
+  background: linear-gradient(90deg, #7b5cff 0%, #5b54ef 100%);
+  color: #fff;
+  filter: none;
 }
 
 .ghost-btn-danger:hover:not(:disabled) {
-  border-color: rgba(251, 113, 133, 0.45);
+  border-color: rgba(251, 113, 133, 0.5);
+  background: rgba(251, 113, 133, 0.12);
+  color: var(--red-fg);
+}
+
+.ghost-btn-accent:disabled {
+  box-shadow: none;
 }
 
 .chip-field:focus-visible,
@@ -2367,7 +2396,14 @@ tr.selected {
 
 .row-actions {
   display: flex;
+  align-items: flex-end;
+  flex-shrink: 0;
   gap: 8px;
+}
+
+td.row-actions {
+  align-items: center;
+  white-space: nowrap;
 }
 
 .split-2 {
