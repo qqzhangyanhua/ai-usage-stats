@@ -90,6 +90,8 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "adapter_version",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    // 源文件被工具自身清理后不再物理删除历史记录，只打时间戳归档（ADR 0004）。
+    ensure_column(conn, "usage_records", "archived_at", "TEXT")?;
     // 必须放在上面的 ensure_column 之后：老版本缓存库的 ingested_files 表可能还没有
     // source 列，若把这条建索引语句挪进最上面的初始 CREATE TABLE batch，会在旧库上先于
     // ALTER TABLE 执行而报错。
@@ -249,6 +251,10 @@ pub fn mark_file(
     Ok(())
 }
 
+/// 本轮扫描已看不到的文件不再物理删除其历史记录：工具自身的日志清理/轮转不应抹掉
+/// 本地已经统计过的用量。改为给对应记录打归档时间戳，记录仍计入所有统计查询；
+/// 只清理 `ingested_files` 的缓存指纹（文件既已消失，也没有 mtime/大小可再对比）。
+/// 见 `docs/adr/0004-archive-missing-source-files.md`。
 pub fn reconcile_source(
     conn: &Connection,
     source: Source,
@@ -264,15 +270,43 @@ pub fn reconcile_source(
         .map_err(|e| e.to_string())?;
     drop(stmt);
 
-    let mut removed = 0;
+    let mut archived = 0;
     for path in cached {
         if !seen_paths.contains(&path) {
-            removed += delete_records_for_file(conn, &path)?;
+            archived += archive_records_for_file(conn, &path)?;
             conn.execute("DELETE FROM ingested_files WHERE path = ?1", params![path])
                 .map_err(|e| e.to_string())?;
         }
     }
-    Ok(removed)
+    Ok(archived)
+}
+
+/// 把某源文件名下尚未归档的记录标记为已归档（幂等：重复调用不会改写已有的归档时间）。
+/// 返回本次新归档的记录数。
+pub fn archive_records_for_file(conn: &Connection, source_file: &str) -> Result<u64, String> {
+    conn.execute(
+        "UPDATE usage_records SET archived_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE source_file = ?1 AND archived_at IS NULL",
+        params![source_file],
+    )
+    .map(|count| count as u64)
+    .map_err(|e| e.to_string())
+}
+
+/// 永久删除某个来源（或全部来源）已归档的记录。用户在设置页显式触发，不参与常规摄取流程。
+pub fn purge_archived(conn: &Connection, source: Option<Source>) -> Result<u64, String> {
+    let removed = match source {
+        Some(source) => conn.execute(
+            "DELETE FROM usage_records WHERE archived_at IS NOT NULL AND source = ?1",
+            params![source.as_str()],
+        ),
+        None => conn.execute(
+            "DELETE FROM usage_records WHERE archived_at IS NOT NULL",
+            [],
+        ),
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(removed as u64)
 }
 
 pub fn invalidate_source(conn: &Connection, source: Source) -> Result<(), String> {
@@ -304,7 +338,11 @@ pub fn remove_unknown_sources(conn: &Connection) -> Result<u64, String> {
     Ok(removed)
 }
 
-pub fn source_cache_stats(conn: &Connection, source: Source) -> Result<(u64, u64, i64), String> {
+/// 返回 (缓存文件数, 记录总数（含已归档）, Token 总数（含已归档）, 已归档记录数)。
+pub fn source_cache_stats(
+    conn: &Connection,
+    source: Source,
+) -> Result<(u64, u64, i64, u64), String> {
     let cached_files = conn
         .query_row(
             "SELECT COUNT(*) FROM ingested_files WHERE source = ?1",
@@ -312,14 +350,29 @@ pub fn source_cache_stats(conn: &Connection, source: Source) -> Result<(u64, u64
             |row| row.get::<_, i64>(0),
         )
         .map_err(|e| e.to_string())? as u64;
-    let (record_count, total_tokens) = conn
+    let (record_count, total_tokens, archived_record_count) = conn
         .query_row(
-            "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) FROM usage_records WHERE source = ?1",
+            r#"
+            SELECT COUNT(*), COALESCE(SUM(total_tokens), 0),
+                   COUNT(*) FILTER (WHERE archived_at IS NOT NULL)
+            FROM usage_records WHERE source = ?1
+            "#,
             params![source.as_str()],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
         )
         .map_err(|e| e.to_string())?;
-    Ok((cached_files, record_count as u64, total_tokens))
+    Ok((
+        cached_files,
+        record_count as u64,
+        total_tokens,
+        archived_record_count as u64,
+    ))
 }
 
 pub fn load_all(conn: &Connection) -> Result<Vec<UsageRecord>, String> {

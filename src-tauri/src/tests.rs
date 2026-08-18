@@ -2152,7 +2152,9 @@ fn source_with_a_failed_file_defers_deleted_file_reconciliation() {
 }
 
 #[test]
-fn ingest_reconciles_records_after_a_source_file_is_deleted() {
+fn ingest_archives_records_after_a_source_file_is_deleted() {
+    // ADR 0004：源文件消失（工具自身清理/轮转）不再物理删除历史记录，只归档；
+    // 归档记录仍然计入统计，直到用户显式清理。
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
     let session_dir = home.join(".codex/sessions");
@@ -2165,8 +2167,82 @@ fn ingest_reconciles_records_after_a_source_file_is_deleted() {
     std::fs::remove_file(path).unwrap();
     let report = ingest::ingest_all(&conn, home).unwrap();
 
-    assert_eq!(report.records_removed, 2);
-    assert!(store::load_all(&conn).unwrap().is_empty());
+    assert_eq!(report.records_removed, 0);
+    assert_eq!(report.records_archived, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2, "archived records still count in totals");
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+
+    // 幂等：再摄取一次不会重复归档同一批记录。
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.records_archived, 0);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let codex = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "codex")
+        .unwrap();
+    assert_eq!(codex.archived_record_count, 2);
+    assert_eq!(codex.record_count, 2);
+}
+
+#[test]
+fn ingest_replaces_archived_records_when_the_same_path_reappears() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(&path).unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+
+    // 文件在同一路径重新出现（比如从备份恢复），不应和归档快照重复计数。
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(report.files_parsed, 1);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(
+        records.len(),
+        2,
+        "reappearing file replaces its archived snapshot"
+    );
+    assert!(records.iter().all(|r| r.total_tokens > 0));
+}
+
+#[test]
+fn purge_archived_permanently_deletes_only_archived_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    let claude_dir = home.join(".claude/projects/project");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let codex_path = codex_dir.join("one.jsonl");
+    std::fs::write(&codex_path, fixture("codex.jsonl")).unwrap();
+    std::fs::write(claude_dir.join("one.jsonl"), fixture("claude.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(&codex_path).unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    // 按来源清理：只删 codex 的归档记录，claude 的活跃记录不受影响。
+    let removed = store::purge_archived(&conn, Some(Source::Codex)).unwrap();
+    assert_eq!(removed, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert!(records.iter().all(|r| r.source == Source::Claude));
+
+    let removed_again = store::purge_archived(&conn, Some(Source::Codex)).unwrap();
+    assert_eq!(removed_again, 0);
+
+    let removed_all = store::purge_archived(&conn, None).unwrap();
+    assert_eq!(removed_all, 0, "claude records were never archived");
 }
 
 #[test]
@@ -2331,7 +2407,7 @@ fn remove_unknown_sources_keeps_every_registered_source() {
     assert_eq!(removed, 0);
 
     for source in Source::ALL {
-        let (cached_files, record_count, _) = store::source_cache_stats(&conn, source).unwrap();
+        let (cached_files, record_count, _, _) = store::source_cache_stats(&conn, source).unwrap();
         assert_eq!(
             cached_files,
             1,

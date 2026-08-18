@@ -33,7 +33,7 @@ pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDi
         .iter()
         .map(|source| {
             let root = source_root(home, *source);
-            let (cached_files, record_count, total_tokens) =
+            let (cached_files, record_count, total_tokens, archived_record_count) =
                 store::source_cache_stats(conn, *source)?;
             Ok(SourceDiagnostic {
                 source: source.as_str().to_string(),
@@ -44,6 +44,7 @@ pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDi
                 record_count,
                 total_tokens,
                 coverage: source_coverage(*source).to_string(),
+                archived_record_count,
             })
         })
         .collect()
@@ -542,10 +543,10 @@ fn reconcile_source(
     if source_report_mut(report, source).files_failed > 0 {
         return Ok(());
     }
-    let removed = store::reconcile_source(conn, source, seen)?;
-    report.records_removed += removed;
+    let archived = store::reconcile_source(conn, source, seen)?;
+    report.records_archived += archived;
     increment(report, source, |source_report| {
-        source_report.records_removed += removed
+        source_report.records_archived += archived
     });
     Ok(())
 }
