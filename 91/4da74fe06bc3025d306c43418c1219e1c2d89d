@@ -1,0 +1,24 @@
+src/components/CursorAccountEventTable.tsx
+  s_802010d1d0caad::t_ce029eb37f5f01 18,22,60-61,67,79
+  s_802010d1d0caad::t_47f22180a77a16 93-97
+src/components/CursorAccountUsagePanel.tsx
+  s_802010d1d0caad::t_23375812c98072 281
+src/styles.css
+  s_802010d1d0caad::t_292e414ad172c6 2858-2863
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "914da74fe06bc3025d306c43418c1219e1c2d89d",
+  "prompts": {},
+  "sessions": {
+    "s_802010d1d0caad": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a01421-f751-7070-9111-8ee369dd3035",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
