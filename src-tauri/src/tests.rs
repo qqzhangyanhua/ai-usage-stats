@@ -173,6 +173,18 @@ fn pi_adapter_uses_native_cost() {
 }
 
 #[test]
+fn pi_adapter_skips_zero_token_assistant_messages() {
+    // fixture 里追加了一条 usage 四分项全 0 的 assistant 消息（a3），
+    // 与其它 adapter（claude/codex/gemini/opencode）保持一致：不计入会话/费用统计。
+    let records = pi::parse_pi_jsonl(
+        &fixture("pi.jsonl"),
+        "/Users/zhangyanhua/.pi/agent/sessions/--Users-zhangyanhua-workCode-ruoyi-ui-vue3--/s.jsonl",
+    );
+    assert_eq!(records.len(), 2);
+    assert!(records.iter().all(|r| r.total_tokens > 0));
+}
+
+#[test]
 fn opencode_adapter_skips_user_and_keeps_native_cost() {
     let raw = fixture("opencode-messages.json");
     let values: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap();
@@ -1738,6 +1750,48 @@ fn cost_prefers_native_and_marks_unpriced() {
     let unknown = derive_cost(&by_provider, &mixed);
     assert_eq!(unknown.amount, None);
     assert!(unknown.unpriced);
+}
+
+#[test]
+fn cost_matches_model_and_provider_case_insensitively() {
+    // 来源上报或用户价目表里的大小写不一致（如 "GPT-4o" vs "gpt-4o"）时仍应命中同一模型单价。
+    let mut record = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "GPT-4o",
+        "OpenAI",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    record.input_tokens = 100;
+    let table = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-4o".into(),
+            provider: Some("openai".into()),
+            input: 0.01,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+    let derived = derive_cost(&record, &table);
+    assert_eq!(derived.amount, Some(1.0));
+    assert!(!derived.unpriced);
+
+    // provider 兜底档（价目表条目 provider 为 None）同样大小写不敏感。
+    let table_bare = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-4o".into(),
+            provider: None,
+            input: 0.02,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+    let derived_bare = derive_cost(&record, &table_bare);
+    assert_eq!(derived_bare.amount, Some(2.0));
 }
 
 #[test]

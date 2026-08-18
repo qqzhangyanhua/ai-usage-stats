@@ -1,5 +1,5 @@
 use crate::adapters::project::decode_dashed_dir;
-use crate::adapters::{finish, i64_field, parse_jsonl_values, text_field};
+use crate::adapters::{finish, has_billable_tokens, i64_field, parse_jsonl_values, text_field};
 use crate::domain::{Source, UsageRecord};
 
 pub fn parse_pi_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
@@ -34,7 +34,7 @@ pub fn parse_pi_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
                     .and_then(|c| c.get("total"))
                     .and_then(|v| v.as_f64());
                 let message_provider = text_field(&message, &["provider"]);
-                records.push(finish(UsageRecord {
+                let record = finish(UsageRecord {
                     occurred_at: text_field(&value, &["timestamp"]),
                     source: Source::Pi,
                     model: text_field(&message, &["model", "modelId"]),
@@ -57,7 +57,12 @@ pub fn parse_pi_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> {
                     reasoning_tokens: i64_field(&usage, &["reasoning"]),
                     total_tokens: i64_field(&usage, &["totalTokens"]),
                     native_cost,
-                }));
+                });
+                // 与其它 adapter 保持一致：usage 对象存在但四个分项全 0 的消息不计入会话/费用统计。
+                if !has_billable_tokens(&record) {
+                    continue;
+                }
+                records.push(record);
             }
             _ => {}
         }
