@@ -29,6 +29,11 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      - name: Unit tests
+        # --if-present: 在 vitest 单测（见 #13）合并之前，`test` script 还不存在，
+        # 避免这期间 CI 因为脚本缺失而失败。
+        run: pnpm run --if-present test
+
       - name: Build
         run: pnpm run build
 
