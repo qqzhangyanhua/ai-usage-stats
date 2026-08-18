@@ -114,6 +114,8 @@ export default function App() {
                   purging={data.purging}
                   operationBusy={data.busy}
                   observedModels={data.options.models}
+                  budgetStatus={data.budgetStatus}
+                  savingBudget={data.savingBudget}
                   onChange={data.setPrices}
                   onRebuild={data.runRebuild}
                   onPurgeArchived={data.runPurgeArchived}
@@ -126,6 +128,9 @@ export default function App() {
                     }
                   }}
                   onSnapshotRefreshed={() => data.runIngest("刷新")}
+                  onSaveBudget={(monthlyUsd) =>
+                    data.saveBudget({ monthly_usd: monthlyUsd }).catch(() => undefined)
+                  }
                 />
               ) : null}
             </ErrorBoundary>

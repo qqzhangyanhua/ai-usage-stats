@@ -141,6 +141,27 @@ pub struct OverviewDto {
     pub unpriced: bool,
 }
 
+/// 用户配置的月度预算（美元），持久化在独立文件里，与单价表分开管理。
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct BudgetConfig {
+    pub monthly_usd: Option<f64>,
+}
+
+/// 当前自然月的预算执行情况：仅本地估算，非官方账单，用于阈值提醒与设置页展示。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BudgetStatusDto {
+    pub monthly_budget: Option<f64>,
+    pub month: String,
+    pub days_elapsed: i64,
+    pub days_in_month: i64,
+    pub month_to_date_cost: f64,
+    pub unpriced: bool,
+    pub projected_month_cost: Option<f64>,
+    pub percent_used: Option<f64>,
+    pub percent_projected: Option<f64>,
+    pub thresholds: Vec<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BurnRateDto {
     pub tokens_per_minute: f64,

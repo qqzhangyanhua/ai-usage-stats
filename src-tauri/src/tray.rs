@@ -170,6 +170,14 @@ pub fn refresh_with_ingest(app: &AppHandle) -> Result<(), String> {
         let state = app.state::<AppState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
         ingest::ingest_all(&conn, &ingest::default_home())?;
+        let prices = state.effective_prices();
+        let _ = crate::budget::check_and_notify(
+            app,
+            &conn,
+            &prices,
+            &state.budget_path,
+            &state.budget_notify_path,
+        );
     }
     refresh(app)
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { applicationLabel, formatTokens } from "../lib/format";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
+import { BudgetPanel } from "./BudgetPanel";
 import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
 import {
@@ -10,7 +11,13 @@ import {
   presetToPriceEntry,
   PRICE_PRESETS,
 } from "../lib/pricePresets";
-import type { IngestReport, PriceEntry, PriceTable, SourceDiagnostic } from "../types";
+import type {
+  BudgetStatusDto,
+  IngestReport,
+  PriceEntry,
+  PriceTable,
+  SourceDiagnostic,
+} from "../types";
 import { VendorIcon } from "./VendorIcon";
 
 export function Settings({
@@ -21,11 +28,14 @@ export function Settings({
   purging,
   operationBusy,
   observedModels,
+  budgetStatus,
+  savingBudget,
   onChange,
   onSave,
   onRebuild,
   onPurgeArchived,
   onSnapshotRefreshed,
+  onSaveBudget,
 }: {
   prices: PriceTable;
   diagnostics: SourceDiagnostic[];
@@ -34,11 +44,14 @@ export function Settings({
   purging: string | null;
   operationBusy: boolean;
   observedModels: string[];
+  budgetStatus: BudgetStatusDto | null;
+  savingBudget: boolean;
   onChange: (prices: PriceTable) => void;
   onSave: () => void;
   onRebuild: (source: string | null) => void;
   onPurgeArchived: (source: string | null) => void;
   onSnapshotRefreshed: () => void;
+  onSaveBudget: (monthlyUsd: number | null) => void;
 }) {
   const totalArchived = diagnostics.reduce((sum, row) => sum + row.archived_record_count, 0);
   function update(index: number, patch: Partial<PriceEntry>) {
@@ -164,6 +177,8 @@ export function Settings({
           </div>
         ) : null}
       </section>
+
+      <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
 
       <CursorAccountSettingsPanel />
 
