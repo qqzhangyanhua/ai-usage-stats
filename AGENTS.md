@@ -70,7 +70,7 @@ Rust 测试按模块拆分在 `src-tauri/src/tests/`，共享辅助函数在 `sr
 - **代码量 (Code Volume)**：Cursor 行数统计，与 token 严格分区
 - **Cursor 会话**：agent-transcripts 行为统计，不进总览 token KPI
 
-详见 `CONTEXT.md` 与 `docs/adr/`。
+详见 `CONTEXT.md` 与 `docs/adr/`。各平台构建与托盘差异见 `docs/platforms.md`。
 
 ## 分支与 PR
 
