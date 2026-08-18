@@ -146,8 +146,28 @@ export type GlobalInstructionSourceRow = {
   files: GlobalInstructionFile[];
 };
 
+export type InstructionCheckupKind =
+  | "empty"
+  | "present_unloaded"
+  | "override_shields"
+  | "near_limit"
+  | "over_limit";
+
+export type InstructionCheckupSeverity = "low" | "medium" | "high" | "critical";
+
+export type InstructionCheckupFinding = {
+  kind: InstructionCheckupKind;
+  severity: InstructionCheckupSeverity;
+  source: string;
+  application: string;
+  display_path: string;
+  problem: string;
+  consequence: string;
+};
+
 export type GlobalInstructionDto = {
   sources: GlobalInstructionSourceRow[];
+  findings: InstructionCheckupFinding[];
 };
 
 export type WriteUserFileRequest = {

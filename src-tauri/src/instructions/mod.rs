@@ -1,3 +1,4 @@
+mod checkup;
 pub mod claude;
 pub mod codex;
 pub mod copilot;
@@ -23,23 +24,23 @@ pub fn scan(
     _project_root: Option<&Path>,
     _usage: &InstructionUsageSummary,
 ) -> GlobalInstructionDto {
-    GlobalInstructionDto {
-        sources: vec![
-            claude::scan(home),
-            codex::scan(home),
-            gemini::scan(home),
-            cursor::scan(),
-            pi::scan(home),
-            opencode::scan(home),
-            kimi::scan(),
-            dsh::scan(home),
-            grok::scan(home),
-            qwen::scan(home),
-            factory::scan(home),
-            cursor_agent::scan(),
-            copilot::scan(home),
-        ],
-    }
+    let sources = vec![
+        claude::scan(home),
+        codex::scan(home),
+        gemini::scan(home),
+        cursor::scan(),
+        pi::scan(home),
+        opencode::scan(home),
+        kimi::scan(),
+        dsh::scan(home),
+        grok::scan(home),
+        qwen::scan(home),
+        factory::scan(home),
+        cursor_agent::scan(),
+        copilot::scan(home),
+    ];
+    let findings = checkup::collect(&sources);
+    GlobalInstructionDto { sources, findings }
 }
 
 /// 解析「在外部打开」的目标：已存在的文件或目录原样打开；文件尚未创建则打开父目录。

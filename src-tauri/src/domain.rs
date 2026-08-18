@@ -304,10 +304,41 @@ pub struct GlobalInstructionSourceRow {
     pub files: Vec<GlobalInstructionFile>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstructionCheckupKind {
+    Empty,
+    PresentUnloaded,
+    OverrideShields,
+    NearLimit,
+    OverLimit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstructionCheckupSeverity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstructionCheckupFinding {
+    pub kind: InstructionCheckupKind,
+    pub severity: InstructionCheckupSeverity,
+    pub source: String,
+    pub application: String,
+    pub display_path: String,
+    pub problem: String,
+    pub consequence: String,
+}
+
 /// 全局指令快照：不进消耗记录，不进 Token KPI，不写 sqlite。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalInstructionDto {
     pub sources: Vec<GlobalInstructionSourceRow>,
+    pub findings: Vec<InstructionCheckupFinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

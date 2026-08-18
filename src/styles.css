@@ -3317,3 +3317,77 @@ td.row-actions {
 .instruction-editor-actions .instruction-error {
   margin: 0;
 }
+
+.instruction-checkup {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-checkup h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.instruction-checkup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-checkup-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--overlay-1);
+}
+
+.instruction-checkup-item.severity-critical {
+  border-color: var(--red-fg);
+}
+
+.instruction-checkup-item.severity-high {
+  border-color: var(--orange-fg);
+}
+
+.instruction-checkup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.instruction-checkup-head span,
+.instruction-checkup-consequence {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.instruction-checkup-severity {
+  font-style: normal;
+  font-size: 12px;
+}
+
+.instruction-checkup-item.severity-critical .instruction-checkup-severity {
+  color: var(--red-fg);
+}
+
+.instruction-checkup-item.severity-high .instruction-checkup-severity {
+  color: var(--orange-fg);
+}
+
+.instruction-checkup-item.severity-medium .instruction-checkup-severity {
+  color: var(--orange-fg);
+}
+
+.instruction-checkup-item.severity-low .instruction-checkup-severity {
+  color: var(--muted);
+}
+
+.instruction-checkup-problem,
+.instruction-checkup-consequence {
+  margin: 0;
+}

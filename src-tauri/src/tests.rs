@@ -6606,6 +6606,289 @@ fn scan_pi_override_shields_base_agents_file() {
     assert_eq!(base.content, "base-pi\n");
 }
 
+fn checkup_named<'a>(
+    dto: &'a crate::domain::GlobalInstructionDto,
+    kind: crate::domain::InstructionCheckupKind,
+    display_path: &str,
+) -> &'a crate::domain::InstructionCheckupFinding {
+    dto.findings
+        .iter()
+        .find(|finding| finding.kind == kind && finding.display_path == display_path)
+        .unwrap_or_else(|| panic!("missing finding {kind:?} {display_path}"))
+}
+
+#[test]
+fn scan_reports_empty_loaded_file() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let finding = checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::Empty,
+        "~/.gemini/GEMINI.md",
+    );
+    assert_eq!(
+        finding.severity,
+        crate::domain::InstructionCheckupSeverity::High
+    );
+    assert!(finding.problem.contains("0") || finding.problem.contains("空"));
+    assert!(!finding.consequence.is_empty());
+}
+
+#[test]
+fn scan_does_not_report_empty_when_file_has_bytes() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "prefer-tabs\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.iter().all(|finding| {
+        finding.kind != crate::domain::InstructionCheckupKind::Empty
+    }));
+}
+
+#[test]
+fn scan_does_not_report_empty_for_unloaded_zero_byte_file() {
+    let home = tempfile::tempdir().unwrap();
+    let rules = home.path().join(".codex/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("default.rules"), "").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.iter().all(|finding| {
+        finding.kind != crate::domain::InstructionCheckupKind::Empty
+    }));
+    checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::PresentUnloaded,
+        "~/.codex/rules/default.rules",
+    );
+}
+
+#[test]
+fn scan_reports_present_unloaded_leftover() {
+    let home = tempfile::tempdir().unwrap();
+    let rules = home.path().join(".codex/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("default.rules"), "third-party\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let finding = checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::PresentUnloaded,
+        "~/.codex/rules/default.rules",
+    );
+    assert_eq!(
+        finding.severity,
+        crate::domain::InstructionCheckupSeverity::High
+    );
+    assert!(finding.problem.contains("不会加载"));
+    assert!(finding.consequence.contains("不会改变"));
+}
+
+#[test]
+fn scan_does_not_report_present_unloaded_for_loaded_file() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), "base\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.iter().all(|finding| {
+        finding.kind != crate::domain::InstructionCheckupKind::PresentUnloaded
+    }));
+}
+
+#[test]
+fn scan_reports_override_shielding_base_file() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = home.path().join(".codex");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("AGENTS.md"), "base\n").unwrap();
+    std::fs::write(dir.join("AGENTS.override.md"), "override\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let finding = checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::OverrideShields,
+        "~/.codex/AGENTS.md",
+    );
+    assert_eq!(
+        finding.severity,
+        crate::domain::InstructionCheckupSeverity::Medium
+    );
+    assert!(finding.problem.contains("屏蔽"));
+    assert!(finding.consequence.contains("不会生效") || finding.consequence.contains("覆盖"));
+    assert!(dto.findings.iter().all(|item| {
+        item.kind != crate::domain::InstructionCheckupKind::PresentUnloaded
+            || item.display_path != "~/.codex/AGENTS.md"
+    }));
+}
+
+#[test]
+fn scan_does_not_report_override_when_only_base_exists() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), "base\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.iter().all(|finding| {
+        finding.kind != crate::domain::InstructionCheckupKind::OverrideShields
+    }));
+}
+
+#[test]
+fn scan_reports_over_limit_when_loaded_bytes_exceed_cap() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), vec![b'a'; 32 * 1024 + 1]).unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let finding = dto
+        .findings
+        .iter()
+        .find(|item| item.kind == crate::domain::InstructionCheckupKind::OverLimit)
+        .expect("over_limit");
+    assert_eq!(
+        finding.severity,
+        crate::domain::InstructionCheckupSeverity::Critical
+    );
+    assert!(finding.problem.contains("超过"));
+    assert!(finding.consequence.contains("截断"));
+}
+
+#[test]
+fn scan_reports_near_limit_when_loaded_bytes_approach_cap() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), vec![b'a'; 26 * 1024]).unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let finding = dto
+        .findings
+        .iter()
+        .find(|item| item.kind == crate::domain::InstructionCheckupKind::NearLimit)
+        .expect("near_limit");
+    assert_eq!(
+        finding.severity,
+        crate::domain::InstructionCheckupSeverity::Low
+    );
+    assert!(finding.problem.contains("接近"));
+    assert!(finding.consequence.contains("截断"));
+}
+
+#[test]
+fn scan_reports_near_limit_when_loaded_bytes_equal_cap() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), vec![b'a'; 32 * 1024]).unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.iter().all(|finding| {
+        finding.kind != crate::domain::InstructionCheckupKind::OverLimit
+    }));
+    assert!(dto.findings.iter().any(|finding| {
+        finding.kind == crate::domain::InstructionCheckupKind::NearLimit
+    }));
+}
+
+#[test]
+fn scan_does_not_report_limit_when_loaded_bytes_are_small() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), "short\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.iter().all(|finding| {
+        finding.kind != crate::domain::InstructionCheckupKind::NearLimit
+            && finding.kind != crate::domain::InstructionCheckupKind::OverLimit
+    }));
+}
+
+#[test]
+fn scan_sorts_checkup_findings_by_severity() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".codex/rules")).unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), vec![b'a'; 32 * 1024 + 8]).unwrap();
+    std::fs::write(home.path().join(".codex/rules/default.rules"), "left\n").unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let kinds: Vec<_> = dto.findings.iter().map(|finding| finding.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            crate::domain::InstructionCheckupKind::OverLimit,
+            crate::domain::InstructionCheckupKind::Empty,
+            crate::domain::InstructionCheckupKind::PresentUnloaded,
+        ]
+    );
+}
+
+#[test]
+fn scan_emits_no_findings_when_loaded_files_are_healthy() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "prefer-chinese\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.findings.is_empty());
+}
+
 fn file_mtime(path: &std::path::Path) -> String {
     let meta = std::fs::metadata(path).unwrap();
     chrono::DateTime::<chrono::Utc>::from(meta.modified().unwrap()).to_rfc3339()

@@ -13,6 +13,7 @@ import {
   canOpenInstruction,
   showsLoadStatus,
 } from "../lib/instructionAccess";
+import { InstructionCheckup } from "./InstructionCheckup";
 import { InstructionEditor } from "./InstructionEditor";
 import { Button } from "./ui/Button";
 
@@ -111,6 +112,7 @@ export function GlobalInstructionPanel() {
       </div>
       {error ? <EmptyState tone="warn" title="读取失败" hint={error} /> : null}
       {actionError ? <EmptyState tone="warn" title="无法打开" hint={actionError} /> : null}
+      {data ? <InstructionCheckup findings={data.findings} /> : null}
       {!error && !files.length && !busy ? (
         <EmptyState
           title="尚未发现全局指令"
