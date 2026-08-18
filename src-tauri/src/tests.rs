@@ -2857,6 +2857,72 @@ fn scan_is_stale_detects_new_changed_and_deleted_source_files() {
     );
 }
 
+#[test]
+fn scan_is_stale_detects_kimi_and_grok_sidecar_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    let wire = home.join(".kimi/sessions/hash/sess/wire.jsonl");
+    std::fs::create_dir_all(wire.parent().unwrap()).unwrap();
+    std::fs::write(&wire, fixture("kimi-wire.jsonl")).unwrap();
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[]}").unwrap();
+
+    let updates = home.join(".grok/sessions/proj/sid/updates.jsonl");
+    std::fs::create_dir_all(updates.parent().unwrap()).unwrap();
+    std::fs::write(&updates, fixture("grok-updates.jsonl")).unwrap();
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\"}",
+    )
+    .unwrap();
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(home.join(".kimi/kimi.json"), "{\"work_dirs\":[],\"x\":1}").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "kimi.json content change should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(
+        updates.parent().unwrap().join("summary.json"),
+        "{\"current_model_id\":\"grok-4.5\",\"note\":\"x\"}",
+    )
+    .unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "grok summary.json change should be stale"
+    );
+}
+
+#[test]
+fn scan_is_stale_detects_opencode_wal_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db_path = home.join(".local/share/opencode/opencode.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let db = rusqlite::Connection::open(&db_path).unwrap();
+    db.execute_batch("CREATE TABLE message (session_id TEXT, data TEXT);")
+        .unwrap();
+    drop(db);
+
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    let wal = PathBuf::from(format!("{}-wal", db_path.to_string_lossy()));
+    std::fs::write(&wal, b"wal").unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "opencode.db-wal change should be stale"
+    );
+}
+
 #[ignore]
 #[test]
 fn ingest_real_home_rollups_match_overview() {
