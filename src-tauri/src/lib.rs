@@ -24,9 +24,10 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
-    CursorAccountUsageDto, CursorSessionSummaryDto, Filter, FilterOptions, IngestReport,
-    NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint,
-    SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow,
+    CursorAccountUsageDto, CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter,
+    FilterOptions, IngestReport, NamedAmount, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
+    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
+    TurnRow,
 };
 
 pub struct AppState {
@@ -436,6 +437,20 @@ async fn get_cursor_session_summary(
 }
 
 #[tauri::command]
+async fn get_cursor_sessions_page(
+    app: tauri::AppHandle,
+    query: CursorSessionQuery,
+) -> Result<CursorSessionPage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        cursor_session::sessions_page(&conn, &query)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn refresh_cursor_account_usage(
     app: tauri::AppHandle,
     token: Option<String>,
@@ -691,6 +706,7 @@ pub fn run() {
             purge_archived_records,
             get_code_volume,
             get_cursor_session_summary,
+            get_cursor_sessions_page,
             refresh_cursor_account_usage,
             get_cursor_account_usage,
             save_cursor_session_token,

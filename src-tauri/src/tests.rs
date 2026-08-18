@@ -12,8 +12,8 @@ use crate::billing_window;
 use crate::budget;
 use crate::cost::derive_cost;
 use crate::domain::{
-    BudgetConfig, CostSource, Filter, PriceEntry, PriceOrigin, PriceTable, SessionQuery, Source,
-    UsageRecord,
+    BudgetConfig, CostSource, CursorSessionQuery, Filter, PriceEntry, PriceOrigin, PriceTable,
+    SessionQuery, Source, UsageRecord,
 };
 use crate::ingest;
 use crate::query;
@@ -4694,12 +4694,13 @@ fn cursor_session_ingest_summarize_does_not_touch_usage_records() {
     assert_eq!(summary.by_project[0].session_count, 1);
     assert_eq!(summary.by_project[0].turn_count, 2);
     assert_eq!(summary.by_project[0].error_count, 1);
-    assert_eq!(summary.sessions.len(), 1);
-    assert_eq!(summary.sessions[0].session_id, "sess-1");
-    assert_eq!(summary.sessions[0].project, "/Users/test/project");
-    assert_eq!(summary.sessions[0].turn_count, 2);
-    assert_eq!(summary.sessions[0].error_count, 1);
-    assert_eq!(summary.sessions[0].tool_call_count, 2);
+    let page = crate::cursor_session::sessions_page(&conn, &CursorSessionQuery::default()).unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.rows[0].session_id, "sess-1");
+    assert_eq!(page.rows[0].project, "/Users/test/project");
+    assert_eq!(page.rows[0].turn_count, 2);
+    assert_eq!(page.rows[0].error_count, 1);
+    assert_eq!(page.rows[0].tool_call_count, 2);
     assert_eq!(summary.daily.len(), 1);
     assert_eq!(summary.daily[0].session_count, 1);
     assert_eq!(summary.daily[0].turn_count, 2);
@@ -5119,4 +5120,87 @@ fn session_model_uses_latest_occurred_at_not_lexicographic_max() {
     .unwrap();
     assert_eq!(page.rows[0].model, "aaa-new");
     assert_eq!(page.rows[0].project, "/proj-new");
+}
+
+#[test]
+fn cursor_sessions_page_supports_search_sort_and_pagination() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    seed_cursor_transcript(
+        home,
+        "Users-test-project",
+        "sess-1",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_cursor_transcript(
+        home,
+        "Users-other-project",
+        "sess-2",
+        &fixture("cursor-session-transcript.jsonl"),
+    );
+    seed_ai_code_hashes(
+        home,
+        &[
+            ("sess-1", "grok-4.6", 1_784_511_794_686, "lib.rs"),
+            ("sess-2", "gpt-5.4", 1_784_511_794_687, "main.rs"),
+        ],
+    );
+
+    let conn = store::open_memory().unwrap();
+    let mut report = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut report);
+
+    let page1 = crate::cursor_session::sessions_page(
+        &conn,
+        &CursorSessionQuery {
+            page: Some(1),
+            page_size: Some(1),
+            sort_by: Some("session".into()),
+            sort_dir: Some("asc".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(page1.total, 2);
+    assert_eq!(page1.rows.len(), 1);
+    assert_eq!(page1.rows[0].session_id, "sess-1");
+
+    let page2 = crate::cursor_session::sessions_page(
+        &conn,
+        &CursorSessionQuery {
+            page: Some(2),
+            page_size: Some(1),
+            sort_by: Some("session".into()),
+            sort_dir: Some("asc".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(page2.rows[0].session_id, "sess-2");
+
+    let searched = crate::cursor_session::sessions_page(
+        &conn,
+        &CursorSessionQuery {
+            search: Some("other".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(searched.total, 1);
+    assert_eq!(searched.rows[0].session_id, "sess-2");
+
+    let by_project = crate::cursor_session::sessions_page(
+        &conn,
+        &CursorSessionQuery {
+            project: Some("/Users/test/project".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(by_project.total, 1);
+    assert_eq!(by_project.rows[0].session_id, "sess-1");
+    assert!(by_project.rows[0]
+        .models
+        .iter()
+        .any(|name| name == "grok-4.6"));
 }

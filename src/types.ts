@@ -172,7 +172,14 @@ export type SessionRow = {
   unpriced: boolean;
 };
 
-export type SessionSortKey = "tokens" | "session" | "application" | "project" | "time";
+export type SessionSortKey =
+  | "tokens"
+  | "session"
+  | "application"
+  | "project"
+  | "model"
+  | "cost"
+  | "time";
 export type SortDir = "asc" | "desc";
 
 export type SessionQuery = {
@@ -263,6 +270,7 @@ export type CursorAccountUsageDto = {
 export type CursorSessionSortKey =
   | "session"
   | "project"
+  | "model"
   | "turns"
   | "errors"
   | "tools"
@@ -319,7 +327,20 @@ export type CursorSessionSummaryDto = {
   by_model: CursorSessionModelRow[];
   top_tools: CursorSessionToolRow[];
   daily: CursorSessionDailyPoint[];
-  sessions: CursorSessionListRow[];
+};
+
+export type CursorSessionQuery = {
+  search?: string | null;
+  project?: string | null;
+  sortBy?: CursorSessionSortKey | null;
+  sortDir?: SortDir | null;
+  page?: number;
+  pageSize?: number;
+};
+
+export type CursorSessionPage = {
+  rows: CursorSessionListRow[];
+  total: number;
 };
 
 export type FilterOptions = {

@@ -753,6 +753,8 @@ pub fn sessions_page(
         Some("session") => "session_id",
         Some("application") => "source",
         Some("project") => "project",
+        Some("model") => "model",
+        Some("cost") => "cost",
         Some("time") => "ended_at",
         _ => "total_tokens",
     };
@@ -763,7 +765,7 @@ pub fn sessions_page(
     };
 
     let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(20).clamp(1, 500);
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 20_000);
     let offset = (page - 1) * page_size;
     params.push(Value::Integer(page_size as i64));
     params.push(Value::Integer(offset as i64));
