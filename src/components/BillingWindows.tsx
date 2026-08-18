@@ -33,7 +33,7 @@ export const BillingWindows = memo(function BillingWindows({
     <article className="panel billing-panel">
       <div className="panel-head">
         <h2>5 小时计费窗</h2>
-        <span className="muted">由本地时间戳估计，非官方配额</span>
+        <span className="muted">由本地时间戳估计，非官方配额 · 始终展示最近窗口，不受时间范围筛选影响</span>
       </div>
       {current.length === 0 ? (
         <EmptyState compact icon="clock" title="当前没有进行中的 5 小时窗" />

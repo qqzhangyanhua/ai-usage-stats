@@ -38,17 +38,7 @@ const TOKEN_FIELDS: TokenField[] = [
   { key: "total_tokens", label: "总量" },
 ];
 
-const EXPORT_HEADERS = [
-  "时间",
-  "模型",
-  "输入",
-  "输出",
-  "缓存读",
-  "缓存写",
-  "推理",
-  "总量",
-  "费用",
-];
+const EXPORT_HEADERS = ["时间", "模型", "输入", "输出", "缓存读", "缓存写", "推理", "总量", "费用"];
 
 export function SessionTurns({
   sessionId,
@@ -233,7 +223,12 @@ function TurnDetailDialog({ turn, onClose }: { turn: TurnRow; onClose: () => voi
         }
       }}
     >
-      <div className="turn-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="turn-detail-title">
+      <div
+        className="turn-detail-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="turn-detail-title"
+      >
         <div className="turn-detail-head">
           <div>
             <h3 id="turn-detail-title">每轮详情</h3>
