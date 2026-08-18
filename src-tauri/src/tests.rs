@@ -2537,11 +2537,24 @@ fn ingest_scans_multiple_overridden_directories_for_one_source() {
         .iter()
         .all(|r| !r.source_file.contains("ignored.jsonl")));
 
-    // 删掉其中一个根目录下的文件，reconcile 应该只清理那一份，另一份不受影响——
+    // 删掉其中一个根目录下的文件，reconcile 应该只处理那一份，另一份不受影响——
     // 说明多目录是合并到同一次对账里的，而不是互相独立、互不感知。
+    // 按 ADR 0004，消失的文件只归档、不物理删除，归档记录仍计入统计。
     std::fs::remove_file(root_a.join("sessions/a.jsonl")).unwrap();
     let second = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
-    assert_eq!(second.records_removed, 2);
+    assert_eq!(second.records_removed, 0);
+    assert_eq!(second.records_archived, 2);
+    assert_eq!(
+        store::load_all(&conn).unwrap().len(),
+        4,
+        "archived records still count in totals"
+    );
+
+    // 被归档的正好是 root_a 那一份：显式清理归档记录后，剩下的应当只有 root_b 的记录。
+    assert_eq!(
+        store::purge_archived(&conn, Some(Source::Codex)).unwrap(),
+        2
+    );
     let remaining = store::load_all(&conn).unwrap();
     assert_eq!(remaining.len(), 2);
     assert!(remaining
