@@ -1,11 +1,9 @@
 import { projectLabel } from "./format";
 import type {
   ApplicationAnalyticsDto,
-  BillingWindowDto,
   CodeVolumeSummary,
   CursorAccountUsageDto,
   CursorSessionSummaryDto,
-  WeeklyWindowDto,
 } from "../types";
 
 export type ExportTable = {
@@ -19,53 +17,6 @@ function costCell(cost: number | null): string | number {
 
 function ratioCell(value: number | null): string | number {
   return value ?? "";
-}
-
-export function billingWindowTable(windows: BillingWindowDto[]): ExportTable {
-  return {
-    headers: [
-      "应用",
-      "开始",
-      "结束",
-      "进行中",
-      "Token",
-      "会话数",
-      "费用",
-      "每分钟 Token",
-      "每小时费用",
-      "预计 Token",
-      "预计费用",
-    ],
-    rows: windows.map((window) => [
-      window.application,
-      window.start,
-      window.end,
-      window.is_active ? "是" : "否",
-      window.total_tokens,
-      window.session_count,
-      costCell(window.cost),
-      window.burn?.tokens_per_minute ?? "",
-      costCell(window.burn?.cost_per_hour ?? null),
-      window.projection?.total_tokens ?? "",
-      costCell(window.projection?.cost ?? null),
-    ]),
-  };
-}
-
-export function weeklyWindowTable(windows: WeeklyWindowDto[]): ExportTable {
-  return {
-    headers: ["应用", "开始", "结束", "Token", "会话数", "费用", "日均 Token", "日均费用"],
-    rows: windows.map((window) => [
-      window.application,
-      window.start,
-      window.end,
-      window.total_tokens,
-      window.session_count,
-      costCell(window.cost),
-      window.daily_average_tokens,
-      costCell(window.daily_average_cost),
-    ]),
-  };
 }
 
 export function applicationEfficiencyTable(data: ApplicationAnalyticsDto): ExportTable {

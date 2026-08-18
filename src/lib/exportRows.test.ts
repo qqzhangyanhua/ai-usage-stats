@@ -2,94 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   applicationEfficiencyTable,
   applicationProjectMatrixTable,
-  billingWindowTable,
   codeVolumeTable,
   cursorAccountDailyTable,
   cursorAccountModelTable,
   cursorSessionProjectTable,
   cursorSessionToolTable,
-  weeklyWindowTable,
 } from "./exportRows";
 import type {
   ApplicationAnalyticsDto,
-  BillingWindowDto,
   CodeVolumeSummary,
   CursorAccountUsageDto,
   CursorSessionSummaryDto,
-  WeeklyWindowDto,
 } from "../types";
-
-describe("billingWindowTable", () => {
-  it("maps window, burn, and projection fields", () => {
-    const window: BillingWindowDto = {
-      source: "claude",
-      application: "Claude Code",
-      start: "2026-08-18T00:00:00Z",
-      end: "2026-08-18T05:00:00Z",
-      last_activity: "2026-08-18T01:00:00Z",
-      is_active: true,
-      elapsed_minutes: 60,
-      remaining_minutes: 240,
-      total_tokens: 500,
-      input_tokens: 400,
-      output_tokens: 100,
-      cache_read_tokens: 0,
-      cache_creation_tokens: 0,
-      reasoning_tokens: 0,
-      session_count: 2,
-      cost: 0.4,
-      unpriced: false,
-      burn: { tokens_per_minute: 8.3, cost_per_hour: 0.2 },
-      projection: { total_tokens: 2500, cost: 2 },
-    };
-    expect(billingWindowTable([window]).rows[0]).toEqual([
-      "Claude Code",
-      "2026-08-18T00:00:00Z",
-      "2026-08-18T05:00:00Z",
-      "是",
-      500,
-      2,
-      0.4,
-      8.3,
-      0.2,
-      2500,
-      2,
-    ]);
-  });
-});
-
-describe("weeklyWindowTable", () => {
-  it("exports daily averages and blank unpriced cost", () => {
-    const window: WeeklyWindowDto = {
-      source: "codex",
-      application: "Codex",
-      window_days: 7,
-      start: "2026-08-11T00:00:00Z",
-      end: "2026-08-18T00:00:00Z",
-      total_tokens: 700,
-      input_tokens: 500,
-      output_tokens: 200,
-      cache_read_tokens: 0,
-      cache_creation_tokens: 0,
-      reasoning_tokens: 0,
-      session_count: 4,
-      cost: null,
-      unpriced: true,
-      daily_average_tokens: 100,
-      daily_average_cost: null,
-    };
-    expect(weeklyWindowTable([window]).rows[0]).toEqual([
-      "Codex",
-      "2026-08-11T00:00:00Z",
-      "2026-08-18T00:00:00Z",
-      700,
-      4,
-      "",
-      100,
-      "",
-    ]);
-  });
-});
 
 const analytics: ApplicationAnalyticsDto = {
   summary: {

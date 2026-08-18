@@ -6,9 +6,7 @@ import {
   formatHoursMinutes,
   formatUsd,
 } from "../lib/format";
-import { billingWindowTable } from "../lib/exportRows";
 import type { BillingWindowDto, BillingWindowsDto } from "../types";
-import { ExportButton } from "./ExportButton";
 
 const TICK_MS = 60_000;
 
@@ -27,18 +25,12 @@ export const BillingWindows = memo(function BillingWindows({
 
   const current = data?.current ?? [];
   const hours = data?.window_hours ?? 5;
-  const exportTable = billingWindowTable(current);
 
   return (
     <article className="panel billing-panel">
       <div className="panel-head">
         <h2>5 小时计费窗</h2>
         <span className="muted">由本地时间戳估计，非官方配额 · 始终展示最近窗口，不受时间范围筛选影响</span>
-        <ExportButton
-          filename="计费窗"
-          headers={exportTable.headers}
-          rows={exportTable.rows}
-        />
       </div>
       {current.length === 0 ? (
         <span className="muted">当前没有进行中的窗口</span>
