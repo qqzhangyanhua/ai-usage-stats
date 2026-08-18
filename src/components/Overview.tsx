@@ -51,13 +51,6 @@ const emptyOverview: OverviewDto = {
   unpriced: false,
 };
 
-/** 各粒度下一个 trend bucket 覆盖的分钟数，用于把"最后一个 bucket 的 token 量"换算成"每分钟速率"。 */
-const BUCKET_MINUTES: Record<Grain, number> = {
-  day: 24 * 60,
-  week: 7 * 24 * 60,
-  month: 30 * 24 * 60,
-};
-
 export const Overview = memo(function Overview({
   overview,
   billingWindows,
