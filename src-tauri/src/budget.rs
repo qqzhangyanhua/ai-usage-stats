@@ -33,20 +33,20 @@ pub fn save_config(path: &Path, config: &BudgetConfig) -> Result<(), String> {
 }
 
 /// 已通知过的阈值，按月重置；避免同一档位每次 ingest 都重复弹通知。
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct NotifyState {
-    month: String,
-    notified: Vec<u32>,
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct NotifyState {
+    pub month: String,
+    pub notified: Vec<u32>,
 }
 
-fn load_notify_state(path: &Path) -> NotifyState {
+pub(crate) fn load_notify_state(path: &Path) -> NotifyState {
     fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
 
-fn save_notify_state(path: &Path, state: &NotifyState) -> Result<(), String> {
+pub(crate) fn save_notify_state(path: &Path, state: &NotifyState) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -134,6 +134,11 @@ pub fn status(
     })
 }
 
+/// 未配置预算或额度非正时跳过阈值检查，避免无谓的本月费用查询。
+pub fn should_check_budget(config: &BudgetConfig) -> bool {
+    matches!(config.monthly_usd, Some(budget) if budget > 0.0)
+}
+
 /// 本次用量百分比相比“已通知过的阈值”，新跨过（且尚未通知过）的阈值，按百分比升序返回。
 /// 纯函数，不涉及月份重置逻辑（由调用方决定传入的 `already_notified` 是否要按新月清空）。
 pub fn thresholds_to_notify(percent_used: f64, already_notified: &[u32]) -> Vec<u32> {
@@ -146,6 +151,26 @@ pub fn thresholds_to_notify(percent_used: f64, already_notified: &[u32]) -> Vec<
         .collect()
 }
 
+/// 根据已落盘的通知状态和本月用量百分比，算出本次应通知的阈值以及写回磁盘的新状态。
+/// 跨月时先清空 `notified`；未跨过任何新阈值时返回原状态（仅月份对齐）。
+pub(crate) fn prepare_notifications(
+    mut state: NotifyState,
+    month: &str,
+    percent_used: f64,
+) -> (NotifyState, Vec<u32>) {
+    if state.month != month {
+        state.month = month.to_string();
+        state.notified.clear();
+    }
+    let crossed = thresholds_to_notify(percent_used, &state.notified);
+    for threshold in &crossed {
+        if !state.notified.contains(threshold) {
+            state.notified.push(*threshold);
+        }
+    }
+    (state, crossed)
+}
+
 /// 摄取完成后调用：若配置了月度预算且本月用量新跨过阈值，则发一次本地系统通知。
 /// 未配置预算时直接跳过，不产生任何额外查询开销。
 pub fn check_and_notify<R: tauri::Runtime>(
@@ -156,23 +181,16 @@ pub fn check_and_notify<R: tauri::Runtime>(
     notify_state_path: &Path,
 ) -> Result<(), String> {
     let config = load_config(config_path);
-    let Some(budget) = config.monthly_usd else {
-        return Ok(());
-    };
-    if budget <= 0.0 {
+    if !should_check_budget(&config) {
         return Ok(());
     }
+    let budget = config.monthly_usd.expect("should_check_budget 已确认");
     let dto = status(conn, prices, &config, Local::now())?;
     let Some(percent_used) = dto.percent_used else {
         return Ok(());
     };
-    let mut state = load_notify_state(notify_state_path);
-    let already_notified: &[u32] = if state.month == dto.month {
-        &state.notified
-    } else {
-        &[]
-    };
-    let crossed = thresholds_to_notify(percent_used, already_notified);
+    let state = load_notify_state(notify_state_path);
+    let (next_state, crossed) = prepare_notifications(state, &dto.month, percent_used);
     if crossed.is_empty() {
         return Ok(());
     }
@@ -182,17 +200,7 @@ pub fn check_and_notify<R: tauri::Runtime>(
         dto.month_to_date_cost
     );
     send_notification(app, "预算提醒", &body);
-
-    if state.month != dto.month {
-        state.month = dto.month.clone();
-        state.notified.clear();
-    }
-    for threshold in crossed {
-        if !state.notified.contains(&threshold) {
-            state.notified.push(threshold);
-        }
-    }
-    save_notify_state(notify_state_path, &state)
+    save_notify_state(notify_state_path, &next_state)
 }
 
 fn send_notification<R: tauri::Runtime>(app: &tauri::AppHandle<R>, title: &str, body: &str) {

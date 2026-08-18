@@ -117,14 +117,17 @@ export function applicationProjectMatrixTable(data: ApplicationAnalyticsDto): Ex
 }
 
 export function codeVolumeTable(data: CodeVolumeSummary): ExportTable {
+  const unpriced = data.cost_unpriced ? "是" : "";
   return {
-    headers: ["指标", "数值"],
+    headers: ["指标", "数值", "未定价"],
     rows: [
-      ["提交数", data.commit_count],
-      ["新增行", data.lines_added],
-      ["AI 生成行", data.composer_lines_added],
-      ["人工编写行", data.human_lines_added],
-      ["AI 占比", ratioCell(data.ai_percentage)],
+      ["提交数", data.commit_count, ""],
+      ["新增行", data.lines_added, ""],
+      ["AI 生成行", data.composer_lines_added, ""],
+      ["人工编写行", data.human_lines_added, ""],
+      ["AI 占比", ratioCell(data.ai_percentage), ""],
+      ["全部来源累计费用", costCell(data.total_cost), unpriced],
+      ["每千行 AI 代码成本", costCell(data.cost_per_thousand_ai_lines), unpriced],
     ],
   };
 }

@@ -145,7 +145,7 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
         let _ = refresh_with_ingest(&handle);
         loop {
             std::thread::sleep(REFRESH_INTERVAL);
-            let _ = refresh_with_ingest(&handle);
+            let _ = refresh_if_stale(&handle);
         }
     });
 
@@ -163,6 +163,20 @@ pub fn show_main(app: &AppHandle) {
 pub fn refresh(app: &AppHandle) -> Result<(), String> {
     let overview = query_today(app)?;
     apply_labels(app, &overview)
+}
+
+/// 源文件元数据没变时只重算今日菜单栏，避免关闭主窗口后每 5 分钟全量扫盘。
+pub fn refresh_if_stale(app: &AppHandle) -> Result<(), String> {
+    let stale = {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        ingest::scan_is_stale(&conn, &ingest::default_home())?
+    };
+    if stale {
+        refresh_with_ingest(app)
+    } else {
+        refresh(app)
+    }
 }
 
 pub fn refresh_with_ingest(app: &AppHandle) -> Result<(), String> {

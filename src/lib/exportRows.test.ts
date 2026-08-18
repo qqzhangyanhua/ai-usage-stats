@@ -181,13 +181,37 @@ describe("cursor export tables", () => {
       composer_lines_added: 40,
       human_lines_added: 60,
       ai_percentage: 40,
+      total_cost: 8,
+      cost_unpriced: false,
+      cost_per_thousand_ai_lines: 200,
     };
     expect(codeVolumeTable(data).rows).toEqual([
-      ["提交数", 3],
-      ["新增行", 100],
-      ["AI 生成行", 40],
-      ["人工编写行", 60],
-      ["AI 占比", 40],
+      ["提交数", 3, ""],
+      ["新增行", 100, ""],
+      ["AI 生成行", 40, ""],
+      ["人工编写行", 60, ""],
+      ["AI 占比", 40, ""],
+      ["全部来源累计费用", 8, ""],
+      ["每千行 AI 代码成本", 200, ""],
+    ]);
+  });
+
+  it("marks code volume cost cells as unpriced and empty when cost is unknown", () => {
+    const data: CodeVolumeSummary = {
+      commit_count: 0,
+      lines_added: 0,
+      composer_lines_added: 0,
+      human_lines_added: 0,
+      ai_percentage: null,
+      total_cost: null,
+      cost_unpriced: true,
+      cost_per_thousand_ai_lines: null,
+    };
+    const table = codeVolumeTable(data);
+    expect(table.headers).toEqual(["指标", "数值", "未定价"]);
+    expect(table.rows.slice(-2)).toEqual([
+      ["全部来源累计费用", "", "是"],
+      ["每千行 AI 代码成本", "", "是"],
     ]);
   });
 
