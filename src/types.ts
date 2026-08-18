@@ -51,14 +51,35 @@ export type BillingWindowDto = {
   projection: ProjectionDto | null;
 };
 
+export type WeeklyWindowDto = {
+  source: string;
+  application: string;
+  window_days: number;
+  start: string;
+  end: string;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  reasoning_tokens: number;
+  session_count: number;
+  cost: number | null;
+  unpriced: boolean;
+  daily_average_tokens: number;
+  daily_average_cost: number | null;
+};
+
 export type BillingWindowsDto = {
   now: string;
   window_hours: number;
   current: BillingWindowDto[];
   recent: BillingWindowDto[];
+  weekly_window_days: number;
+  weekly: WeeklyWindowDto[];
 };
 
-export type Grain = "day" | "week" | "month";
+export type Grain = "hour" | "day" | "week" | "month";
 
 export type View =
   | "overview"

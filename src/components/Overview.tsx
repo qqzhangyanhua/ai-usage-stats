@@ -5,6 +5,7 @@ import { areaTrendOption, chartPalette, donutOption, modelSlices } from "../lib/
 import type { ResolvedTheme } from "../hooks/useTheme";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { BillingWindows } from "./BillingWindows";
+import { WeeklyWindows } from "./WeeklyWindows";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { EmptyState } from "./EmptyState";
@@ -29,6 +30,14 @@ import type {
   SeriesPoint,
   SessionRow,
 } from "../types";
+
+/** 各粒度下一个 trend bucket 覆盖的分钟数，用于把「最后一个 bucket 的 token 量」换算成「每分钟速率」。 */
+const BUCKET_MINUTES: Record<Grain, number> = {
+  hour: 60,
+  day: 24 * 60,
+  week: 7 * 24 * 60,
+  month: 30 * 24 * 60,
+};
 
 const emptyOverview: OverviewDto = {
   total_tokens: 0,
@@ -82,7 +91,7 @@ export const Overview = memo(function Overview({
   const days = periodDays(preset, grain, trend.length);
   const dailyAvg = data.total_tokens / days;
   const last = trend[trend.length - 1];
-  const rate = last ? Math.round(last.total_tokens / 1440) : 0;
+  const rate = last ? Math.round(last.total_tokens / BUCKET_MINUTES[grain]) : 0;
   const spark = trend.map((p) => p.total_tokens);
   const recent = useMemo(
     () => [...sessions].sort((a, b) => b.ended_at.localeCompare(a.ended_at)).slice(0, 8),
@@ -146,6 +155,11 @@ export const Overview = memo(function Overview({
       </section>
 
       <BillingWindows data={billingWindows} />
+
+      <WeeklyWindows
+        windows={billingWindows?.weekly ?? []}
+        windowDays={billingWindows?.weekly_window_days ?? 7}
+      />
 
       <section className="dash-mid">
         <article className="panel trend-panel">
@@ -329,6 +343,9 @@ function periodDays(preset: string, grain: Grain, bucketCount: number): number {
   }
   if (grain === "month") {
     return Math.max(bucketCount * 30, 1);
+  }
+  if (grain === "hour") {
+    return Math.max(bucketCount / 24, 1);
   }
   return Math.max(bucketCount, 1);
 }

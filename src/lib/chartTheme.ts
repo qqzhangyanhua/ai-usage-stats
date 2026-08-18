@@ -368,6 +368,9 @@ export function modelSlices(rows: NamedAmount[]): { name: string; value: number;
 }
 
 export function formatBucket(bucket: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(bucket)) {
+    return `${bucket.slice(5, 10)} ${bucket.slice(11, 13)}:00`;
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(bucket)) {
     return bucket.slice(5);
   }
