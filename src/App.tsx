@@ -46,7 +46,9 @@ export default function App() {
           onRefresh={() => data.runIngest("刷新")}
         />
         <main className="main">
-          <LoadingOverlay active={data.loading && data.overview === null}>
+          <LoadingOverlay
+            active={data.loading && (data.overview === null || view !== "overview")}
+          >
             <ErrorBoundary key={view} fullscreen={false}>
               {view === "overview" ? (
                 <Overview

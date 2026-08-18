@@ -243,7 +243,7 @@ export function useUsageData() {
       }
       try {
         await Promise.all(paint);
-        if (generation === requestGeneration.current) {
+        if (generation === requestGeneration.current && view === "overview") {
           setLoading(false);
         }
         if (tasks.length > 0) {

@@ -62,7 +62,8 @@ fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> 
              cache_read REAL NOT NULL DEFAULT 0,
              cache_creation REAL NOT NULL DEFAULT 0,
              origin TEXT NOT NULL DEFAULT 'user'
-         );",
+         );
+         CREATE INDEX price_rows_model_provider ON price_rows(model, provider);",
     )
     .map_err(|e| e.to_string())?;
     if prices.prices.is_empty() {
@@ -696,6 +697,7 @@ fn hydrate_session_labels(conn: &Connection, rows: &mut [SessionRow]) -> Result<
 }
 
 /// 取该会话中 `occurred_at` 最晚的非空字段；时间并列时取字典序更大的值（与内存实现一致）。
+/// 只给已经收窄到少量会话的回表用。全表 GROUP BY 必须走 `latest_nonempty_key_sql`。
 fn latest_nonempty_sql(column: &str) -> String {
     format!(
         "COALESCE((\
@@ -707,44 +709,58 @@ fn latest_nonempty_sql(column: &str) -> String {
     )
 }
 
+/// 一次扫描取出「最晚非空」键：`MAX(occurred_at || sep || value)` 与
+/// `ORDER BY occurred_at DESC, value DESC LIMIT 1` 同序。
+fn latest_nonempty_key_sql(column: &str) -> String {
+    format!("MAX(CASE WHEN r.{column} != '' THEN r.occurred_at || char(31) || r.{column} END)")
+}
+
+fn unwrap_latest_key_sql(alias: &str) -> String {
+    format!("COALESCE(substr({alias}, instr({alias}, char(31)) + 1), '')")
+}
+
 fn session_rollup_sql(clauses: &[String], include_cost: bool) -> String {
-    let project = latest_nonempty_sql("project");
-    let model = latest_nonempty_sql("model");
-    let source_file = latest_nonempty_sql("source_file");
-    if include_cost {
-        format!(
-            "SELECT r.source AS source, r.session_id AS session_id,
-                SUM(r.total_tokens) AS total_tokens,
-                MIN(r.occurred_at) AS started_at,
-                MAX(r.occurred_at) AS ended_at,
-                {project} AS project,
-                {model} AS model,
-                {source_file} AS source_file,
-                SUM({COST_EXPR}) AS cost,
-                COALESCE(SUM({UNPRICED_EXPR}), 0) AS unpriced_count
-            FROM usage_records r
-            {PRICE_JOINS}
-            {}
-            GROUP BY r.source, r.session_id",
-            where_sql(clauses),
+    let project_key = latest_nonempty_key_sql("project");
+    let model_key = latest_nonempty_key_sql("model");
+    let file_key = latest_nonempty_key_sql("source_file");
+    let project = unwrap_latest_key_sql("project_key");
+    let model = unwrap_latest_key_sql("model_key");
+    let source_file = unwrap_latest_key_sql("file_key");
+    let (cost_select, joins) = if include_cost {
+        (
+            format!(
+                "SUM({COST_EXPR}) AS cost, COALESCE(SUM({UNPRICED_EXPR}), 0) AS unpriced_count"
+            ),
+            PRICE_JOINS,
         )
     } else {
-        format!(
-            "SELECT r.source AS source, r.session_id AS session_id,
+        (
+            "CAST(NULL AS REAL) AS cost, 0 AS unpriced_count".to_string(),
+            "",
+        )
+    };
+    format!(
+        "SELECT source, session_id, total_tokens, started_at, ended_at,
+            {project} AS project,
+            {model} AS model,
+            {source_file} AS source_file,
+            cost, unpriced_count
+         FROM (
+            SELECT r.source AS source, r.session_id AS session_id,
                 SUM(r.total_tokens) AS total_tokens,
                 MIN(r.occurred_at) AS started_at,
                 MAX(r.occurred_at) AS ended_at,
-                {project} AS project,
-                {model} AS model,
-                {source_file} AS source_file,
-                CAST(NULL AS REAL) AS cost,
-                0 AS unpriced_count
+                {project_key} AS project_key,
+                {model_key} AS model_key,
+                {file_key} AS file_key,
+                {cost_select}
             FROM usage_records r
+            {joins}
             {}
-            GROUP BY r.source, r.session_id",
-            where_sql(clauses),
-        )
-    }
+            GROUP BY r.source, r.session_id
+         )",
+        where_sql(clauses),
+    )
 }
 
 /// 会话列表的分页查询：搜索（session/项目/模型/应用/原始文件）、排序、分页均在 SQL 层完成。

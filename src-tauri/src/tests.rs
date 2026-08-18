@@ -5204,6 +5204,121 @@ fn session_model_uses_latest_occurred_at_not_lexicographic_max() {
 }
 
 #[test]
+fn sessions_page_skips_later_empty_labels_and_breaks_ties() {
+    let mut early = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "old-model",
+        "official",
+        "/old",
+        "s1",
+        10,
+    );
+    early.source_file = "/old.jsonl".into();
+    let mut blank = rec(
+        "2026-08-01T11:00:00Z",
+        Source::Codex,
+        "",
+        "official",
+        "",
+        "s1",
+        10,
+    );
+    blank.source_file = String::new();
+    let mut late_a = rec(
+        "2026-08-01T12:00:00Z",
+        Source::Codex,
+        "aaa-model",
+        "official",
+        "/aaa",
+        "s1",
+        10,
+    );
+    late_a.source_file = "/aaa.jsonl".into();
+    let mut late_z = rec(
+        "2026-08-01T12:00:00Z",
+        Source::Codex,
+        "zzz-model",
+        "official",
+        "/zzz",
+        "s1",
+        10,
+    );
+    late_z.source_file = "/zzz.jsonl".into();
+    let mut later_empty = rec(
+        "2026-08-01T13:00:00Z",
+        Source::Codex,
+        "",
+        "official",
+        "",
+        "s1",
+        10,
+    );
+    later_empty.source_file = String::new();
+
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &[early, blank, late_a, late_z, later_empty]).unwrap();
+    let page = query::sessions_page(
+        &conn,
+        &PriceTable::default(),
+        &SessionQuery {
+            page: Some(1),
+            page_size: Some(20),
+            include_cost: Some(true),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(page.rows.len(), 1);
+    assert_eq!(page.rows[0].model, "zzz-model");
+    assert_eq!(page.rows[0].project, "/zzz");
+    assert_eq!(page.rows[0].source_file, "/zzz.jsonl");
+    assert_eq!(page.total_tokens, 50);
+}
+
+#[test]
+fn sessions_page_stays_fast_on_many_sessions() {
+    let conn = store::open_memory().unwrap();
+    let mut records = Vec::with_capacity(18_000);
+    for session in 0..1_500 {
+        for turn in 0..12 {
+            records.push(rec(
+                &format!("2026-08-01T10:{turn:02}:{session:02}Z"),
+                Source::Codex,
+                "gpt",
+                "official",
+                "/proj",
+                &format!("s{session}"),
+                1,
+            ));
+        }
+    }
+    store::insert_records(&conn, &records).unwrap();
+    let started = std::time::Instant::now();
+    let page = query::sessions_page(
+        &conn,
+        &PriceTable::default(),
+        &SessionQuery {
+            page: Some(1),
+            page_size: Some(20),
+            include_cost: Some(true),
+            sort_by: Some("time".into()),
+            sort_dir: Some("desc".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(page.total, 1_500);
+    assert_eq!(page.rows.len(), 20);
+    assert_eq!(page.total_tokens, 18_000);
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "sessions_page took {elapsed:?}"
+    );
+}
+
+#[test]
 fn cursor_sessions_page_supports_search_sort_and_pagination() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
