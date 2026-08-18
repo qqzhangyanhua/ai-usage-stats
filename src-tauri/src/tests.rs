@@ -3575,6 +3575,76 @@ fn budget_config_round_trips_through_disk() {
     assert_eq!(budget::load_config(&path), config);
 }
 
+#[test]
+fn should_check_budget_skips_missing_or_non_positive_limits() {
+    assert!(!budget::should_check_budget(&BudgetConfig {
+        monthly_usd: None
+    }));
+    assert!(!budget::should_check_budget(&BudgetConfig {
+        monthly_usd: Some(0.0),
+    }));
+    assert!(!budget::should_check_budget(&BudgetConfig {
+        monthly_usd: Some(-10.0),
+    }));
+    assert!(budget::should_check_budget(&BudgetConfig {
+        monthly_usd: Some(20.0),
+    }));
+}
+
+#[test]
+fn prepare_notifications_emits_each_threshold_once_in_the_same_month() {
+    let empty = budget::NotifyState::default();
+    let (after_50, crossed) = budget::prepare_notifications(empty, "2026-08", 50.0);
+    assert_eq!(crossed, vec![50]);
+    assert_eq!(after_50.month, "2026-08");
+    assert_eq!(after_50.notified, vec![50]);
+
+    let (after_repeat, crossed) = budget::prepare_notifications(after_50.clone(), "2026-08", 55.0);
+    assert!(crossed.is_empty());
+    assert_eq!(after_repeat, after_50);
+
+    let (after_80, crossed) = budget::prepare_notifications(after_50, "2026-08", 80.0);
+    assert_eq!(crossed, vec![80]);
+    assert_eq!(after_80.notified, vec![50, 80]);
+
+    let (after_100, crossed) = budget::prepare_notifications(after_80, "2026-08", 120.0);
+    assert_eq!(crossed, vec![100]);
+    assert_eq!(after_100.notified, vec![50, 80, 100]);
+
+    let (after_all, crossed) = budget::prepare_notifications(after_100.clone(), "2026-08", 150.0);
+    assert!(crossed.is_empty());
+    assert_eq!(after_all, after_100);
+}
+
+#[test]
+fn prepare_notifications_resets_notified_thresholds_on_month_change() {
+    let last_month = budget::NotifyState {
+        month: "2026-07".into(),
+        notified: vec![50, 80, 100],
+    };
+    let (next, crossed) = budget::prepare_notifications(last_month, "2026-08", 52.0);
+    assert_eq!(crossed, vec![50]);
+    assert_eq!(next.month, "2026-08");
+    assert_eq!(next.notified, vec![50]);
+}
+
+#[test]
+fn notify_state_round_trips_through_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("budget-notify.json");
+    assert_eq!(
+        budget::load_notify_state(&path),
+        budget::NotifyState::default()
+    );
+
+    let state = budget::NotifyState {
+        month: "2026-08".into(),
+        notified: vec![50, 80],
+    };
+    budget::save_notify_state(&path, &state).unwrap();
+    assert_eq!(budget::load_notify_state(&path), state);
+}
+
 // ---------- Cursor 账号用量 ----------
 
 #[test]
