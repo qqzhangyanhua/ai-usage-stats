@@ -56,7 +56,7 @@ export function SessionTurns({
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<TurnRow | null>(null);
 
-  // 会话切换时重置分页与详情，改在渲染期间“调整状态”而非 effect 里同步 setState，
+  // 会话切换时重置分页与详情，改在渲染期间"调整状态"而非 effect 里同步 setState，
   // 避免多触发一次级联渲染（见 react-hooks/set-state-in-effect）。
   const [turnsKey, setTurnsKey] = useState(() => `${source}:${sessionId}`);
   const nextTurnsKey = `${source}:${sessionId}`;

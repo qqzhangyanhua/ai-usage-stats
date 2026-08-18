@@ -34,18 +34,27 @@ fn find_price<'a>(
         .prices
         .iter()
         .find(|p| {
-            p.model == record.model
+            model_matches(&p.model, &record.model)
                 && p.provider
-                    .as_ref()
-                    .map(|prov| prov == &record.provider)
+                    .as_deref()
+                    .map(|prov| provider_matches(prov, &record.provider))
                     .unwrap_or(false)
         })
         .or_else(|| {
             prices
                 .prices
                 .iter()
-                .find(|p| p.model == record.model && p.provider.is_none())
+                .find(|p| model_matches(&p.model, &record.model) && p.provider.is_none())
         })
+}
+
+/// 精确匹配优先；大小写不一致（如来源上报 `"GPT-4o"`、用户价目表填 `"gpt-4o"`）时仍按同一模型兜底。
+fn model_matches(entry_model: &str, record_model: &str) -> bool {
+    entry_model == record_model || entry_model.eq_ignore_ascii_case(record_model)
+}
+
+fn provider_matches(entry_provider: &str, record_provider: &str) -> bool {
+    entry_provider == record_provider || entry_provider.eq_ignore_ascii_case(record_provider)
 }
 
 pub fn sum_costs(records: &[&UsageRecord], prices: &PriceTable) -> (Option<f64>, bool) {

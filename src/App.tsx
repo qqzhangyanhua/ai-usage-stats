@@ -108,8 +108,12 @@ export default function App() {
                   onRebuild={data.runRebuild}
                   onPurgeArchived={data.runPurgeArchived}
                   onSave={async () => {
-                    await invoke("save_price_table", { prices: data.prices });
-                    data.setStatus("单价已保存");
+                    try {
+                      await invoke("save_price_table", { prices: data.prices });
+                      data.setStatus("单价已保存");
+                    } catch (error) {
+                      data.reportError(error);
+                    }
                   }}
                   onSnapshotRefreshed={() => data.runIngest("刷新")}
                 />
@@ -127,6 +131,7 @@ export default function App() {
                     selected={data.selectedSession}
                     onSelect={data.setSelectedSession}
                     onFilterChange={data.applyFilter}
+                    onError={data.reportError}
                   />
                 </ErrorBoundary>
               </div>
