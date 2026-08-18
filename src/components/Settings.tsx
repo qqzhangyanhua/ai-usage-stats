@@ -17,24 +17,29 @@ export function Settings({
   diagnostics,
   ingestReport,
   rebuilding,
+  purging,
   operationBusy,
   observedModels,
   onChange,
   onSave,
   onRebuild,
+  onPurgeArchived,
   onSnapshotRefreshed,
 }: {
   prices: PriceTable;
   diagnostics: SourceDiagnostic[];
   ingestReport: IngestReport | null;
   rebuilding: string | null;
+  purging: string | null;
   operationBusy: boolean;
   observedModels: string[];
   onChange: (prices: PriceTable) => void;
   onSave: () => void;
   onRebuild: (source: string | null) => void;
+  onPurgeArchived: (source: string | null) => void;
   onSnapshotRefreshed: () => void;
 }) {
+  const totalArchived = diagnostics.reduce((sum, row) => sum + row.archived_record_count, 0);
   function update(index: number, patch: Partial<PriceEntry>) {
     const next = prices.prices.map((row, i) => (i === index ? { ...row, ...patch } : row));
     onChange({ prices: next });
@@ -48,11 +53,28 @@ export function Settings({
             <h2>数据源健康</h2>
             <p className="panel-note">
               只展示扫描状态和用量元数据，不读取或保存会话正文。关闭窗口后应用会留在菜单栏，显示今日花费。
+              安装位置非默认路径时，可以用环境变量整体覆盖扫描目录（如 <code>CODEX_HOME</code>、
+              <code>CLAUDE_CONFIG_DIR</code>，逗号分隔可指定多个目录），重启应用后生效。
+              源文件被工具自身清理后，对应记录会转为「已归档」但仍计入统计，不会静默消失。
             </p>
           </div>
-          <Button disabled={operationBusy || rebuilding !== null} onClick={() => onRebuild(null)}>
-            {rebuilding === "all" ? "正在重建…" : "重建全部缓存"}
-          </Button>
+          <div className="row-actions">
+            {totalArchived > 0 ? (
+              <Button
+                variant="danger"
+                disabled={operationBusy || purging !== null}
+                onClick={() => onPurgeArchived(null)}
+                title="永久删除所有来源已归档的记录，此操作不可撤销"
+              >
+                {purging === "all"
+                  ? "正在清理…"
+                  : `清理全部已归档（${formatTokens(totalArchived)}）`}
+              </Button>
+            ) : null}
+            <Button disabled={operationBusy || rebuilding !== null} onClick={() => onRebuild(null)}>
+              {rebuilding === "all" ? "正在重建…" : "重建全部缓存"}
+            </Button>
+          </div>
         </div>
         <div className="table-scroll">
           <table>
@@ -63,6 +85,7 @@ export function Settings({
                 <th>统计口径</th>
                 <th>缓存文件</th>
                 <th>记录</th>
+                <th>已归档</th>
                 <th>Token</th>
                 <th>扫描位置</th>
                 <th>操作</th>
@@ -82,23 +105,42 @@ export function Settings({
                   <td>{row.coverage}</td>
                   <td>{formatTokens(row.cached_files)}</td>
                   <td>{formatTokens(row.record_count)}</td>
+                  <td>
+                    {row.archived_record_count > 0 ? (
+                      <span title="源文件已被工具自身清理，记录仍计入统计">
+                        {formatTokens(row.archived_record_count)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>{formatTokens(row.total_tokens)}</td>
                   <td className="mono" title={row.root_path}>
                     {row.root_path}
                   </td>
-                  <td>
+                  <td className="row-actions">
                     <Button
                       disabled={operationBusy || rebuilding !== null || !row.detected}
                       onClick={() => onRebuild(row.source)}
                     >
                       {rebuilding === row.source ? "重建中…" : "重建"}
                     </Button>
+                    {row.archived_record_count > 0 ? (
+                      <Button
+                        variant="danger"
+                        disabled={operationBusy || purging !== null}
+                        onClick={() => onPurgeArchived(row.source)}
+                        title="永久删除该来源已归档的记录，此操作不可撤销"
+                      >
+                        {purging === row.source ? "清理中…" : "清理归档"}
+                      </Button>
+                    ) : null}
                   </td>
                 </tr>
               ))}
               {diagnostics.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="analytics-empty">
+                  <td colSpan={9} className="analytics-empty">
                     正在读取来源状态…
                   </td>
                 </tr>

@@ -47,8 +47,15 @@ const emptyOverview: OverviewDto = {
   cache_creation_tokens: 0,
   reasoning_tokens: 0,
   session_count: 0,
-  cost: 0,
+  cost: null,
   unpriced: false,
+};
+
+/** 各粒度下一个 trend bucket 覆盖的分钟数，用于把"最后一个 bucket 的 token 量"换算成"每分钟速率"。 */
+const BUCKET_MINUTES: Record<Grain, number> = {
+  day: 24 * 60,
+  week: 7 * 24 * 60,
+  month: 30 * 24 * 60,
 };
 
 export const Overview = memo(function Overview({
@@ -105,6 +112,9 @@ export const Overview = memo(function Overview({
   const trendOption = useMemo(() => areaTrendOption(trend, theme), [trend, theme]);
   const modelOption = useMemo(() => donutOption(modelItems, theme), [modelItems, theme]);
   const tokenTotal = formatCompact(data.total_tokens);
+  // cost 为 null 代表「本期完全未定价」，不能当 0 参与涨跌百分比计算，否则会给出误导性的涨跌提示。
+  const costDelta =
+    data.cost == null ? null : formatDelta(deltaPct(data.cost, previous?.cost ?? null));
   const tokenOption = useMemo(() => {
     const tokenItems = [
       { name: "输入 Token", value: data.input_tokens, color: palette.input },
@@ -112,6 +122,16 @@ export const Overview = memo(function Overview({
     ];
     return donutOption(tokenItems, theme);
   }, [data.input_tokens, data.output_tokens, theme, palette]);
+
+  // 首次加载完成前 overview 为 null；不要用 emptyOverview 的全零占位渲染完整仪表盘，
+  // 避免用户看到一闪而过的假 $0.00 / 0 会话数。
+  if (!overview) {
+    return (
+      <div className="dash">
+        <EmptyState icon="tokens" title="正在加载总览数据…" />
+      </div>
+    );
+  }
 
   return (
     <div className="dash">
@@ -137,7 +157,7 @@ export const Overview = memo(function Overview({
           tone="orange"
           label="总费用估算"
           value={formatUsd(data.cost, data.unpriced)}
-          delta={formatDelta(deltaPct(data.cost ?? 0, previous?.cost ?? null))}
+          delta={costDelta}
           spark={trend.map((p) => p.cost ?? 0)}
         />
         <KpiCard

@@ -9,6 +9,7 @@ use crate::ingest;
 use crate::query;
 use crate::store;
 use chrono::{Local, NaiveTime, TimeZone, Utc};
+use std::path::PathBuf;
 
 fn fixture(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -170,6 +171,18 @@ fn pi_adapter_uses_native_cost() {
     assert_eq!(records[1].reasoning_tokens, 13);
     assert_eq!(records[1].total_tokens, 12846);
     assert!((records[1].native_cost.unwrap() - 0.009959).abs() < 1e-9);
+}
+
+#[test]
+fn pi_adapter_skips_zero_token_assistant_messages() {
+    // fixture 里追加了一条 usage 四分项全 0 的 assistant 消息（a3），
+    // 与其它 adapter（claude/codex/gemini/opencode）保持一致：不计入会话/费用统计。
+    let records = pi::parse_pi_jsonl(
+        &fixture("pi.jsonl"),
+        "/Users/zhangyanhua/.pi/agent/sessions/--Users-zhangyanhua-workCode-ruoyi-ui-vue3--/s.jsonl",
+    );
+    assert_eq!(records.len(), 2);
+    assert!(records.iter().all(|r| r.total_tokens > 0));
 }
 
 #[test]
@@ -1752,6 +1765,48 @@ fn cost_prefers_native_and_marks_unpriced() {
 }
 
 #[test]
+fn cost_matches_model_and_provider_case_insensitively() {
+    // 来源上报或用户价目表里的大小写不一致（如 "GPT-4o" vs "gpt-4o"）时仍应命中同一模型单价。
+    let mut record = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "GPT-4o",
+        "OpenAI",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    record.input_tokens = 100;
+    let table = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-4o".into(),
+            provider: Some("openai".into()),
+            input: 0.01,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+    let derived = derive_cost(&record, &table);
+    assert_eq!(derived.amount, Some(1.0));
+    assert!(!derived.unpriced);
+
+    // provider 兜底档（价目表条目 provider 为 None）同样大小写不敏感。
+    let table_bare = PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-4o".into(),
+            provider: None,
+            input: 0.02,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+        }],
+    };
+    let derived_bare = derive_cost(&record, &table_bare);
+    assert_eq!(derived_bare.amount, Some(2.0));
+}
+
+#[test]
 fn overview_and_turns_use_price_table_and_flag_unpriced() {
     let mut priced = rec(
         "2026-08-01T10:00:00Z",
@@ -1917,6 +1972,59 @@ fn usage_records_source_file_operations_use_an_index() {
 }
 
 #[test]
+fn reconcile_source_lookup_uses_an_index() {
+    let conn = store::open_memory().unwrap();
+    let plan: Vec<String> = conn
+        .prepare("EXPLAIN QUERY PLAN SELECT path FROM ingested_files WHERE source = ?1")
+        .unwrap()
+        .query_map(["codex"], |row| row.get(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        plan.iter()
+            .any(|detail| detail.contains("USING") && detail.contains("INDEX")),
+        "ingested_files(source) lookup must use an index, query plan: {plan:?}"
+    );
+}
+
+#[test]
+fn source_and_occurred_at_filter_uses_composite_index() {
+    let conn = store::open_memory().unwrap();
+    let plan: Vec<String> = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM usage_records \
+             WHERE source = ?1 AND occurred_at >= ?2",
+        )
+        .unwrap()
+        .query_map(["codex", "2026-01-01"], |row| row.get(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        plan.iter().any(|detail| {
+            detail.contains("USING") && detail.contains("INDEX") && detail.contains("source")
+        }),
+        "combined source+occurred_at filter must use an index, query plan: {plan:?}"
+    );
+}
+
+#[test]
+fn open_db_enables_wal_and_normal_synchronous() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("usage.sqlite");
+    let conn = store::open_db(path.to_str().unwrap()).unwrap();
+    let journal_mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(journal_mode.to_lowercase(), "wal");
+    let synchronous: i64 = conn
+        .query_row("PRAGMA synchronous", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(synchronous, 1, "synchronous should be NORMAL (1)");
+}
+
+#[test]
 fn ingest_skips_unchanged_file_on_second_pass() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
@@ -2056,7 +2164,9 @@ fn source_with_a_failed_file_defers_deleted_file_reconciliation() {
 }
 
 #[test]
-fn ingest_reconciles_records_after_a_source_file_is_deleted() {
+fn ingest_archives_records_after_a_source_file_is_deleted() {
+    // ADR 0004：源文件消失（工具自身清理/轮转）不再物理删除历史记录，只归档；
+    // 归档记录仍然计入统计，直到用户显式清理。
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
     let session_dir = home.join(".codex/sessions");
@@ -2069,8 +2179,82 @@ fn ingest_reconciles_records_after_a_source_file_is_deleted() {
     std::fs::remove_file(path).unwrap();
     let report = ingest::ingest_all(&conn, home).unwrap();
 
-    assert_eq!(report.records_removed, 2);
-    assert!(store::load_all(&conn).unwrap().is_empty());
+    assert_eq!(report.records_removed, 0);
+    assert_eq!(report.records_archived, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 2, "archived records still count in totals");
+    assert_eq!(records.iter().map(|r| r.total_tokens).sum::<i64>(), 19113);
+
+    // 幂等：再摄取一次不会重复归档同一批记录。
+    let second = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(second.records_archived, 0);
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+
+    let diagnostics = ingest::source_diagnostics(&conn, home).unwrap();
+    let codex = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.source == "codex")
+        .unwrap();
+    assert_eq!(codex.archived_record_count, 2);
+    assert_eq!(codex.record_count, 2);
+}
+
+#[test]
+fn ingest_replaces_archived_records_when_the_same_path_reappears() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let session_dir = home.join(".codex/sessions");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("one.jsonl");
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(&path).unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(store::load_all(&conn).unwrap().len(), 2);
+
+    // 文件在同一路径重新出现（比如从备份恢复），不应和归档快照重复计数。
+    std::fs::write(&path, fixture("codex.jsonl")).unwrap();
+    let report = ingest::ingest_all(&conn, home).unwrap();
+    assert_eq!(report.files_parsed, 1);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(
+        records.len(),
+        2,
+        "reappearing file replaces its archived snapshot"
+    );
+    assert!(records.iter().all(|r| r.total_tokens > 0));
+}
+
+#[test]
+fn purge_archived_permanently_deletes_only_archived_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let codex_dir = home.join(".codex/sessions");
+    let claude_dir = home.join(".claude/projects/project");
+    std::fs::create_dir_all(&codex_dir).unwrap();
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    let codex_path = codex_dir.join("one.jsonl");
+    std::fs::write(&codex_path, fixture("codex.jsonl")).unwrap();
+    std::fs::write(claude_dir.join("one.jsonl"), fixture("claude.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    std::fs::remove_file(&codex_path).unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+
+    // 按来源清理：只删 codex 的归档记录，claude 的活跃记录不受影响。
+    let removed = store::purge_archived(&conn, Some(Source::Codex)).unwrap();
+    assert_eq!(removed, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert!(records.iter().all(|r| r.source == Source::Claude));
+
+    let removed_again = store::purge_archived(&conn, Some(Source::Codex)).unwrap();
+    assert_eq!(removed_again, 0);
+
+    let removed_all = store::purge_archived(&conn, None).unwrap();
+    assert_eq!(removed_all, 0, "claude records were never archived");
 }
 
 #[test]
@@ -2235,7 +2419,7 @@ fn remove_unknown_sources_keeps_every_registered_source() {
     assert_eq!(removed, 0);
 
     for source in Source::ALL {
-        let (cached_files, record_count, _) = store::source_cache_stats(&conn, source).unwrap();
+        let (cached_files, record_count, _, _) = store::source_cache_stats(&conn, source).unwrap();
         assert_eq!(
             cached_files,
             1,
@@ -2273,6 +2457,120 @@ fn source_diagnostics_explain_detection_cache_and_usage_coverage() {
     assert_eq!(codex.coverage, "轮级 Token");
     assert!(!qwen.detected);
     assert_eq!(qwen.coverage, "本地无 Token");
+}
+
+#[test]
+fn source_scan_dirs_default_to_home_relative_paths() {
+    let home = std::path::Path::new("/home/example");
+    let overrides = ingest::PathOverrides::new();
+
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Codex),
+        vec![home.join(".codex/sessions")],
+    );
+    // Claude Code 有的安装方式写到 XDG 目录而不是 ~/.claude，默认两个都扫。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Claude),
+        vec![
+            home.join(".claude/projects"),
+            home.join(".config/claude/projects"),
+        ],
+    );
+}
+
+#[test]
+fn source_scan_dirs_env_override_replaces_defaults_with_same_leaf_join_rule() {
+    let home = std::path::Path::new("/home/example");
+    let overrides = ingest::PathOverrides::from([
+        ("CODEX_HOME", vec![PathBuf::from("/custom/codex")]),
+        (
+            "CLAUDE_CONFIG_DIR",
+            vec![
+                PathBuf::from("/custom/claude-a"),
+                PathBuf::from("/custom/claude-b"),
+            ],
+        ),
+    ]);
+
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Codex),
+        vec![PathBuf::from("/custom/codex/sessions")],
+    );
+    // 覆盖后不再回退到默认的 XDG 双路径，只扫用户显式给出的目录。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Claude),
+        vec![
+            PathBuf::from("/custom/claude-a/projects"),
+            PathBuf::from("/custom/claude-b/projects"),
+        ],
+    );
+    // 未覆盖的 Source 仍然用默认路径。
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Grok),
+        vec![home.join(".grok/sessions")],
+    );
+}
+
+#[test]
+fn ingest_scans_multiple_overridden_directories_for_one_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+
+    // 默认路径 home/.codex/sessions 放一份数据，用来验证覆盖后它不会再被扫到。
+    let default_sessions = home.join(".codex/sessions");
+    std::fs::create_dir_all(&default_sessions).unwrap();
+    std::fs::write(
+        default_sessions.join("ignored.jsonl"),
+        fixture("codex.jsonl"),
+    )
+    .unwrap();
+
+    // CODEX_HOME 覆盖为两个自定义根目录（逗号分隔多个），两个都要按同样的 /sessions
+    // 规则拼接、都要被扫到。
+    let root_a = home.join("codex-root-a");
+    let root_b = home.join("codex-root-b");
+    std::fs::create_dir_all(root_a.join("sessions")).unwrap();
+    std::fs::create_dir_all(root_b.join("sessions")).unwrap();
+    std::fs::write(root_a.join("sessions/a.jsonl"), fixture("codex.jsonl")).unwrap();
+    std::fs::write(root_b.join("sessions/b.jsonl"), fixture("codex.jsonl")).unwrap();
+
+    let overrides =
+        ingest::PathOverrides::from([("CODEX_HOME", vec![root_a.clone(), root_b.clone()])]);
+
+    let conn = store::open_memory().unwrap();
+    let report = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+
+    assert_eq!(report.files_parsed, 2);
+    let records = store::load_all(&conn).unwrap();
+    assert_eq!(records.len(), 4);
+    assert!(records.iter().all(|r| r.source == Source::Codex));
+    assert!(records
+        .iter()
+        .all(|r| !r.source_file.contains("ignored.jsonl")));
+
+    // 删掉其中一个根目录下的文件，reconcile 应该只处理那一份，另一份不受影响——
+    // 说明多目录是合并到同一次对账里的，而不是互相独立、互不感知。
+    // 按 ADR 0004，消失的文件只归档、不物理删除，归档记录仍计入统计。
+    std::fs::remove_file(root_a.join("sessions/a.jsonl")).unwrap();
+    let second = ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+    assert_eq!(second.records_removed, 0);
+    assert_eq!(second.records_archived, 2);
+    assert_eq!(
+        store::load_all(&conn).unwrap().len(),
+        4,
+        "archived records still count in totals"
+    );
+
+    // 被归档的正好是 root_a 那一份：显式清理归档记录后，剩下的应当只有 root_b 的记录。
+    assert_eq!(
+        store::purge_archived(&conn, Some(Source::Codex)).unwrap(),
+        2
+    );
+    let remaining = store::load_all(&conn).unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(remaining
+        .iter()
+        .all(|r| r.source_file.contains("codex-root-b")));
 }
 
 fn rollup_sum(

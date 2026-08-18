@@ -348,6 +348,25 @@ async fn rebuild_cache(
     .map_err(|e| e.to_string())?
 }
 
+/// 永久删除某来源（或全部来源）已归档的记录，供用户在设置页显式清理旧数据。
+#[tauri::command]
+async fn purge_archived_records(
+    app: tauri::AppHandle,
+    source: Option<String>,
+) -> Result<u64, String> {
+    let source = source
+        .as_deref()
+        .map(|value| Source::parse(value).ok_or_else(|| format!("未知来源：{value}")))
+        .transpose()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        store::purge_archived(&conn, source)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn get_code_volume() -> Result<CodeVolumeSummary, String> {
     tauri::async_runtime::spawn_blocking(move || ingest::load_code_volume(&ingest::default_home()))
@@ -475,6 +494,7 @@ pub fn run() {
             reset_price_snapshot,
             get_source_diagnostics,
             rebuild_cache,
+            purge_archived_records,
             get_code_volume,
             export_csv,
             export_json,
