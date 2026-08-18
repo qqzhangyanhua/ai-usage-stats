@@ -141,6 +141,139 @@ pub fn ingest_all(conn: &Connection, home: &Path) -> Result<IngestReport, String
     ingest_all_with_overrides(conn, home, &env_overrides())
 }
 
+/// 只比源文件元数据（路径 / mtime / size），不读文件内容。
+/// 有新文件、mtime/size 变化、或缓存里有路径但磁盘已消失时视为 stale。
+pub fn scan_is_stale(conn: &Connection, home: &Path) -> Result<bool, String> {
+    scan_is_stale_with_overrides(conn, home, &env_overrides())
+}
+
+pub(crate) fn scan_is_stale_with_overrides(
+    conn: &Connection,
+    home: &Path,
+    overrides: &PathOverrides,
+) -> Result<bool, String> {
+    let seen = list_source_files(home, overrides)?;
+    let cached = store::cached_file_stats(conn)?;
+    if cached.len() != seen.len() {
+        return Ok(true);
+    }
+    let cached_map: BTreeMap<String, (i64, i64)> = cached
+        .into_iter()
+        .map(|(path, mtime_ms, size)| (path, (mtime_ms, size)))
+        .collect();
+    if cached_map.len() != seen.len() {
+        return Ok(true);
+    }
+    for (path, meta) in &seen {
+        match cached_map.get(path) {
+            Some(cached_meta) if cached_meta == meta => {}
+            _ => return Ok(true),
+        }
+    }
+    Ok(false)
+}
+
+fn list_source_files(
+    home: &Path,
+    overrides: &PathOverrides,
+) -> Result<BTreeMap<String, (i64, i64)>, String> {
+    let mut files = BTreeMap::new();
+    for source in Source::ALL {
+        for path in list_source_paths(home, overrides, source)? {
+            let meta = match fs::metadata(&path) {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            files.insert(
+                path.to_string_lossy().to_string(),
+                (modified_millis(&meta), meta.len() as i64),
+            );
+        }
+    }
+    Ok(files)
+}
+
+fn list_source_paths(
+    home: &Path,
+    overrides: &PathOverrides,
+    source: Source,
+) -> Result<Vec<PathBuf>, String> {
+    let dirs = source_scan_dirs_with(overrides, home, source);
+    match source {
+        Source::Codex | Source::Claude | Source::Pi | Source::CursorAgent | Source::Copilot => {
+            list_ext_files(&dirs, "jsonl")
+        }
+        Source::Kimi => {
+            let mut paths = Vec::new();
+            for root in &dirs {
+                for path in walk_files(&root.join("sessions"), "jsonl")? {
+                    if path.file_name().and_then(|name| name.to_str()) == Some("wire.jsonl") {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Dsh => list_suffix_files(&dirs, "session.jsonl.zstd"),
+        Source::Gemini => {
+            let mut paths = Vec::new();
+            for root in &dirs {
+                for path in walk_files(root, "json")? {
+                    if path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("")
+                        .starts_with("session-")
+                    {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Grok => {
+            let mut paths = Vec::new();
+            for root in &dirs {
+                for path in walk_files(root, "jsonl")? {
+                    if path.file_name().and_then(|name| name.to_str()) == Some("updates.jsonl") {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Qwen => {
+            let mut paths = Vec::new();
+            for root in &dirs {
+                for path in walk_files(root, "json")? {
+                    if path.file_name().and_then(|name| name.to_str()) == Some("logs.json") {
+                        paths.push(path);
+                    }
+                }
+            }
+            Ok(paths)
+        }
+        Source::Factory => list_suffix_files(&dirs, ".settings.json"),
+        Source::Opencode => Ok(dirs.into_iter().filter(|path| path.exists()).collect()),
+    }
+}
+
+fn list_ext_files(roots: &[PathBuf], ext: &str) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in roots {
+        paths.extend(walk_files(root, ext)?);
+    }
+    Ok(paths)
+}
+
+fn list_suffix_files(roots: &[PathBuf], suffix: &str) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in roots {
+        paths.extend(walk_suffix(root, suffix)?);
+    }
+    Ok(paths)
+}
+
 /// 供测试直接注入路径覆盖表，绕开真实进程环境变量（并行跑测试改真实环境变量不安全）。
 pub(crate) fn ingest_all_with_overrides(
     conn: &Connection,

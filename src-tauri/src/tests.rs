@@ -2779,6 +2779,52 @@ fn ingest_all_fixtures_is_stable_on_refresh() {
     assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
 }
 
+#[test]
+fn scan_is_stale_detects_new_changed_and_deleted_source_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let sessions = home.join(".codex/sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let first = sessions.join("one.jsonl");
+    std::fs::write(&first, fixture("codex.jsonl")).unwrap();
+
+    let conn = store::open_memory().unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "empty cache should be stale when source files exist"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    let file = std::fs::File::options().write(true).open(&first).unwrap();
+    file.set_modified(later).unwrap();
+    drop(file);
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "mtime change should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::write(sessions.join("two.jsonl"), fixture("codex.jsonl")).unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "new file should be stale"
+    );
+
+    ingest::ingest_all(&conn, home).unwrap();
+    assert!(!ingest::scan_is_stale(&conn, home).unwrap());
+
+    std::fs::remove_file(sessions.join("two.jsonl")).unwrap();
+    assert!(
+        ingest::scan_is_stale(&conn, home).unwrap(),
+        "deleted cached file should be stale"
+    );
+}
+
 #[ignore]
 #[test]
 fn ingest_real_home_rollups_match_overview() {
