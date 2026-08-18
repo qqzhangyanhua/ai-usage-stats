@@ -8,7 +8,11 @@ import type {
   InstructionLoadStatus,
 } from "../types";
 import { EmptyState } from "./EmptyState";
-import { canEditInstruction, canOpenInstruction } from "../lib/instructionAccess";
+import {
+  canEditInstruction,
+  canOpenInstruction,
+  showsLoadStatus,
+} from "../lib/instructionAccess";
 import { InstructionEditor } from "./InstructionEditor";
 import { Button } from "./ui/Button";
 
@@ -108,7 +112,10 @@ export function GlobalInstructionPanel() {
       {error ? <EmptyState tone="warn" title="读取失败" hint={error} /> : null}
       {actionError ? <EmptyState tone="warn" title="无法打开" hint={actionError} /> : null}
       {!error && !files.length && !busy ? (
-        <EmptyState title="尚未发现全局指令" hint="当前扫描 Claude、Codex、Gemini 与 Cursor。" />
+        <EmptyState
+          title="尚未发现全局指令"
+          hint="已覆盖全部已支持来源。未创建与无机制不是同一回事。"
+        />
       ) : null}
       {data
         ? data.sources.map((row) => (
@@ -174,7 +181,9 @@ function InstructionRow({
           <div className="instruction-row-title">
             <strong>{file.display_path}</strong>
             <span className="instruction-badges">
-              <em className="instruction-status">{STATUS_LABEL[file.load_status]}</em>
+              {showsLoadStatus(file) ? (
+                <em className="instruction-status">{STATUS_LABEL[file.load_status]}</em>
+              ) : null}
               <em className="instruction-evidence">{EVIDENCE_LABEL[file.evidence]}</em>
             </span>
           </div>
@@ -200,6 +209,9 @@ function InstructionRow({
           ) : null}
           {file.load_status === "locally_invisible" ? (
             <p className="muted">内容在账号服务端，本机无法展示。</p>
+          ) : null}
+          {file.evidence === "no_mechanism" ? (
+            <p className="muted">该来源没有用户级全局指令机制，不必按路径去创建文件。</p>
           ) : null}
           {canEditInstruction(file) ? (
             <InstructionEditor

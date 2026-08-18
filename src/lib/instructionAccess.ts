@@ -21,3 +21,7 @@ export function canEditInstruction(file: GlobalInstructionFile): boolean {
 export function canOpenInstruction(file: GlobalInstructionFile): boolean {
   return file.load_status !== "locally_invisible" && file.abs_path.length > 0;
 }
+
+export function showsLoadStatus(file: GlobalInstructionFile): boolean {
+  return file.evidence !== "no_mechanism";
+}

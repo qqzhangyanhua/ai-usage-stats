@@ -1,8 +1,17 @@
 pub mod claude;
 pub mod codex;
+pub mod copilot;
 pub mod cursor;
+pub mod cursor_agent;
+pub mod dsh;
+pub mod factory;
 mod file;
 pub mod gemini;
+pub mod grok;
+pub mod kimi;
+pub mod opencode;
+pub mod pi;
+pub mod qwen;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -20,6 +29,15 @@ pub fn scan(
             codex::scan(home),
             gemini::scan(home),
             cursor::scan(),
+            pi::scan(home),
+            opencode::scan(home),
+            kimi::scan(),
+            dsh::scan(home),
+            grok::scan(home),
+            qwen::scan(home),
+            factory::scan(home),
+            cursor_agent::scan(),
+            copilot::scan(home),
         ],
     }
 }

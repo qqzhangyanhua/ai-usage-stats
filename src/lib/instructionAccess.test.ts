@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GlobalInstructionFile } from "../types";
-import { canEditInstruction, canOpenInstruction } from "./instructionAccess";
+import { canEditInstruction, canOpenInstruction, showsLoadStatus } from "./instructionAccess";
 
 function file(overrides: Partial<GlobalInstructionFile> = {}): GlobalInstructionFile {
   return {
@@ -44,6 +44,22 @@ describe("canOpenInstruction", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("showsLoadStatus", () => {
+  it("hides load status when the source has no global-instruction mechanism", () => {
+    expect(
+      showsLoadStatus(
+        file({
+          display_path: "无用户级全局指令机制",
+          abs_path: "",
+          load_status: "not_created",
+          evidence: "no_mechanism",
+        }),
+      ),
+    ).toBe(false);
+    expect(showsLoadStatus(file({ load_status: "not_created" }))).toBe(true);
   });
 });
 

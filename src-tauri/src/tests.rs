@@ -6433,7 +6433,7 @@ fn scan_cursor_account_preference_is_locally_invisible() {
 }
 
 #[test]
-fn scan_always_emits_four_verified_sources() {
+fn scan_covers_every_supported_source() {
     let home = tempfile::tempdir().unwrap();
     let dto = crate::instructions::scan(
         home.path(),
@@ -6441,14 +6441,169 @@ fn scan_always_emits_four_verified_sources() {
         &crate::domain::InstructionUsageSummary::default(),
     );
     let names: Vec<&str> = dto.sources.iter().map(|row| row.source.as_str()).collect();
-    assert_eq!(names, ["claude", "codex", "gemini", "cursor"]);
+    assert_eq!(
+        names,
+        [
+            "claude",
+            "codex",
+            "gemini",
+            "cursor",
+            "pi",
+            "opencode",
+            "kimi",
+            "dsh",
+            "grok",
+            "qwen",
+            "factory",
+            "cursor_agent",
+            "copilot",
+        ]
+    );
     for row in &dto.sources {
         assert!(!row.files.is_empty(), "{} should not be absent", row.source);
-        assert!(row
-            .files
-            .iter()
-            .all(|file| { file.evidence == crate::domain::InstructionEvidence::Verified }));
     }
+}
+
+#[test]
+fn scan_remaining_sources_use_documented_evidence() {
+    let home = tempfile::tempdir().unwrap();
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+
+    let pi = file_named(instruction_source(&dto, "pi"), "~/.pi/agent/AGENTS.md");
+    assert_eq!(pi.evidence, crate::domain::InstructionEvidence::Verified);
+    assert_eq!(
+        pi.load_status,
+        crate::domain::InstructionLoadStatus::NotCreated
+    );
+
+    let opencode = file_named(
+        instruction_source(&dto, "opencode"),
+        "~/.config/opencode/AGENTS.md",
+    );
+    assert_eq!(
+        opencode.evidence,
+        crate::domain::InstructionEvidence::Verified
+    );
+    assert_eq!(
+        opencode.load_status,
+        crate::domain::InstructionLoadStatus::NotCreated
+    );
+
+    let kimi = &instruction_source(&dto, "kimi").files[0];
+    assert_eq!(
+        kimi.evidence,
+        crate::domain::InstructionEvidence::NoMechanism
+    );
+    assert!(kimi.abs_path.is_empty());
+    assert!(
+        !kimi.display_path.contains('/'),
+        "无机制条目不得给出可创建的假路径"
+    );
+
+    let dsh = file_named(instruction_source(&dto, "dsh"), "~/.dsh/AGENTS.md");
+    assert_eq!(dsh.evidence, crate::domain::InstructionEvidence::Verified);
+
+    let grok = file_named(instruction_source(&dto, "grok"), "~/.grok/AGENTS.md");
+    assert_eq!(grok.evidence, crate::domain::InstructionEvidence::Verified);
+
+    let qwen = file_named(instruction_source(&dto, "qwen"), "~/.qwen/QWEN.md");
+    assert_eq!(qwen.evidence, crate::domain::InstructionEvidence::Verified);
+
+    let factory = file_named(instruction_source(&dto, "factory"), "~/.factory/AGENTS.md");
+    assert_eq!(
+        factory.evidence,
+        crate::domain::InstructionEvidence::Verified
+    );
+
+    let cursor_agent = &instruction_source(&dto, "cursor_agent").files[0];
+    assert_eq!(
+        cursor_agent.evidence,
+        crate::domain::InstructionEvidence::Inferred
+    );
+    assert_eq!(
+        cursor_agent.load_status,
+        crate::domain::InstructionLoadStatus::LocallyInvisible
+    );
+    assert!(cursor_agent.action.is_none());
+    assert!(
+        cursor_agent.note.as_deref().is_some_and(|note| note.contains("推测")),
+        "推测条目必须说明尚未证实"
+    );
+
+    let copilot = file_named(
+        instruction_source(&dto, "copilot"),
+        "~/.copilot/copilot-instructions.md",
+    );
+    assert_eq!(copilot.evidence, crate::domain::InstructionEvidence::Verified);
+}
+
+#[test]
+fn scan_reads_verified_remaining_instruction_files() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".pi/agent")).unwrap();
+    std::fs::write(home.path().join(".pi/agent/AGENTS.md"), "pi-global\n").unwrap();
+    std::fs::create_dir_all(home.path().join(".config/opencode")).unwrap();
+    std::fs::write(
+        home.path().join(".config/opencode/AGENTS.md"),
+        "opencode-global\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(home.path().join(".qwen")).unwrap();
+    std::fs::write(home.path().join(".qwen/QWEN.md"), "qwen-global\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert_eq!(
+        file_named(instruction_source(&dto, "pi"), "~/.pi/agent/AGENTS.md").content,
+        "pi-global\n"
+    );
+    assert_eq!(
+        file_named(
+            instruction_source(&dto, "opencode"),
+            "~/.config/opencode/AGENTS.md"
+        )
+        .load_status,
+        crate::domain::InstructionLoadStatus::Loaded
+    );
+    assert_eq!(
+        file_named(instruction_source(&dto, "qwen"), "~/.qwen/QWEN.md").content,
+        "qwen-global\n"
+    );
+}
+
+#[test]
+fn scan_pi_override_shields_base_agents_file() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = home.path().join(".pi/agent");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("AGENTS.md"), "base-pi\n").unwrap();
+    std::fs::write(dir.join("AGENTS.override.md"), "override-pi\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    let row = instruction_source(&dto, "pi");
+    let base = file_named(row, "~/.pi/agent/AGENTS.md");
+    let over = file_named(row, "~/.pi/agent/AGENTS.override.md");
+    assert_eq!(
+        over.load_status,
+        crate::domain::InstructionLoadStatus::Loaded
+    );
+    assert_eq!(over.content, "override-pi\n");
+    assert_eq!(
+        base.load_status,
+        crate::domain::InstructionLoadStatus::PresentUnloaded
+    );
+    assert_eq!(base.content, "base-pi\n");
 }
 
 fn file_mtime(path: &std::path::Path) -> String {

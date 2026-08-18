@@ -68,6 +68,22 @@ fn missing(
     }
 }
 
+pub fn no_mechanism(note: &str) -> GlobalInstructionFile {
+    GlobalInstructionFile {
+        kind: InstructionEntryKind::File,
+        display_path: "无用户级全局指令机制".into(),
+        abs_path: String::new(),
+        byte_size: 0,
+        modified_at: None,
+        load_status: InstructionLoadStatus::NotCreated,
+        evidence: InstructionEvidence::NoMechanism,
+        content: String::new(),
+        error: None,
+        note: Some(note.to_string()),
+        action: None,
+    }
+}
+
 pub fn read_directory(
     path: &Path,
     display_path: &str,
