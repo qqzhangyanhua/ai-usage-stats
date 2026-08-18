@@ -81,15 +81,18 @@ export function LegendRow({
   value,
   extra,
   icon,
+  onClick,
 }: {
   color: string;
   label: string;
   value: string;
   extra?: string;
   icon?: ReactNode;
+  onClick?: () => void;
 }) {
-  return (
-    <div className={icon ? "legend-row has-icon" : "legend-row"}>
+  const className = icon ? "legend-row has-icon" : "legend-row";
+  const content = (
+    <>
       <i style={{ background: color }} />
       {icon}
       <span className="legend-label">{label}</span>
@@ -97,6 +100,14 @@ export function LegendRow({
         <strong>{value}</strong>
         {extra ? <em>{extra}</em> : null}
       </span>
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" className={`${className} is-clickable`} onClick={onClick}>
+        {content}
+      </button>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }

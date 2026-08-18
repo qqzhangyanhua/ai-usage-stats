@@ -69,7 +69,7 @@ export function CursorAccountSettingsPanel() {
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-cursor-account">
       <div className="panel-head">
         <div>
           <h2>Cursor 账号用量</h2>

@@ -63,12 +63,19 @@ export function scopesEqual(left: ViewScope, right: ViewScope): boolean {
   return left.preset === right.preset && filtersEqual(left.filter, right.filter);
 }
 
-export function viewFromHash(): View {
-  const raw = window.location.hash.replace(/^#/, "");
-  if (raw === "source") {
+export function parseViewHash(raw: string): View {
+  const hash = raw.replace(/^#/, "");
+  if (hash === "source") {
     return "application";
   }
-  return views.find((item) => item === raw) ?? "overview";
+  if (hash === "settings" || hash.startsWith("settings-")) {
+    return "settings";
+  }
+  return views.find((item) => item === hash) ?? "overview";
+}
+
+export function viewFromHash(): View {
+  return parseViewHash(window.location.hash);
 }
 
 export function viewStamp(

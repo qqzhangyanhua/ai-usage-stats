@@ -61,11 +61,7 @@ pub fn is_allowed(home: &Path, path: &Path) -> bool {
 }
 
 fn is_plain_name(name: &str) -> bool {
-    !name.is_empty()
-        && name != "."
-        && name != ".."
-        && !name.contains('/')
-        && !name.contains('\\')
+    !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\\')
 }
 
 fn backup_original(data_dir: &Path, home: &Path, path: &Path) -> Result<(), String> {

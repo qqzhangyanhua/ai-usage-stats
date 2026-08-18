@@ -4,8 +4,11 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
+import { clearDimensionFilters, withModelFilter } from "./lib/filterChips";
+import { customRangeFilter } from "./lib/format";
 import {
   LazyApplicationAnalytics,
   LazyBreakdown,
@@ -24,6 +27,14 @@ export default function App() {
   const data = useUsageData();
   const { theme, mode: themeMode, setMode: setThemeMode } = useTheme();
   const { view } = data;
+
+  useKeyboardShortcuts({
+    onNavigate: data.navigate,
+    onRefresh: () => {
+      void data.runIngest("刷新");
+    },
+    onClearFilters: () => data.applyFilter(clearDimensionFilters(data.filter)),
+  });
 
   return (
     <div className="app">
@@ -83,6 +94,17 @@ export default function App() {
                     theme={theme}
                     onGrain={data.setGrain}
                     onOpenSessions={data.openSessions}
+                    onProjectClick={(project) =>
+                      data.applyFilter({ ...data.filter, projects: [project] })
+                    }
+                    onRangeSelect={(from, to) =>
+                      data.applyPreset("custom", customRangeFilter(from, to))
+                    }
+                    onModelClick={(model) => data.applyFilter(withModelFilter(data.filter, model))}
+                    onSessionClick={(session) => {
+                      data.openSessions();
+                      data.setSelectedSession(session);
+                    }}
                   />
                 ) : null}
                 {view === "trend" ? (

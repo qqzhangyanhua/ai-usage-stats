@@ -5,6 +5,7 @@ import {
   filtersEqual,
   initialViewScopes,
   isViewFresh,
+  parseViewHash,
   reconcileLoadedStamps,
   viewStamp,
   viewsInvalidatedBy,
@@ -21,6 +22,24 @@ const filter: Filter = {
 };
 
 const ranged: Filter = { ...filter, from: "2026-08-01", to: "2026-08-07" };
+
+describe("parseViewHash", () => {
+  it("maps known view hashes", () => {
+    expect(parseViewHash("#sessions")).toBe("sessions");
+    expect(parseViewHash("source")).toBe("application");
+    expect(parseViewHash("#instructions")).toBe("instructions");
+  });
+
+  it("keeps settings panel anchors on the settings view", () => {
+    expect(parseViewHash("#settings")).toBe("settings");
+    expect(parseViewHash("#settings-budget")).toBe("settings");
+    expect(parseViewHash("settings-diagnostics")).toBe("settings");
+  });
+
+  it("falls back to overview for unknown hashes", () => {
+    expect(parseViewHash("#nope")).toBe("overview");
+  });
+});
 
 describe("viewStamp", () => {
   it("keeps model/provider/project stamps stable across grain changes", () => {
@@ -122,8 +141,8 @@ describe("isViewFresh", () => {
     }
     expect(isViewFresh(loaded, "trend", filter, "all", "day", 1)).toBe(true);
     expect(isViewFresh(loaded, "model", filter, "all", "week", 1)).toBe(true);
-    expect(
-      isViewFresh(loaded, "trend", { ...filter, from: "2026-08-01" }, "all", "day", 1),
-    ).toBe(false);
+    expect(isViewFresh(loaded, "trend", { ...filter, from: "2026-08-01" }, "all", "day", 1)).toBe(
+      false,
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bucketToDateRange,
   calendarCells,
   formatDateLabel,
   heatmapGrid,
@@ -158,6 +159,58 @@ describe("quantileCuts", () => {
     expect(cuts[cuts.length - 1]).toBe(10);
     expect(cuts).toEqual([...cuts].sort((a, b) => a - b));
     expect(new Set(cuts).size).toBe(cuts.length);
+  });
+});
+
+describe("bucketToDateRange", () => {
+  it("maps hour and day buckets to that calendar day", () => {
+    expect(bucketToDateRange("hour", "2026-08-01T11")).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-01",
+    });
+    expect(bucketToDateRange("day", "2026-08-01")).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-01",
+    });
+  });
+
+  it("maps ISO week buckets to Monday–Sunday", () => {
+    expect(bucketToDateRange("week", "2026-W31")).toEqual({
+      from: "2026-07-27",
+      to: "2026-08-02",
+    });
+    expect(bucketToDateRange("week", "2026-W32")).toEqual({
+      from: "2026-08-03",
+      to: "2026-08-09",
+    });
+    expect(bucketToDateRange("week", "2026-W01")).toEqual({
+      from: "2025-12-29",
+      to: "2026-01-04",
+    });
+  });
+
+  it("maps month buckets to the first and last calendar day", () => {
+    expect(bucketToDateRange("month", "2026-08")).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-31",
+    });
+    expect(bucketToDateRange("month", "2026-02")).toEqual({
+      from: "2026-02-01",
+      to: "2026-02-28",
+    });
+    expect(bucketToDateRange("month", "2024-02")).toEqual({
+      from: "2024-02-01",
+      to: "2024-02-29",
+    });
+  });
+
+  it("rejects malformed or out-of-range buckets", () => {
+    expect(bucketToDateRange("hour", "2026-08-01")).toBeNull();
+    expect(bucketToDateRange("hour", "2026-08-01T24")).toBeNull();
+    expect(bucketToDateRange("day", "2026-02-30")).toBeNull();
+    expect(bucketToDateRange("week", "2026-W00")).toBeNull();
+    expect(bucketToDateRange("week", "2026-31")).toBeNull();
+    expect(bucketToDateRange("month", "2026-13")).toBeNull();
   });
 });
 

@@ -9,6 +9,13 @@ import {
   projectLabel,
   providerChannel,
 } from "../lib/format";
+import {
+  clearDimensionFilters,
+  filterChips,
+  hasDimensionFilters,
+  removeFilterChip,
+  type FilterChip,
+} from "../lib/filterChips";
 import type { Filter, FilterOptions, View } from "../types";
 import { viewTitle } from "./Sidebar";
 import { Button } from "./ui/Button";
@@ -17,11 +24,26 @@ import { Select } from "./ui/Select";
 import { VendorIcon } from "./VendorIcon";
 
 const RANGE_OPTIONS = [
-  { value: "all", label: "全部历史" },
+  { value: "today", label: "今天" },
   { value: "7", label: "近 7 天" },
   { value: "30", label: "近 30 天" },
+  { value: "month", label: "本月" },
+  { value: "all", label: "全部历史" },
   { value: "custom", label: "自定义区间" },
 ];
+
+function chipLabel(chip: FilterChip): string {
+  if (chip.kind === "project") {
+    return projectLabel(chip.value);
+  }
+  if (chip.kind === "source") {
+    return applicationLabel(chip.value);
+  }
+  if (chip.kind === "provider") {
+    return `${chip.value}（${providerChannel(chip.value)}）`;
+  }
+  return chip.value;
+}
 
 export function Topbar({
   view,
@@ -53,6 +75,7 @@ export function Topbar({
   const [customOpen, setCustomOpen] = useState(preset === "custom");
   const [customFrom, setCustomFrom] = useState(() => (filter.from ?? "").slice(0, 10));
   const [customTo, setCustomTo] = useState(() => (filter.to ?? "").slice(0, 10));
+  const chips = filterChips(filter);
 
   function selectPreset(value: string) {
     if (value === "custom") {
@@ -72,89 +95,111 @@ export function Topbar({
 
   return (
     <header className="topbar">
-      <div>
-        <h1>{title}</h1>
-        <p>{subtitle}</p>
+      <div className="topbar-main">
+        <div>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
+        {!hideFilters ? (
+          <div className="topbar-actions">
+            <Select
+              icon="calendar"
+              ariaLabel="时间范围"
+              disabled={disabled}
+              value={customOpen ? "custom" : preset}
+              displayLabel={customOpen ? "自定义区间" : formatRangeLabel(filter, preset)}
+              options={RANGE_OPTIONS}
+              onChange={selectPreset}
+            />
+            {customOpen ? (
+              <div className="custom-range">
+                <DatePicker
+                  ariaLabel="开始日期"
+                  disabled={disabled}
+                  value={customFrom}
+                  max={customTo || undefined}
+                  onChange={setCustomFrom}
+                />
+                <span>至</span>
+                <DatePicker
+                  ariaLabel="结束日期"
+                  disabled={disabled}
+                  value={customTo}
+                  min={customFrom || undefined}
+                  onChange={setCustomTo}
+                />
+                <Button
+                  variant="text"
+                  disabled={disabled || !customFrom || !customTo}
+                  onClick={applyCustomRange}
+                >
+                  应用
+                </Button>
+              </div>
+            ) : null}
+            <Button
+              variant="icon"
+              disabled={disabled || refreshDisabled}
+              onClick={onRefresh}
+              title="刷新（R）"
+              aria-label="刷新数据"
+            >
+              <Icon name="refresh" size={15} />
+            </Button>
+            <MultiSelect
+              label="全部项目"
+              options={options.projects}
+              selected={filter.projects}
+              renderLabel={projectLabel}
+              disabled={disabled}
+              onChange={(projects) => onChange({ ...filter, projects })}
+            />
+            <MultiSelect
+              label="全部应用"
+              icon="filter"
+              options={options.sources}
+              selected={filter.sources}
+              renderLabel={applicationLabel}
+              disabled={disabled}
+              onChange={(sources) => onChange({ ...filter, sources })}
+            />
+            <MultiSelect
+              label="全部模型"
+              options={options.models}
+              selected={filter.models}
+              disabled={disabled}
+              renderIcon={(model) => <VendorIcon name={model} size={14} />}
+              onChange={(models) => onChange({ ...filter, models })}
+            />
+            <MultiSelect
+              label="全部 Provider"
+              options={options.providers}
+              selected={filter.providers}
+              disabled={disabled}
+              renderLabel={(name) => `${name}（${providerChannel(name)}）`}
+              onChange={(providers) => onChange({ ...filter, providers })}
+            />
+          </div>
+        ) : null}
       </div>
-      {!hideFilters ? (
-        <div className="topbar-actions">
-          <Select
-            icon="calendar"
-            ariaLabel="时间范围"
-            disabled={disabled}
-            value={customOpen ? "custom" : preset}
-            displayLabel={customOpen ? "自定义区间" : formatRangeLabel(filter, preset)}
-            options={RANGE_OPTIONS}
-            onChange={selectPreset}
-          />
-          {customOpen ? (
-            <div className="custom-range">
-              <DatePicker
-                ariaLabel="开始日期"
-                disabled={disabled}
-                value={customFrom}
-                max={customTo || undefined}
-                onChange={setCustomFrom}
-              />
-              <span>至</span>
-              <DatePicker
-                ariaLabel="结束日期"
-                disabled={disabled}
-                value={customTo}
-                min={customFrom || undefined}
-                onChange={setCustomTo}
-              />
-              <Button
-                variant="text"
-                disabled={disabled || !customFrom || !customTo}
-                onClick={applyCustomRange}
-              >
-                应用
-              </Button>
-            </div>
-          ) : null}
-          <Button
-            variant="icon"
-            disabled={disabled || refreshDisabled}
-            onClick={onRefresh}
-            title="刷新"
-            aria-label="刷新数据"
-          >
-            <Icon name="refresh" size={15} />
+      {!hideFilters && hasDimensionFilters(filter) ? (
+        <div className="filter-chips" aria-label="已选筛选">
+          {chips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              className="filter-chip"
+              disabled={disabled}
+              title={`移除 ${chipLabel(chip)}`}
+              onClick={() => onChange(removeFilterChip(filter, chip))}
+            >
+              <span>{chipLabel(chip)}</span>
+              <Icon name="close" size={11} />
+            </button>
+          ))}
+          <Button variant="text" disabled={disabled} onClick={() => onChange(clearDimensionFilters(filter))}>
+            清空筛选
           </Button>
-          <MultiSelect
-            label="全部项目"
-            options={options.projects}
-            selected={filter.projects}
-            renderLabel={projectLabel}
-            disabled={disabled}
-            onChange={(projects) => onChange({ ...filter, projects })}
-          />
-          <MultiSelect
-            label="全部应用"
-            icon="filter"
-            options={options.sources}
-            selected={filter.sources}
-            renderLabel={applicationLabel}
-            disabled={disabled}
-            onChange={(sources) => onChange({ ...filter, sources })}
-          />
-          <MultiSelect
-            label="全部模型"
-            options={options.models}
-            selected={filter.models}
-            disabled={disabled}
-            renderIcon={(model) => <VendorIcon name={model} size={14} />}
-            onChange={(models) => onChange({ ...filter, models })}
-          />
-          <MultiSelect
-            label="全部 Provider"
-            options={options.providers}
-            selected={filter.providers}
-            disabled={disabled}
-            renderLabel={(name) => `${name}（${providerChannel(name)}）`}
-            onChange={(providers) => onChange({ ...filter, providers })}
-          />
         </div>
       ) : null}
     </header>
@@ -182,6 +227,12 @@ function MultiSelect({
 }) {
   const { open, setOpen, rootRef } = useDismissible();
   const panelStyle = useAnchoredPanel(open, rootRef);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const visible = options.filter((option) => {
+    const text = (renderLabel ? renderLabel(option) : option).toLowerCase();
+    return q === "" || text.includes(q) || option.toLowerCase().includes(q);
+  });
 
   function toggleValue(value: string) {
     if (selected.includes(value)) {
@@ -196,8 +247,8 @@ function MultiSelect({
       ? label
       : selected.length === 1
         ? renderLabel
-          ? renderLabel(selected[0])
-          : selected[0]
+          ? renderLabel(selected[0] ?? "")
+          : (selected[0] ?? label)
         : `已选 ${selected.length} 项`;
 
   return (
@@ -211,13 +262,21 @@ function MultiSelect({
         aria-expanded={open}
         aria-label={`${label}：${summary}`}
       >
-        {selected.length === 1 && renderIcon ? renderIcon(selected[0]) : null}
+        {selected.length === 1 && selected[0] && renderIcon ? renderIcon(selected[0]) : null}
         {icon ? <Icon name={icon} size={14} /> : null}
         <span className="chip-range">{summary}</span>
         <Icon name="chevron" size={12} className={open ? "select-caret open" : "select-caret"} />
       </button>
       {open ? (
         <div className="multi-select-panel" role="listbox" aria-label={label} style={panelStyle}>
+          <input
+            className="multi-select-search"
+            type="search"
+            placeholder="搜索…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label={`${label}搜索`}
+          />
           <div className="multi-select-actions">
             <Button variant="text" onClick={() => onChange([])}>
               清空
@@ -227,7 +286,7 @@ function MultiSelect({
             </Button>
           </div>
           <div className="multi-select-list">
-            {options.map((option) => (
+            {visible.map((option) => (
               <label className="multi-select-item" key={option}>
                 <input
                   type="checkbox"
@@ -238,7 +297,7 @@ function MultiSelect({
                 <span>{renderLabel ? renderLabel(option) : option}</span>
               </label>
             ))}
-            {options.length === 0 ? <div className="multi-select-empty">暂无选项</div> : null}
+            {visible.length === 0 ? <div className="multi-select-empty">无匹配项</div> : null}
           </div>
         </div>
       ) : null}

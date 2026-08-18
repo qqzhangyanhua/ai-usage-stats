@@ -181,6 +181,12 @@ export function formatClock(iso: string | null): string {
 }
 
 export function formatRangeLabel(filter: Filter, preset: string): string {
+  if (preset === "today") {
+    return "今天";
+  }
+  if (preset === "month") {
+    return "本月";
+  }
   if (preset === "all" || !filter.from || !filter.to) {
     return "全部历史";
   }
@@ -212,6 +218,16 @@ export function rangeFromPreset(preset: string): { from: string | null; to: stri
     const from = new Date(to.getTime() - days * 24 * 3600 * 1000);
     return { from: from.toISOString(), to: to.toISOString() };
   }
+  if (preset === "today") {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return { from: from.toISOString(), to: now.toISOString() };
+  }
+  if (preset === "month") {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: from.toISOString(), to: now.toISOString() };
+  }
   return { from: null, to: null };
 }
 
@@ -229,7 +245,7 @@ export function customRangeFilter(
 }
 
 export function previousFilter(filter: Filter, preset: string): Filter | null {
-  if (preset !== "7" && preset !== "30" && preset !== "custom") {
+  if (preset !== "7" && preset !== "30" && preset !== "custom" && preset !== "today" && preset !== "month") {
     return null;
   }
   if (!filter.from || !filter.to) {

@@ -244,6 +244,19 @@ describe("rangeFromPreset", () => {
     const spanMs = Date.parse(to!) - Date.parse(from!);
     expect(Math.round(spanMs / (24 * 3600 * 1000))).toBe(7);
   });
+
+  it("starts today at local midnight and month at the first of the month", () => {
+    const today = rangeFromPreset("today");
+    const month = rangeFromPreset("month");
+    expect(today.from).not.toBeNull();
+    expect(month.from).not.toBeNull();
+    const todayStart = new Date(today.from!);
+    const monthStart = new Date(month.from!);
+    expect(todayStart.getHours()).toBe(0);
+    expect(todayStart.getMinutes()).toBe(0);
+    expect(monthStart.getDate()).toBe(1);
+    expect(monthStart.getHours()).toBe(0);
+  });
 });
 
 describe("customRangeFilter", () => {
@@ -261,7 +274,7 @@ describe("customRangeFilter", () => {
 });
 
 describe("previousFilter", () => {
-  it("returns null outside of the 7/30/custom presets", () => {
+  it("returns null outside of bounded presets", () => {
     expect(previousFilter(emptyFilter, "all")).toBeNull();
   });
 

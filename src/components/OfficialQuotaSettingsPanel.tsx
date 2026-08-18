@@ -60,7 +60,7 @@ export function OfficialQuotaSettingsPanel({
   }
 
   return (
-    <section className="panel">
+    <section className="panel" id="settings-official-quota">
       <div className="panel-head">
         <div>
           <h2>官方额度</h2>
