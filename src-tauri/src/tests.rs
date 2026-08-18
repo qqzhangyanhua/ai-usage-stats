@@ -1,7 +1,9 @@
 use crate::adapters::cursor::{parse_cursor_commits, summarize_code_volume, CursorCommitRow};
 use crate::adapters::cursor_account;
 use crate::adapters::opencode::{parse_opencode_messages, OpencodeMessage};
-use crate::adapters::{claude, codex, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen};
+use crate::adapters::{
+    claude, codex, copilot, cursor_agent, dsh, factory, gemini, grok, kimi, pi, qwen,
+};
 use crate::aggregate;
 use crate::billing_window;
 use crate::cost::derive_cost;
@@ -440,6 +442,48 @@ fn cursor_agent_adapter_maps_result_usage_per_turn() {
 }
 
 #[test]
+fn copilot_adapter_only_uses_the_last_shutdown_snapshot_per_session() {
+    let records = copilot::parse_copilot_jsonl(
+        &fixture("copilot-events.jsonl"),
+        "/Users/dev/.copilot/session-state/c0ffee11-2222-4333-8444-555566667777/events.jsonl",
+    );
+    // 文件里有两次 session.shutdown（会话续接两次）；只应采信最后一次的累计用量，
+    // 否则会把第一次 shutdown 的 gpt-5.4 用量重复计入。
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].source, Source::Copilot);
+    assert_eq!(records[0].model, "claude-sonnet-4.5");
+    assert_eq!(records[0].provider, "");
+    assert_eq!(records[0].project, "/Users/dev/ai-usage-stats");
+    assert_eq!(
+        records[0].session_id,
+        "c0ffee11-2222-4333-8444-555566667777"
+    );
+    assert_eq!(records[0].occurred_at, "2026-08-10T15:12:30.500Z");
+    assert_eq!(records[0].input_tokens, 21583);
+    assert_eq!(records[0].output_tokens, 1064);
+    assert_eq!(records[0].cache_read_tokens, 21187);
+    assert_eq!(records[0].cache_creation_tokens, 0);
+    assert_eq!(records[0].total_tokens, 21583 + 1064 + 21187);
+
+    assert_eq!(records[1].model, "gpt-5.4");
+    assert_eq!(records[1].input_tokens, 244120);
+    assert_eq!(records[1].output_tokens, 2383);
+    assert_eq!(records[1].cache_read_tokens, 202112);
+}
+
+#[test]
+fn copilot_adapter_falls_back_to_parent_dir_name_when_session_id_is_missing() {
+    let content = r#"{"type":"session.shutdown","timestamp":"2026-08-11T00:00:00.000Z","data":{"modelMetrics":{"gpt-5.4":{"usage":{"inputTokens":10,"outputTokens":5,"cacheReadTokens":0,"cacheWriteTokens":0}}}}}"#;
+    let records = copilot::parse_copilot_jsonl(
+        content,
+        "/Users/dev/.copilot/session-state/no-start-event/events.jsonl",
+    );
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].session_id, "no-start-event");
+    assert_eq!(records[0].project, "");
+}
+
+#[test]
 fn source_maps_to_user_facing_application_names() {
     assert_eq!(Source::Claude.application_name(), "Claude Code");
     assert_eq!(Source::Codex.application_name(), "Codex");
@@ -447,6 +491,7 @@ fn source_maps_to_user_facing_application_names() {
     assert_eq!(Source::Opencode.application_name(), "OpenCode");
     assert_eq!(Source::Dsh.application_name(), "DeepSeek Harness");
     assert_eq!(Source::CursorAgent.application_name(), "Cursor Agent");
+    assert_eq!(Source::Copilot.application_name(), "GitHub Copilot CLI");
 }
 
 #[test]
@@ -2477,6 +2522,10 @@ fn source_scan_dirs_default_to_home_relative_paths() {
             home.join(".config/claude/projects"),
         ],
     );
+    assert_eq!(
+        ingest::source_scan_dirs_with(&overrides, home, Source::Copilot),
+        vec![home.join(".copilot/session-state")],
+    );
 }
 
 #[test]
@@ -2629,7 +2678,7 @@ fn overview_matches_source_model_project_and_session_rollups() {
 }
 
 fn write_all_source_fixtures(home: &std::path::Path) {
-    let paths: [(&str, &str); 7] = [
+    let paths: [(&str, &str); 8] = [
         (".codex/sessions/one.jsonl", "codex.jsonl"),
         (
             ".claude/projects/-Users-zhangyanhua-AI-TradingAgents-CN/04868551-34c3-4588-b984-6ae9a5d95f8a.jsonl",
@@ -2652,6 +2701,10 @@ fn write_all_source_fixtures(home: &std::path::Path) {
             "grok-updates.jsonl",
         ),
         (".qwen/tmp/hash/logs.json", "qwen-logs.json"),
+        (
+            ".copilot/session-state/c0ffee11-2222-4333-8444-555566667777/events.jsonl",
+            "copilot-events.jsonl",
+        ),
     ];
     for (rel, name) in paths {
         let path = home.join(rel);
@@ -2676,20 +2729,20 @@ fn ingest_all_fixtures_is_stable_on_refresh() {
     write_all_source_fixtures(home);
     let conn = store::open_memory().unwrap();
     let first = ingest::ingest_all(&conn, home).unwrap();
-    assert_eq!(first.files_parsed, 9);
-    assert_eq!(first.records_written, 14);
+    assert_eq!(first.files_parsed, 10);
+    assert_eq!(first.records_written, 16);
     let stored = store::load_all(&conn).unwrap();
-    assert_eq!(stored.len(), 14);
-    assert_eq!(stored.iter().map(|r| r.total_tokens).sum::<i64>(), 335997);
+    assert_eq!(stored.len(), 16);
+    assert_eq!(stored.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
     assert_rollups_match_overview(&stored, &Filter::default());
 
     let second = ingest::ingest_all(&conn, home).unwrap();
     assert_eq!(second.files_parsed, 0);
-    assert_eq!(second.files_skipped, 9);
+    assert_eq!(second.files_skipped, 10);
     assert_eq!(second.records_written, 0);
     let again = store::load_all(&conn).unwrap();
-    assert_eq!(again.len(), 14);
-    assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 335997);
+    assert_eq!(again.len(), 16);
+    assert_eq!(again.iter().map(|r| r.total_tokens).sum::<i64>(), 828446);
 }
 
 #[ignore]
