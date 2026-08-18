@@ -101,10 +101,12 @@ export default function App() {
                   diagnostics={data.diagnostics}
                   ingestReport={data.lastIngestReport}
                   rebuilding={data.rebuilding}
+                  purging={data.purging}
                   operationBusy={data.busy}
                   observedModels={data.options.models}
                   onChange={data.setPrices}
                   onRebuild={data.runRebuild}
+                  onPurgeArchived={data.runPurgeArchived}
                   onSave={async () => {
                     await invoke("save_price_table", { prices: data.prices });
                     data.setStatus("单价已保存");

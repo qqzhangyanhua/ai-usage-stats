@@ -110,6 +110,7 @@ export function useUsageData() {
   const [diagnostics, setDiagnostics] = useState<SourceDiagnostic[]>([]);
   const [lastIngestReport, setLastIngestReport] = useState<IngestReport | null>(null);
   const [rebuilding, setRebuilding] = useState<string | null>(null);
+  const [purging, setPurging] = useState<string | null>(null);
   const [codeVolume, setCodeVolume] = useState<CodeVolumeSummary | null>(null);
   const [status, setStatus] = useState("正在连接…");
   const [connected, setConnected] = useState(false);
@@ -304,8 +305,9 @@ export function useUsageData() {
         setLastIngestReport(report);
         const issue = report.files_failed > 0 ? `，失败 ${report.files_failed}` : "";
         const removed = report.records_removed > 0 ? `，清理 ${report.records_removed}` : "";
+        const archived = report.records_archived > 0 ? `，归档 ${report.records_archived}` : "";
         setStatus(
-          `${label}${report.partial_success ? "部分完成" : "完成"}：解析 ${report.files_parsed}，跳过 ${report.files_skipped}，写入 ${report.records_written}${removed}${issue}`,
+          `${label}${report.partial_success ? "部分完成" : "完成"}：解析 ${report.files_parsed}，跳过 ${report.files_skipped}，写入 ${report.records_written}${archived}${removed}${issue}`,
         );
         await refreshViews();
         try {
@@ -338,8 +340,9 @@ export function useUsageData() {
       try {
         const report = await invoke<IngestReport>("rebuild_cache", { source });
         setLastIngestReport(report);
+        const archived = report.records_archived > 0 ? `，归档 ${report.records_archived}` : "";
         setStatus(
-          `缓存重建${report.partial_success ? "部分完成" : "完成"}：写入 ${report.records_written}，清理 ${report.records_removed}，失败 ${report.files_failed}`,
+          `缓存重建${report.partial_success ? "部分完成" : "完成"}：写入 ${report.records_written}${archived}，清理 ${report.records_removed}，失败 ${report.files_failed}`,
         );
         await refreshViews();
         try {
@@ -353,6 +356,31 @@ export function useUsageData() {
       } finally {
         ingestOperation.current = false;
         setRebuilding(null);
+        setBusy(false);
+      }
+    },
+    [refreshViews],
+  );
+
+  const runPurgeArchived = useCallback(
+    async (source: string | null) => {
+      if (ingestOperation.current) {
+        return;
+      }
+      ingestOperation.current = true;
+      const target = source ?? "all";
+      setPurging(target);
+      setBusy(true);
+      setStatus(`正在清理${source ? `${source} ` : "全部"}已归档记录…`);
+      try {
+        const removed = await invoke<number>("purge_archived_records", { source });
+        setStatus(`已永久删除 ${removed} 条归档记录`);
+        await refreshViews();
+      } catch (error) {
+        setStatus(`清理归档记录失败：${humanStatus(error)}`);
+      } finally {
+        ingestOperation.current = false;
+        setPurging(null);
         setBusy(false);
       }
     },
@@ -488,6 +516,7 @@ export function useUsageData() {
     diagnostics,
     lastIngestReport,
     rebuilding,
+    purging,
     codeVolume,
     status,
     setStatus,
@@ -503,6 +532,7 @@ export function useUsageData() {
     openSessions,
     runIngest,
     runRebuild,
+    runPurgeArchived,
     reportError,
   };
 }
