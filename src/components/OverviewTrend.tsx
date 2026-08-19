@@ -8,6 +8,7 @@ import type { Grain, NamedAmount, SeriesPoint } from "../types";
 import { DonutChart } from "./DonutChart";
 import { ExportableChart } from "./ExportableChart";
 import { LegendRow } from "./Kpi";
+import { RangeBackButton } from "./RangeBackButton";
 import { GrainSwitch } from "./ui/GrainSwitch";
 import { VendorIcon } from "./VendorIcon";
 
@@ -19,6 +20,7 @@ export function OverviewTrend({
   theme,
   onGrain,
   onRangeSelect,
+  onRangeBack,
   onModelClick,
 }: {
   trend: SeriesPoint[];
@@ -28,6 +30,7 @@ export function OverviewTrend({
   theme: ResolvedTheme;
   onGrain: (grain: Grain) => void;
   onRangeSelect?: (from: string, to: string) => void;
+  onRangeBack?: () => void;
   onModelClick?: (model: string) => void;
 }) {
   const last = trend[trend.length - 1];
@@ -61,7 +64,10 @@ export function OverviewTrend({
       <article className="panel trend-panel">
         <div className="panel-head">
           <h2>Token 使用趋势</h2>
-          <GrainSwitch value={grain} onChange={onGrain} />
+          <div className="panel-head-actions">
+            {onRangeBack ? <RangeBackButton onClick={onRangeBack} /> : null}
+            <GrainSwitch value={grain} onChange={onGrain} />
+          </div>
         </div>
         <div className="chart-fill">
           <ExportableChart

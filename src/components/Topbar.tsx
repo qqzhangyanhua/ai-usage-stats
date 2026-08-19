@@ -18,6 +18,7 @@ import {
 } from "../lib/filterChips";
 import type { Filter, FilterOptions, View } from "../types";
 import { viewTitle } from "./Sidebar";
+import { RangeBackButton } from "./RangeBackButton";
 import { Button } from "./ui/Button";
 import { DatePicker } from "./ui/DatePicker";
 import { Select } from "./ui/Select";
@@ -54,6 +55,7 @@ export function Topbar({
   refreshDisabled = false,
   onPreset,
   onChange,
+  onRangeBack,
   onRefresh,
 }: {
   view: View;
@@ -64,6 +66,7 @@ export function Topbar({
   refreshDisabled?: boolean;
   onPreset: (preset: string, range?: { from: string | null; to: string | null }) => void;
   onChange: (filter: Filter) => void;
+  onRangeBack?: () => void;
   onRefresh: () => void;
 }) {
   const { title, subtitle } = viewTitle(view);
@@ -72,17 +75,29 @@ export function Topbar({
     view === "cursor-sessions" ||
     view === "instructions" ||
     view === "settings";
-  const [customOpen, setCustomOpen] = useState(preset === "custom");
-  const [customFrom, setCustomFrom] = useState(() => (filter.from ?? "").slice(0, 10));
-  const [customTo, setCustomTo] = useState(() => (filter.to ?? "").slice(0, 10));
+  const committedFrom = (filter.from ?? "").slice(0, 10);
+  const committedTo = (filter.to ?? "").slice(0, 10);
+  const rangeKey = `${preset}:${filter.from ?? ""}:${filter.to ?? ""}`;
+  const [draft, setDraft] = useState({
+    key: rangeKey,
+    from: committedFrom,
+    to: committedTo,
+  });
+  if (draft.key !== rangeKey) {
+    setDraft({ key: rangeKey, from: committedFrom, to: committedTo });
+  }
+  const customOpen = preset === "custom";
+  const customFrom = draft.key === rangeKey ? draft.from : committedFrom;
+  const customTo = draft.key === rangeKey ? draft.to : committedTo;
   const chips = filterChips(filter);
 
   function selectPreset(value: string) {
     if (value === "custom") {
-      setCustomOpen(true);
+      if (preset !== "custom") {
+        onPreset("custom", { from: filter.from, to: filter.to });
+      }
       return;
     }
-    setCustomOpen(false);
     onPreset(value);
   }
 
@@ -102,6 +117,7 @@ export function Topbar({
         </div>
         {!hideFilters ? (
           <div className="topbar-actions">
+            {onRangeBack ? <RangeBackButton disabled={disabled} onClick={onRangeBack} /> : null}
             <Select
               icon="calendar"
               ariaLabel="时间范围"
@@ -118,7 +134,7 @@ export function Topbar({
                   disabled={disabled}
                   value={customFrom}
                   max={customTo || undefined}
-                  onChange={setCustomFrom}
+                  onChange={(from) => setDraft({ key: rangeKey, from, to: customTo })}
                 />
                 <span>至</span>
                 <DatePicker
@@ -126,7 +142,7 @@ export function Topbar({
                   disabled={disabled}
                   value={customTo}
                   min={customFrom || undefined}
-                  onChange={setCustomTo}
+                  onChange={(to) => setDraft({ key: rangeKey, from: customFrom, to })}
                 />
                 <Button
                   variant="text"

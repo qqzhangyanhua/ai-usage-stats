@@ -8,7 +8,6 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
 import { clearDimensionFilters, withModelFilter } from "./lib/filterChips";
-import { customRangeFilter } from "./lib/format";
 import {
   LazyApplicationAnalytics,
   LazyBreakdown,
@@ -60,6 +59,7 @@ export default function App() {
           refreshDisabled={data.busy}
           onPreset={data.applyPreset}
           onChange={data.applyFilter}
+          onRangeBack={data.canGoBack ? data.popRange : undefined}
           onRefresh={() => data.runIngest("刷新")}
         />
         <main className="main">
@@ -97,9 +97,8 @@ export default function App() {
                     onProjectClick={(project) =>
                       data.applyFilter({ ...data.filter, projects: [project] })
                     }
-                    onRangeSelect={(from, to) =>
-                      data.applyPreset("custom", customRangeFilter(from, to))
-                    }
+                    onRangeSelect={data.drillRange}
+                    onRangeBack={data.canGoBack ? data.popRange : undefined}
                     onModelClick={(model) => data.applyFilter(withModelFilter(data.filter, model))}
                     onSessionClick={(session) => {
                       data.openSessions();
@@ -113,9 +112,8 @@ export default function App() {
                     setGrain={data.setGrain}
                     points={data.trend}
                     theme={theme}
-                    onRangeSelect={(from, to) =>
-                      data.applyPreset("custom", customRangeFilter(from, to))
-                    }
+                    onRangeSelect={data.drillRange}
+                    onRangeBack={data.canGoBack ? data.popRange : undefined}
                   />
                 ) : null}
                 {view === "application" ? (

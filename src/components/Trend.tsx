@@ -12,6 +12,7 @@ import { ExportableChart } from "./ExportableChart";
 import { ExportButton } from "./ExportButton";
 import { KpiCard } from "./Kpi";
 import { Pagination } from "./Pagination";
+import { RangeBackButton } from "./RangeBackButton";
 import { GrainSwitch, grainUnit } from "./ui/GrainSwitch";
 
 const PAGE_SIZE = 20;
@@ -22,12 +23,14 @@ export const Trend = memo(function Trend({
   points,
   theme,
   onRangeSelect,
+  onRangeBack,
 }: {
   grain: Grain;
   setGrain: (grain: Grain) => void;
   points: SeriesPoint[];
   theme: ResolvedTheme;
   onRangeSelect?: (from: string, to: string) => void;
+  onRangeBack?: () => void;
 }) {
   const [page, setPage] = useState(1);
   const option = useMemo(() => areaTrendOption(points, theme), [points, theme]);
@@ -121,9 +124,13 @@ export const Trend = memo(function Trend({
             <p className="panel-note">
               按{grainUnit[grain]}查看输入 / 输出 Token
               {onRangeSelect ? "。点击数据点可下钻到该时段" : ""}
+              {onRangeBack ? "，返回上一级可回到之前的范围" : ""}
             </p>
           </div>
-          <GrainSwitch value={grain} onChange={setGrain} />
+          <div className="panel-head-actions">
+            {onRangeBack ? <RangeBackButton onClick={onRangeBack} /> : null}
+            <GrainSwitch value={grain} onChange={setGrain} />
+          </div>
         </div>
         {points.length > 0 ? (
           <ExportableChart

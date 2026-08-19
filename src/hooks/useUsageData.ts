@@ -2,7 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heatmapFilter } from "../lib/calendar";
 import { clearCursorSessionDetailCache } from "../lib/cursorSessionDetailCache";
-import { humanStatus, rangeFromPreset } from "../lib/format";
+import { customRangeFilter, humanStatus, rangeFromPreset } from "../lib/format";
+import { rangeSnapshot } from "../lib/rangeHistory";
 import type {
   ApplicationAnalyticsDto,
   BillingWindowsDto,
@@ -35,6 +36,7 @@ import {
 import { emptyFilter } from "./usage/constants";
 import { useAutoRefresh } from "./usage/useAutoRefresh";
 import { useIngestOperations } from "./usage/useIngestOperations";
+import { useRangeHistory } from "./usage/useRangeHistory";
 import { useSessionTurns } from "./usage/useSessionTurns";
 import { useViewRefresh } from "./usage/useViewRefresh";
 
@@ -51,6 +53,12 @@ export function useUsageData() {
   const [viewScopes, setViewScopes] = useState<Record<View, ViewScope>>(initialViewScopes);
   const { filter, preset } = viewScopes[view];
   const sessionsFilter = viewScopes.sessions.filter;
+  const {
+    canGoBack,
+    pushCurrent: pushRange,
+    pop: popRangeHistoryState,
+    clear: clearRangeHistory,
+  } = useRangeHistory(view);
   const [options, setOptions] = useState<FilterOptions>({
     sources: [],
     models: [],
@@ -294,18 +302,49 @@ export function useUsageData() {
     }
   }, []);
 
-  const applyPreset = useCallback(
-    (next: string, explicitRange?: { from: string | null; to: string | null }) => {
-      const range = explicitRange ?? rangeFromPreset(next);
+  const applyScope = useCallback(
+    (nextPreset: string, explicitRange?: { from: string | null; to: string | null }) => {
+      const range = explicitRange ?? rangeFromPreset(nextPreset);
       const nextFilter = { ...filter, ...range };
       setViewScopes((current) => ({
         ...current,
-        [view]: { filter: nextFilter, preset: next },
+        [view]: { filter: nextFilter, preset: nextPreset },
       }));
-      refreshViews(nextFilter, next).catch(reportError);
+      refreshViews(nextFilter, nextPreset).catch(reportError);
     },
     [filter, view, refreshViews, reportError],
   );
+
+  const applyPreset = useCallback(
+    (next: string, explicitRange?: { from: string | null; to: string | null }) => {
+      clearRangeHistory();
+      applyScope(next, explicitRange);
+    },
+    [applyScope, clearRangeHistory],
+  );
+
+  const drillRange = useCallback(
+    (from: string, to: string) => {
+      const range = customRangeFilter(from, to);
+      const pushed = pushRange(
+        rangeSnapshot(preset, filter.from, filter.to),
+        rangeSnapshot("custom", range.from, range.to),
+      );
+      if (!pushed) {
+        return;
+      }
+      applyScope("custom", range);
+    },
+    [applyScope, filter.from, filter.to, preset, pushRange],
+  );
+
+  const popRange = useCallback(() => {
+    const previous = popRangeHistoryState();
+    if (!previous) {
+      return;
+    }
+    applyScope(previous.preset, { from: previous.from, to: previous.to });
+  }, [applyScope, popRangeHistoryState]);
 
   const applyViewFilter = useCallback(
     (target: View, next: Filter) => {
@@ -386,6 +425,9 @@ export function useUsageData() {
     setAutoRefresh,
     navigate,
     applyPreset,
+    drillRange,
+    popRange,
+    canGoBack,
     applyFilter,
     applySessionsFilter,
     openSessions,

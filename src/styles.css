@@ -1327,6 +1327,19 @@ button.heat-cell {
   margin-bottom: 6px;
 }
 
+.panel-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .collapsible-actions {
   display: flex;
   align-items: center;

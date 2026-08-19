@@ -64,6 +64,7 @@ export const Overview = memo(function Overview({
   onProjectClick,
   onSessionClick,
   onRangeSelect,
+  onRangeBack,
   onModelClick,
 }: {
   overview: OverviewDto | null;
@@ -86,6 +87,7 @@ export const Overview = memo(function Overview({
   onProjectClick?: (project: string) => void;
   onSessionClick?: (session: { id: string; source: string }) => void;
   onRangeSelect?: (from: string, to: string) => void;
+  onRangeBack?: () => void;
   onModelClick?: (model: string) => void;
 }) {
   const data = overview ?? emptyOverview;
@@ -194,6 +196,7 @@ export const Overview = memo(function Overview({
           theme={theme}
           onGrain={onGrain}
           onRangeSelect={onRangeSelect}
+          onRangeBack={onRangeBack}
           onModelClick={onModelClick}
         />
       </CollapsibleSection>
