@@ -9,16 +9,33 @@ use crate::official_quota::{parse_resets_at, sanitize_percent};
 
 const BILLING_CREDITS_URL: &str = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const BILLING_MONTHLY_URL: &str = "https://cli-chat-proxy.grok.com/v1/billing";
+const USER_URL: &str = "https://cli-chat-proxy.grok.com/v1/user";
 const TIMEOUT: Duration = Duration::from_secs(12);
 const LEGACY_SCOPE: &str = "https://accounts.x.ai/sign-in";
 const SUPERGROK_SCOPE_PREFIX: &str = "https://auth.x.ai";
 const API_KEY_SCOPE: &str = "xai::api_key";
+const TOKEN_AUTH: &str = "xai-grok-cli";
+const CLIENT_MODE: &str = "interactive";
+/// grok-build 当前 CARGO_PKG_VERSION；本机 `~/.grok/.metadata_version` 优先。
+const DEFAULT_GROK_CLI_VERSION: &str = "1.0.5";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrokSession {
+    pub token: String,
+    pub user_id: Option<String>,
+}
 
 pub fn fetch_rate_limits() -> Result<(Vec<OfficialQuotaWindow>, String), String> {
-    let token = load_auth_token()?;
-    let credits_raw = request_billing(&token, BILLING_CREDITS_URL)?;
-    let mut windows = parse_credits(&credits_raw)?;
-    if let Ok(monthly_raw) = request_billing(&token, BILLING_MONTHLY_URL) {
+    let session = load_session()?;
+    let user_id = resolve_user_id(&session)?;
+    let mut windows = match request_json(&session.token, Some(&user_id), BILLING_CREDITS_URL) {
+        Ok(raw) => parse_credits(&raw)?,
+        Err(error) if super::grok_grpc::should_fallback_to_grpc(&error) => {
+            super::grok_grpc::fetch_credits(&session.token, Some(&user_id), &grok_client_version())?
+        }
+        Err(error) => return Err(error),
+    };
+    if let Ok(monthly_raw) = request_json(&session.token, Some(&user_id), BILLING_MONTHLY_URL) {
         if let Ok(monthly) = parse_monthly(&monthly_raw) {
             merge_windows(&mut windows, monthly);
         }
@@ -100,7 +117,7 @@ pub fn parse_monthly(raw: &str) -> Result<Vec<OfficialQuotaWindow>, String> {
     Ok(windows)
 }
 
-pub fn parse_auth_json(raw: &str, now: DateTime<Utc>) -> Result<String, String> {
+pub fn parse_auth_json(raw: &str, now: DateTime<Utc>) -> Result<GrokSession, String> {
     let value: Value = serde_json::from_str(raw)
         .map_err(|_| "Grok 登录凭证无效，请重新运行 grok login".to_string())?;
     let Some(map) = value.as_object() else {
@@ -133,19 +150,23 @@ pub fn parse_auth_json(raw: &str, now: DateTime<Utc>) -> Result<String, String> 
             continue;
         }
         saw_api_key_only = false;
+        let session = GrokSession {
+            token,
+            user_id: user_id_of(node),
+        };
         if scope.starts_with(SUPERGROK_SCOPE_PREFIX) {
-            preferred = Some(token);
+            preferred = Some(session);
             break;
         }
         if scope == LEGACY_SCOPE {
-            legacy = Some(token);
+            legacy = Some(session);
         } else {
-            other = Some(token);
+            other = Some(session);
         }
     }
 
-    if let Some(token) = preferred.or(legacy).or(other) {
-        return Ok(token);
+    if let Some(session) = preferred.or(legacy).or(other) {
+        return Ok(session);
     }
     if saw_any && saw_api_key_only && !expired_only {
         return Err(
@@ -158,13 +179,33 @@ pub fn parse_auth_json(raw: &str, now: DateTime<Utc>) -> Result<String, String> 
     Err("Grok 登录凭证无效，请重新运行 grok login".to_string())
 }
 
-fn load_auth_token() -> Result<String, String> {
+pub fn parse_user_id_response(raw: &str) -> Result<String, String> {
+    let value = parse_object(raw, "Grok 用户信息")?;
+    user_id_of(&value)
+        .or_else(|| string_field(&value, "id"))
+        .ok_or_else(|| "Grok 用户信息里没有 userId".to_string())
+}
+
+fn load_session() -> Result<GrokSession, String> {
     let path = auth_path();
     if !path.exists() {
         return Err("尚未登录 Grok CLI，请先运行 grok login".to_string());
     }
     let raw = std::fs::read_to_string(&path).map_err(|e| format!("读取 Grok 登录凭证失败：{e}"))?;
     parse_auth_json(&raw, Utc::now())
+}
+
+fn resolve_user_id(session: &GrokSession) -> Result<String, String> {
+    if let Some(user_id) = session
+        .user_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        return Ok(user_id.to_string());
+    }
+    let raw = request_json(&session.token, None, USER_URL)?;
+    parse_user_id_response(&raw)
 }
 
 fn auth_path() -> PathBuf {
@@ -183,12 +224,17 @@ fn grok_home() -> PathBuf {
         .unwrap_or_else(|| crate::ingest::default_home().join(".grok"))
 }
 
-fn request_billing(token: &str, url: &str) -> Result<String, String> {
-    let request = ureq::get(url)
+fn request_json(token: &str, user_id: Option<&str>, url: &str) -> Result<String, String> {
+    let mut request = ureq::get(url)
         .timeout(TIMEOUT)
         .set("Authorization", &format!("Bearer {token}"))
-        .set("X-XAI-Token-Auth", "xai-grok-cli")
+        .set("X-XAI-Token-Auth", TOKEN_AUTH)
+        .set("x-grok-client-version", &grok_client_version())
+        .set("x-grok-client-mode", CLIENT_MODE)
         .set("Accept", "application/json");
+    if let Some(user_id) = user_id.filter(|id| !id.is_empty()) {
+        request = request.set("x-userid", user_id);
+    }
     match request.call() {
         Ok(response) => response
             .into_string()
@@ -197,11 +243,36 @@ fn request_billing(token: &str, url: &str) -> Result<String, String> {
             Err("Grok 登录已过期，请重新运行 grok login".to_string())
         }
         Err(ureq::Error::Status(code, response)) => {
-            let _ = response.into_string();
-            Err(format!("拉取 Grok 限额失败：HTTP {code}"))
+            let body = response.into_string().unwrap_or_default();
+            Err(format!(
+                "拉取 Grok 限额失败：{}",
+                status_detail(code, &body)
+            ))
         }
         Err(_) => Err("无法连接 Grok 限额接口，请检查网络后重试".to_string()),
     }
+}
+
+fn grok_client_version() -> String {
+    std::fs::read_to_string(grok_home().join(".metadata_version"))
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| DEFAULT_GROK_CLI_VERSION.to_string())
+}
+
+fn status_detail(code: u16, body: &str) -> String {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_else(|| format!("HTTP {code}"))
 }
 
 fn parse_object(raw: &str, label: &str) -> Result<Value, String> {
@@ -302,13 +373,21 @@ fn merge_windows(into: &mut Vec<OfficialQuotaWindow>, extra: Vec<OfficialQuotaWi
 }
 
 fn token_of(node: &Value) -> Option<String> {
-    ["key", "access_token"].into_iter().find_map(|field| {
-        node.get(field)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|token| !token.is_empty())
-            .map(ToOwned::to_owned)
-    })
+    string_field(node, "key").or_else(|| string_field(node, "access_token"))
+}
+
+fn user_id_of(node: &Value) -> Option<String> {
+    string_field(node, "user_id")
+        .or_else(|| string_field(node, "userId"))
+        .or_else(|| string_field(node, "userid"))
+}
+
+fn string_field(node: &Value, field: &str) -> Option<String> {
+    node.get(field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn is_blocked_mode(node: &Value) -> bool {

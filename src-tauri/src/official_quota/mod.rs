@@ -2,6 +2,7 @@ pub mod claude;
 pub mod codex;
 pub mod cursor;
 pub mod grok;
+pub(crate) mod grok_grpc;
 pub mod hook;
 pub mod notify;
 

@@ -463,10 +463,9 @@ fn grok_auth_prefers_supergrok_scope_and_skips_expired() {
             "expires_at": "2026-08-20T00:00:00+00:00"
         }
     }"#;
-    assert_eq!(
-        official_quota::grok::parse_auth_json(raw, now).unwrap(),
-        "supergrok-token"
-    );
+    let session = official_quota::grok::parse_auth_json(raw, now).unwrap();
+    assert_eq!(session.token, "supergrok-token");
+    assert_eq!(session.user_id, None);
 
     let expired = r#"{
         "https://auth.x.ai::openid": {
@@ -493,6 +492,87 @@ fn grok_auth_rejects_api_key_and_weblogin() {
     }"#;
     let error = official_quota::grok::parse_auth_json(web_login, now).unwrap_err();
     assert!(error.contains("无效"));
+}
+
+#[test]
+fn grok_auth_reads_user_id_from_session() {
+    let now = chrono::DateTime::parse_from_rfc3339("2026-08-19T00:00:00+00:00")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let raw = r#"{
+        "https://auth.x.ai::openid": {
+            "key": "supergrok-token",
+            "auth_mode": "oidc",
+            "user_id": "user-123",
+            "expires_at": "2026-08-20T00:00:00+00:00"
+        }
+    }"#;
+    let session = official_quota::grok::parse_auth_json(raw, now).unwrap();
+    assert_eq!(session.token, "supergrok-token");
+    assert_eq!(session.user_id.as_deref(), Some("user-123"));
+}
+
+#[test]
+fn grok_user_response_reads_camel_case_user_id() {
+    assert_eq!(
+        official_quota::grok::parse_user_id_response(r#"{"userId":"mock-user","email":"a@b.c"}"#)
+            .unwrap(),
+        "mock-user"
+    );
+    assert!(official_quota::grok::parse_user_id_response(r#"{"email":"a@b.c"}"#).is_err());
+}
+
+#[test]
+fn grok_rest_serialize_error_falls_back_to_grpc() {
+    assert!(official_quota::grok_grpc::should_fallback_to_grpc(
+        "拉取 Grok 限额失败：Failed to serialize billing response"
+    ));
+    assert!(official_quota::grok_grpc::should_fallback_to_grpc(
+        "拉取 Grok 限额失败：HTTP 500"
+    ));
+    assert!(!official_quota::grok_grpc::should_fallback_to_grpc(
+        "Grok 登录已过期，请重新运行 grok login"
+    ));
+}
+
+#[test]
+fn grok_grpc_parses_ratio_and_reset() {
+    let inner = {
+        let mut body = vec![0x0d];
+        body.extend_from_slice(&0.425f32.to_le_bytes());
+        let mut timestamp = vec![0x08];
+        timestamp.extend(encode_varint(1_800_000_000));
+        body.push(0x2a);
+        body.extend(encode_varint(timestamp.len() as u64));
+        body.extend(timestamp);
+        body
+    };
+    let mut payload = vec![0x0a];
+    payload.extend(encode_varint(inner.len() as u64));
+    payload.extend(inner);
+    let mut framed = vec![0x00];
+    framed.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    framed.extend(payload);
+
+    let windows = official_quota::grok_grpc::parse_credits_grpc(&framed, 1_700_000_000).unwrap();
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].kind, "weekly");
+    assert!((windows[0].used_percent.unwrap() - 42.5).abs() < 0.01);
+    assert!(windows[0]
+        .resets_at
+        .as_deref()
+        .unwrap()
+        .starts_with("2027-01-15"));
+}
+
+fn encode_varint(mut value: u64) -> Vec<u8> {
+    let mut out = Vec::new();
+    while value >= 0x80 {
+        out.push((value as u8) | 0x80);
+        value >>= 7;
+    }
+    out.push(value as u8);
+    out
 }
 
 #[test]

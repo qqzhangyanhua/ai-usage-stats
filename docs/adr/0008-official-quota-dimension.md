@@ -7,7 +7,7 @@ Claude / Codex / Cursor / Grok 的订阅限额是账号级事实，和本机消�
 - Claude：设置页 opt-in 写入 statusline hook，把 stdin 的 `rate_limits` 落到本机捕获文件；应用只读该文件。
 - Codex：在用户打开总览或手动刷新时，一次性启动本机 `codex app-server`，调用 `account/rateLimits/read`。
 - Cursor：复用已有钥匙串 token，请求 `GET /api/usage-summary`（与账号用量事件接口分开）。
-- Grok：读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token，请求 CLI chat proxy 的 `GET /v1/billing?format=credits`（周额度）和 `GET /v1/billing`（月额度，失败不影响周额度）。
+- Grok：读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token 与 `user_id`，按官方 CLI 头请求 CLI chat proxy 的 `GET /v1/billing?format=credits`（周额度）和 `GET /v1/billing`（月额度，失败不影响周额度）。缺 `user_id` 时先 `GET /v1/user`。
 
 缓存遵循「最后一次正确结果」：取数失败不覆盖旧窗口，只更新错误文案。新鲜度三态：`official` / `stale`（捕获超过 10 分钟）/ `unavailable`。托盘只读缓存，不为菜单栏去打 Cursor / Grok HTTP 或拉起 Codex。
 

@@ -42,7 +42,9 @@ Cursor 订阅限额是多档并行，不能只取总量：
 
 读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token。优先 `https://auth.x.ai…` 作用域，其次 `https://accounts.x.ai/sign-in`。token 字段为 `key`（兼容 `access_token`）。跳过 `web_login` 与纯 API key（`xai::api_key` / `auth_mode=api_key`）。
 
-请求头：`Authorization: Bearer <token>`、`X-XAI-Token-Auth: xai-grok-cli`。
+请求头对齐官方 CLI：`Authorization: Bearer <token>`、`X-XAI-Token-Auth: xai-grok-cli`、`x-userid`（`auth.json` 的 `user_id`，缺则先 `GET /v1/user`）、`x-grok-client-version`（`~/.grok/.metadata_version`，否则 1.0.5）、`x-grok-client-mode: interactive`。
+
+REST `?format=credits` 对部分账号会 500（`Failed to serialize billing response`）。此时回落到 `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`（空 gRPC-web 帧 + 同一套 Bearer），只取周额度百分比和重置时间。
 
 - `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits`
   - `config.creditUsagePercent`（0–100）→ 窗口 `weekly` / 周额度
