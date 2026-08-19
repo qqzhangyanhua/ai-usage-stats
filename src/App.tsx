@@ -28,6 +28,7 @@ export default function App() {
   const { theme, mode: themeMode, setMode: setThemeMode } = useTheme();
   const { layout: overviewLayout, setLayout: setOverviewLayout } = useOverviewLayout();
   const { view } = data;
+  const detectedSources = data.diagnostics.filter((row) => row.detected).map((row) => row.source);
 
   useKeyboardShortcuts({
     onNavigate: data.navigate,
@@ -108,10 +109,7 @@ export default function App() {
                     }}
                     layout={overviewLayout}
                     onLayoutChange={setOverviewLayout}
-                    onOpenLayoutSettings={() => {
-                      data.navigate("settings");
-                      window.history.replaceState(null, "", "#settings-overview");
-                    }}
+                    detectedSources={detectedSources}
                   />
                 ) : null}
                 {view === "trend" ? (

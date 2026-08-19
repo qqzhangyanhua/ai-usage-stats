@@ -4,6 +4,7 @@ import { heatmapGrid } from "../lib/calendar";
 import { chartPalette } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import {
+  collectPresentSources,
   filterQuotaItems,
   isModuleVisible,
   visibleModuleCount,
@@ -75,7 +76,7 @@ export const Overview = memo(function Overview({
   onModelClick,
   layout,
   onLayoutChange,
-  onOpenLayoutSettings,
+  detectedSources,
 }: {
   overview: OverviewDto | null;
   billingWindows: BillingWindowsDto | null;
@@ -101,7 +102,7 @@ export const Overview = memo(function Overview({
   onModelClick?: (model: string) => void;
   layout: OverviewLayout;
   onLayoutChange: (layout: OverviewLayout) => void;
-  onOpenLayoutSettings?: () => void;
+  detectedSources: string[];
 }) {
   const data = overview ?? emptyOverview;
   const palette = chartPalette(theme);
@@ -110,6 +111,14 @@ export const Overview = memo(function Overview({
   const last = trend[trend.length - 1];
   const rate = last ? Math.round(last.total_tokens / BUCKET_MINUTES[grain]) : 0;
   const spark = trend.map((point) => point.total_tokens);
+  const presentSources = useMemo(
+    () =>
+      collectPresentSources(detectedSources, [
+        ...(billingWindows?.current ?? []),
+        ...(billingWindows?.weekly ?? []),
+      ]),
+    [billingWindows, detectedSources],
+  );
   const visibleBilling = useMemo(() => {
     if (!billingWindows) {
       return null;
@@ -150,8 +159,9 @@ export const Overview = memo(function Overview({
     <div className="dash">
       <OverviewLayoutBar
         layout={layout}
+        detectedSources={detectedSources}
+        presentSources={presentSources}
         onChange={onLayoutChange}
-        onOpenSettings={onOpenLayoutSettings}
       />
       {!hasVisibleModule ? (
         <EmptyState

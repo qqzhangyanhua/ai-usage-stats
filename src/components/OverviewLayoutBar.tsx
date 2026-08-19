@@ -1,18 +1,27 @@
 import { useState } from "react";
-import { defaultOverviewLayout, type OverviewLayout } from "../lib/overviewLayout";
+import { applicationLabel } from "../lib/format";
+import {
+  defaultOverviewLayout,
+  OVERVIEW_MODULE_LABELS,
+  summarizeOverviewLayout,
+  type OverviewLayout,
+} from "../lib/overviewLayout";
 import { OverviewLayoutControls } from "./OverviewLayoutControls";
 import { Button } from "./ui/Button";
 
 export function OverviewLayoutBar({
   layout,
+  detectedSources,
+  presentSources,
   onChange,
-  onOpenSettings,
 }: {
   layout: OverviewLayout;
+  detectedSources: string[];
+  presentSources: string[];
   onChange: (layout: OverviewLayout) => void;
-  onOpenSettings?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const summary = formatLayoutSummary(layout, presentSources);
 
   return (
     <section className="overview-layout-bar">
@@ -25,23 +34,38 @@ export function OverviewLayoutBar({
         >
           {open ? "收起显示配置" : "配置显示"}
         </Button>
-        <span className="muted">选择首页模块，以及额度里的 Codex、Cursor 等来源</span>
-        <div className="overview-layout-bar-actions">
-          {open ? (
+        <span className="muted">{summary}</span>
+        {open ? (
+          <div className="overview-layout-bar-actions">
             <Button onClick={() => onChange(defaultOverviewLayout())}>恢复默认</Button>
-          ) : null}
-          {onOpenSettings ? (
-            <Button variant="text" onClick={onOpenSettings}>
-              打开设置
-            </Button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
       {open ? (
         <div id="overview-layout-editor" className="overview-layout-editor">
-          <OverviewLayoutControls layout={layout} onChange={onChange} />
+          <OverviewLayoutControls
+            layout={layout}
+            detectedSources={detectedSources}
+            presentSources={presentSources}
+            onChange={onChange}
+          />
         </div>
       ) : null}
     </section>
   );
+}
+
+function formatLayoutSummary(layout: OverviewLayout, presentSources: string[]): string {
+  const { hiddenModules, hiddenPresentSources } = summarizeOverviewLayout(layout, presentSources);
+  if (hiddenModules.length === 0 && hiddenPresentSources.length === 0) {
+    return "全部模块与额度来源均显示";
+  }
+  const parts: string[] = [];
+  if (hiddenModules.length > 0) {
+    parts.push(`已隐藏 ${hiddenModules.map((id) => OVERVIEW_MODULE_LABELS[id]).join("、")}`);
+  }
+  if (hiddenPresentSources.length > 0) {
+    parts.push(`额度未显示 ${hiddenPresentSources.map((id) => applicationLabel(id)).join("、")}`);
+  }
+  return parts.join(" · ");
 }

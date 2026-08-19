@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  applyDetectedQuotaSources,
+  applyFavoriteQuotaSources,
+  collectPresentSources,
   defaultOverviewLayout,
   filterQuotaItems,
   isModuleVisible,
@@ -8,11 +11,13 @@ import {
   OVERVIEW_MODULE_IDS,
   parseOverviewLayout,
   QUOTA_SOURCE_IDS,
+  quotaSourceChipIds,
   readOverviewLayout,
   setAllModulesVisible,
   setAllQuotaSourcesVisible,
   setModuleVisible,
   setQuotaSourceVisible,
+  summarizeOverviewLayout,
   visibleModuleCount,
   visibleQuotaSourceCount,
   writeOverviewLayout,
@@ -115,6 +120,37 @@ describe("visibility helpers", () => {
     expect(visibleModuleCount(hidden)).toBe(0);
     expect(visibleQuotaSourceCount(shown)).toBe(QUOTA_SOURCE_IDS.length);
     expect(shown.modules.kpi).toBe(false);
+  });
+
+  it("applies favorite and detected source sets", () => {
+    const favorites = applyFavoriteQuotaSources(defaultOverviewLayout());
+    expect(favorites.quotaSources.codex).toBe(true);
+    expect(favorites.quotaSources.cursor_agent).toBe(true);
+    expect(favorites.quotaSources.grok).toBe(false);
+    const detected = applyDetectedQuotaSources(favorites, ["codex", "kimi"]);
+    expect(detected.quotaSources.codex).toBe(true);
+    expect(detected.quotaSources.cursor_agent).toBe(false);
+    expect(detected.quotaSources.kimi).toBe(true);
+  });
+
+  it("lists present sources and collapses chips until show-all", () => {
+    const present = collectPresentSources(["kimi"], [{ source: "codex" }, { source: "custom" }]);
+    expect(present).toEqual(["codex", "kimi", "custom"]);
+    expect(quotaSourceChipIds(present, false)).toEqual(["codex", "kimi", "custom"]);
+    expect(quotaSourceChipIds(present, true)[0]).toBe("codex");
+    expect(quotaSourceChipIds(present, true)).toContain("cursor_agent");
+    expect(quotaSourceChipIds([], false)).toEqual([...QUOTA_SOURCE_IDS]);
+  });
+
+  it("summarizes hidden modules and present sources", () => {
+    const layout = setModuleVisible(
+      setQuotaSourceVisible(defaultOverviewLayout(), "claude", false),
+      "heatmap",
+      false,
+    );
+    const summary = summarizeOverviewLayout(layout, ["codex", "claude", "cursor_agent"]);
+    expect(summary.hiddenModules).toEqual(["heatmap"]);
+    expect(summary.hiddenPresentSources).toEqual(["claude"]);
   });
 });
 

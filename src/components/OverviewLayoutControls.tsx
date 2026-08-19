@@ -1,11 +1,13 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { applicationLabel } from "../lib/format";
 import {
+  applyDetectedQuotaSources,
+  applyFavoriteQuotaSources,
   isModuleVisible,
   isQuotaSourceVisible,
   OVERVIEW_MODULE_IDS,
   OVERVIEW_MODULE_LABELS,
-  QUOTA_SOURCE_IDS,
+  quotaSourceChipIds,
   setAllModulesVisible,
   setAllQuotaSourcesVisible,
   setModuleVisible,
@@ -18,20 +20,32 @@ export function OverviewLayoutControls({
   layout,
   onChange,
   detectedSources = [],
+  presentSources = [],
 }: {
   layout: OverviewLayout;
   onChange: (layout: OverviewLayout) => void;
   detectedSources?: string[];
+  presentSources?: string[];
 }) {
+  const [showAllSources, setShowAllSources] = useState(false);
   const detected = new Set(detectedSources);
+  const sourceIds = quotaSourceChipIds(presentSources, showAllSources);
 
   return (
     <div className="overview-layout-controls">
       <ToggleGroup
         title="概览模块"
         note="关掉后首页不再展示该区块，数据仍会照常采集。"
-        onShowAll={() => onChange(setAllModulesVisible(layout, true))}
-        onHideAll={() => onChange(setAllModulesVisible(layout, false))}
+        actions={
+          <>
+            <Button size="sm" onClick={() => onChange(setAllModulesVisible(layout, true))}>
+              全部显示
+            </Button>
+            <Button size="sm" onClick={() => onChange(setAllModulesVisible(layout, false))}>
+              全部隐藏
+            </Button>
+          </>
+        }
       >
         {OVERVIEW_MODULE_IDS.map((id) => (
           <ToggleChip
@@ -44,11 +58,29 @@ export function OverviewLayoutControls({
       </ToggleGroup>
       <ToggleGroup
         title="额度模块中的来源"
-        note="只影响 5 小时计费窗和滚动用量里的 Codex、Cursor Agent 等行，不是官方配额接口。"
-        onShowAll={() => onChange(setAllQuotaSourcesVisible(layout, true))}
-        onHideAll={() => onChange(setAllQuotaSourcesVisible(layout, false))}
+        note="只影响 5 小时计费窗和滚动用量里的行，不是官方配额接口。"
+        actions={
+          <>
+            <Button size="sm" onClick={() => onChange(setAllQuotaSourcesVisible(layout, true))}>
+              全部显示
+            </Button>
+            <Button
+              size="sm"
+              disabled={detectedSources.length === 0}
+              onClick={() => onChange(applyDetectedQuotaSources(layout, detectedSources))}
+            >
+              仅已检测
+            </Button>
+            <Button size="sm" onClick={() => onChange(applyFavoriteQuotaSources(layout))}>
+              常用：Codex / Claude / Cursor
+            </Button>
+            <Button size="sm" onClick={() => onChange(setAllQuotaSourcesVisible(layout, false))}>
+              全部隐藏
+            </Button>
+          </>
+        }
       >
-        {QUOTA_SOURCE_IDS.map((id) => (
+        {sourceIds.map((id) => (
           <ToggleChip
             key={id}
             label={applicationLabel(id)}
@@ -60,6 +92,13 @@ export function OverviewLayoutControls({
           />
         ))}
       </ToggleGroup>
+      {presentSources.length > 0 ? (
+        <div className="overview-layout-source-more">
+          <Button size="sm" onClick={() => setShowAllSources((prev) => !prev)}>
+            {showAllSources ? "只看来源有数据的项" : "显示全部来源"}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -67,14 +106,12 @@ export function OverviewLayoutControls({
 function ToggleGroup({
   title,
   note,
-  onShowAll,
-  onHideAll,
+  actions,
   children,
 }: {
   title: string;
   note: string;
-  onShowAll: () => void;
-  onHideAll: () => void;
+  actions: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -84,14 +121,7 @@ function ToggleGroup({
           <h3>{title}</h3>
           <p className="panel-note">{note}</p>
         </div>
-        <div className="row-actions">
-          <Button size="sm" onClick={onShowAll}>
-            全部显示
-          </Button>
-          <Button size="sm" onClick={onHideAll}>
-            全部隐藏
-          </Button>
-        </div>
+        <div className="row-actions">{actions}</div>
       </div>
       <div className="overview-layout-chips">{children}</div>
     </div>

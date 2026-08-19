@@ -5,10 +5,12 @@ import { Button } from "./ui/Button";
 export function OverviewLayoutPanel({
   layout,
   detectedSources,
+  presentSources,
   onChange,
 }: {
   layout: OverviewLayout;
   detectedSources: string[];
+  presentSources?: string[];
   onChange: (layout: OverviewLayout) => void;
 }) {
   return (
@@ -25,6 +27,7 @@ export function OverviewLayoutPanel({
       <OverviewLayoutControls
         layout={layout}
         detectedSources={detectedSources}
+        presentSources={presentSources}
         onChange={onChange}
       />
     </section>

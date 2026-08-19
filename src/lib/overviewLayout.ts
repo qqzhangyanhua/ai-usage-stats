@@ -40,9 +40,17 @@ export const QUOTA_SOURCE_IDS = [
 
 export type QuotaSourceId = (typeof QUOTA_SOURCE_IDS)[number];
 
+/** 额度区块里最常单独盯的来源，对应「常用」一键。 */
+export const FAVORITE_QUOTA_SOURCES = ["codex", "claude", "cursor_agent"] as const;
+
 export type OverviewLayout = {
   modules: Record<OverviewModuleId, boolean>;
   quotaSources: Record<string, boolean>;
+};
+
+export type OverviewLayoutSummary = {
+  hiddenModules: OverviewModuleId[];
+  hiddenPresentSources: string[];
 };
 
 export function defaultOverviewLayout(): OverviewLayout {
@@ -177,4 +185,72 @@ export function visibleModuleCount(layout: OverviewLayout): number {
 
 export function visibleQuotaSourceCount(layout: OverviewLayout): number {
   return QUOTA_SOURCE_IDS.filter((id) => isQuotaSourceVisible(layout, id)).length;
+}
+
+export function applyQuotaSourceSet(
+  layout: OverviewLayout,
+  enabled: readonly string[],
+): OverviewLayout {
+  const allow = new Set(enabled);
+  const quotaSources = { ...layout.quotaSources };
+  for (const id of QUOTA_SOURCE_IDS) {
+    quotaSources[id] = allow.has(id);
+  }
+  for (const source of Object.keys(quotaSources)) {
+    quotaSources[source] = allow.has(source);
+  }
+  return { ...layout, quotaSources };
+}
+
+export function applyFavoriteQuotaSources(layout: OverviewLayout): OverviewLayout {
+  return applyQuotaSourceSet(layout, FAVORITE_QUOTA_SOURCES);
+}
+
+export function applyDetectedQuotaSources(
+  layout: OverviewLayout,
+  detectedSources: readonly string[],
+): OverviewLayout {
+  return applyQuotaSourceSet(layout, detectedSources);
+}
+
+export function collectPresentSources(
+  detectedSources: readonly string[],
+  items: readonly { source: string }[],
+): string[] {
+  const present = new Set<string>();
+  for (const source of detectedSources) {
+    if (source) {
+      present.add(source);
+    }
+  }
+  for (const item of items) {
+    if (item.source) {
+      present.add(item.source);
+    }
+  }
+  const known = QUOTA_SOURCE_IDS.filter((id) => present.has(id));
+  const extra = [...present].filter(
+    (source) => !QUOTA_SOURCE_IDS.includes(source as QuotaSourceId),
+  );
+  return [...known, ...extra];
+}
+
+export function quotaSourceChipIds(presentSources: readonly string[], showAll: boolean): string[] {
+  if (showAll || presentSources.length === 0) {
+    const extra = presentSources.filter(
+      (source) => !QUOTA_SOURCE_IDS.includes(source as QuotaSourceId),
+    );
+    return [...QUOTA_SOURCE_IDS, ...extra];
+  }
+  return [...presentSources];
+}
+
+export function summarizeOverviewLayout(
+  layout: OverviewLayout,
+  presentSources: readonly string[] = [],
+): OverviewLayoutSummary {
+  const hiddenModules = OVERVIEW_MODULE_IDS.filter((id) => !isModuleVisible(layout, id));
+  const sourcePool = presentSources.length > 0 ? presentSources : QUOTA_SOURCE_IDS;
+  const hiddenPresentSources = sourcePool.filter((source) => !isQuotaSourceVisible(layout, source));
+  return { hiddenModules, hiddenPresentSources };
 }

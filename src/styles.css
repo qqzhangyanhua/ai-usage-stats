@@ -1511,6 +1511,11 @@ button.heat-cell {
   color: var(--text-faint);
 }
 
+.overview-layout-source-more {
+  display: flex;
+  justify-content: flex-start;
+}
+
 [id^="settings-"] {
   scroll-margin-top: 8px;
 }

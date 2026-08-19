@@ -72,6 +72,8 @@ export function Settings({
   overviewLayout: OverviewLayout;
   onOverviewLayoutChange: (layout: OverviewLayout) => void;
 }) {
+  const detectedSources = diagnostics.filter((row) => row.detected).map((row) => row.source);
+
   useEffect(() => {
     const id = window.location.hash.replace(/^#/, "");
     if (!id.startsWith("settings-")) {
@@ -100,7 +102,8 @@ export function Settings({
       />
       <OverviewLayoutPanel
         layout={overviewLayout}
-        detectedSources={diagnostics.filter((row) => row.detected).map((row) => row.source)}
+        detectedSources={detectedSources}
+        presentSources={detectedSources}
         onChange={onOverviewLayoutChange}
       />
       <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
