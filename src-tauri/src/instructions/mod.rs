@@ -10,6 +10,7 @@ pub mod factory;
 mod file;
 pub mod gemini;
 pub mod grok;
+mod insight;
 pub mod kimi;
 pub mod opencode;
 pub mod pi;
@@ -23,7 +24,7 @@ use crate::domain::{GlobalInstructionDto, InstructionUsageSummary};
 pub fn scan(
     home: &Path,
     project_root: Option<&Path>,
-    _usage: &InstructionUsageSummary,
+    usage: &InstructionUsageSummary,
 ) -> GlobalInstructionDto {
     let sources = vec![
         claude::scan(home),
@@ -42,12 +43,15 @@ pub fn scan(
     ];
     let findings = checkup::collect(&sources);
     let (selected_project, hints) = conflict::collect(&sources, project_root);
+    let (investments, imbalances) = insight::collect(&sources, usage);
     GlobalInstructionDto {
         sources,
         findings,
         selected_project,
         projects: Vec::new(),
         hints,
+        investments,
+        imbalances,
     }
 }
 

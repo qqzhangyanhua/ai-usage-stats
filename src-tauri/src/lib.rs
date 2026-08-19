@@ -32,10 +32,10 @@ use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
     CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
     CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
-    GlobalInstructionDto, IngestReport, InstructionUsageSummary, NamedAmount, OfficialQuotaConfig,
-    OfficialQuotaDto, OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot,
-    PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source,
-    SourceDiagnostic, TurnRow, WriteUserFileRequest, WriteUserFileResult,
+    GlobalInstructionDto, IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto,
+    OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
+    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
+    TurnRow, WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -583,15 +583,18 @@ async fn get_global_instructions(
     tauri::async_runtime::spawn_blocking(move || {
         let home = dirs::home_dir().ok_or_else(|| "无法确定用户主目录".to_string())?;
         let state = app.state::<AppState>();
-        let recent = {
+        let (recent, usage) = {
             let conn = state.lock_read()?;
-            query::recent_projects(&conn)?
+            (
+                query::recent_projects(&conn)?,
+                query::source_token_totals(&conn)?,
+            )
         };
         Ok(instructions::scan_for_projects(
             &home,
             project.as_deref(),
             &recent,
-            &InstructionUsageSummary::default(),
+            &usage,
         ))
     })
     .await

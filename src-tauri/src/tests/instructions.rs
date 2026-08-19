@@ -110,20 +110,143 @@ fn scan_marks_missing_claude_main_file_not_created() {
 }
 
 #[test]
-fn scan_still_ignores_usage_summary() {
+fn scan_reports_usage_share_high_and_loaded_bytes_low() {
     let home = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(home.path().join(".claude")).unwrap();
-    std::fs::write(home.path().join(".claude/CLAUDE.md"), "same\n").unwrap();
-    let empty = crate::domain::InstructionUsageSummary::default();
-    let populated = crate::domain::InstructionUsageSummary {
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "thin\n").unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), vec![b'a'; 8_000]).unwrap();
+    let usage = crate::domain::InstructionUsageSummary {
+        sources: vec![
+            crate::domain::InstructionSourceUsage {
+                source: "claude".into(),
+                total_tokens: 80_000,
+            },
+            crate::domain::InstructionSourceUsage {
+                source: "codex".into(),
+                total_tokens: 20_000,
+            },
+        ],
+    };
+
+    let dto = crate::instructions::scan(home.path(), None, &usage);
+    let claude = dto
+        .investments
+        .iter()
+        .find(|row| row.source == "claude")
+        .expect("claude investment");
+    assert_eq!(claude.loaded_bytes, 5);
+    assert_eq!(claude.total_tokens, 80_000);
+    assert_eq!(dto.imbalances.len(), 1);
+    assert_eq!(dto.imbalances[0].source, "claude");
+    assert!(dto.imbalances[0].note.contains("80"));
+    assert!(dto.imbalances[0].note.contains("5"));
+    assert!(!dto.imbalances[0].note.contains("未修改"));
+}
+
+#[test]
+fn scan_does_not_report_imbalance_when_high_usage_has_substantial_instructions() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), vec![b'a'; 8_000]).unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), "thin\n").unwrap();
+    let usage = crate::domain::InstructionUsageSummary {
+        sources: vec![
+            crate::domain::InstructionSourceUsage {
+                source: "claude".into(),
+                total_tokens: 80_000,
+            },
+            crate::domain::InstructionSourceUsage {
+                source: "codex".into(),
+                total_tokens: 20_000,
+            },
+        ],
+    };
+
+    let dto = crate::instructions::scan(home.path(), None, &usage);
+    assert!(dto.imbalances.is_empty());
+}
+
+#[test]
+fn scan_stays_quiet_when_usage_is_zero() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "thin\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.imbalances.is_empty());
+    assert!(dto
+        .investments
+        .iter()
+        .any(|row| row.source == "claude" && row.loaded_bytes == 5));
+}
+
+#[test]
+fn scan_reports_imbalance_when_sole_high_usage_source_is_thin() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "thin\n").unwrap();
+    let usage = crate::domain::InstructionUsageSummary {
         sources: vec![crate::domain::InstructionSourceUsage {
             source: "claude".into(),
             total_tokens: 99_000,
         }],
     };
-    let without = crate::instructions::scan(home.path(), None, &empty);
-    let with_usage = crate::instructions::scan(home.path(), None, &populated);
-    assert_eq!(without, with_usage);
+
+    let dto = crate::instructions::scan(home.path(), None, &usage);
+    assert_eq!(dto.imbalances.len(), 1);
+    assert_eq!(dto.imbalances[0].source, "claude");
+}
+
+#[test]
+fn scan_stays_quiet_when_total_usage_is_too_small() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::create_dir_all(home.path().join(".codex")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "thin\n").unwrap();
+    std::fs::write(home.path().join(".codex/AGENTS.md"), "thin\n").unwrap();
+    let usage = crate::domain::InstructionUsageSummary {
+        sources: vec![
+            crate::domain::InstructionSourceUsage {
+                source: "claude".into(),
+                total_tokens: 80,
+            },
+            crate::domain::InstructionSourceUsage {
+                source: "codex".into(),
+                total_tokens: 20,
+            },
+        ],
+    };
+
+    let dto = crate::instructions::scan(home.path(), None, &usage);
+    assert!(dto.imbalances.is_empty());
+}
+
+#[test]
+fn scan_does_not_flag_sources_without_a_global_instruction_mechanism() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), vec![b'a'; 8_000]).unwrap();
+    let usage = crate::domain::InstructionUsageSummary {
+        sources: vec![
+            crate::domain::InstructionSourceUsage {
+                source: "kimi".into(),
+                total_tokens: 80_000,
+            },
+            crate::domain::InstructionSourceUsage {
+                source: "claude".into(),
+                total_tokens: 20_000,
+            },
+        ],
+    };
+
+    let dto = crate::instructions::scan(home.path(), None, &usage);
+    assert!(dto.imbalances.iter().all(|item| item.source != "kimi"));
 }
 
 #[test]

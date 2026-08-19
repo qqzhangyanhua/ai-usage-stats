@@ -12,9 +12,9 @@ use crate::billing_window;
 use crate::cursor_account;
 use crate::domain::{
     ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, BillingWindowsDto,
-    CostSource, EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
-    ProjectApplicationRow, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, TurnRow,
-    UsageRecord,
+    CostSource, EfficiencyMetrics, Filter, FilterOptions, InstructionSourceUsage,
+    InstructionUsageSummary, NamedAmount, OverviewDto, PriceTable, ProjectApplicationRow,
+    SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, TurnRow, UsageRecord,
 };
 
 /// 费用表达式（每行）：native_cost 优先，否则加权价格，否则 NULL（未定价）。
@@ -1040,4 +1040,27 @@ pub fn recent_projects(conn: &Connection) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+pub fn source_token_totals(conn: &Connection) -> Result<InstructionUsageSummary, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT source, SUM(total_tokens) FROM usage_records
+             GROUP BY source
+             ORDER BY SUM(total_tokens) DESC, source ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(InstructionSourceUsage {
+                source: row.get(0)?,
+                total_tokens: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(InstructionUsageSummary {
+        sources: rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?,
+    })
 }

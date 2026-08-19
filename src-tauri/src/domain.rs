@@ -349,6 +349,24 @@ pub struct InstructionOverlapHint {
     pub project_snippet: String,
 }
 
+/// 某个 Source 的指令投入与本机用量对照，mtime 只作事实展示，不作健康指标。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstructionInvestment {
+    pub source: String,
+    pub application: String,
+    pub loaded_bytes: u64,
+    pub modified_at: Option<String>,
+    pub total_tokens: i64,
+}
+
+/// 用量占比高而已加载指令明显偏少。不是过期告警。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstructionImbalance {
+    pub source: String,
+    pub application: String,
+    pub note: String,
+}
+
 /// 全局指令快照：不进消耗记录，不进 Token KPI，不写 sqlite。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalInstructionDto {
@@ -357,6 +375,8 @@ pub struct GlobalInstructionDto {
     pub selected_project: Option<String>,
     pub projects: Vec<String>,
     pub hints: Vec<InstructionOverlapHint>,
+    pub investments: Vec<InstructionInvestment>,
+    pub imbalances: Vec<InstructionImbalance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -4104,3 +4104,62 @@ td.row-actions {
   font-size: 13px;
   white-space: pre-wrap;
 }
+
+.instruction-insight {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-insight h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.instruction-insight > div .muted {
+  margin: 4px 0 0;
+}
+
+.instruction-insight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.instruction-insight-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto auto auto;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--overlay-1);
+  font-size: 12px;
+}
+
+.instruction-insight-row strong {
+  font-size: 13px;
+}
+
+.instruction-insight-row span {
+  color: var(--muted);
+}
+
+.instruction-insight-imbalances {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.instruction-insight-imbalances li {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--overlay-1);
+  font-size: 13px;
+}

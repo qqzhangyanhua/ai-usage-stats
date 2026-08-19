@@ -174,12 +174,28 @@ export type InstructionOverlapHint = {
   project_snippet: string;
 };
 
+export type InstructionInvestment = {
+  source: string;
+  application: string;
+  loaded_bytes: number;
+  modified_at: string | null;
+  total_tokens: number;
+};
+
+export type InstructionImbalance = {
+  source: string;
+  application: string;
+  note: string;
+};
+
 export type GlobalInstructionDto = {
   sources: GlobalInstructionSourceRow[];
   findings: InstructionCheckupFinding[];
   selected_project: string | null;
   projects: string[];
   hints: InstructionOverlapHint[];
+  investments: InstructionInvestment[];
+  imbalances: InstructionImbalance[];
 };
 
 export type WriteUserFileRequest = {

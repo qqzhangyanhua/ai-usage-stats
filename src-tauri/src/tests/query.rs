@@ -1000,3 +1000,18 @@ fn recent_projects_order_by_latest_activity() {
         vec!["/proj/b".to_string(), "/proj/a".to_string()]
     );
 }
+
+#[test]
+fn source_token_totals_order_by_usage() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    let usage = query::source_token_totals(&conn).unwrap();
+    assert_eq!(
+        usage
+            .sources
+            .iter()
+            .map(|row| (row.source.as_str(), row.total_tokens))
+            .collect::<Vec<_>>(),
+        vec![("claude", 300), ("codex", 100), ("pi", 50)]
+    );
+}
