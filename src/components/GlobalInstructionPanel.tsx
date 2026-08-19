@@ -38,7 +38,9 @@ export function GlobalInstructionPanel() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const draftsRef = useRef(drafts);
-  draftsRef.current = drafts;
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
 
   const load = useCallback((force = false) => {
     if (!force && Object.keys(draftsRef.current).length > 0) {
