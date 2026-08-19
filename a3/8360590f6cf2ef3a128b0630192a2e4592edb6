@@ -1,0 +1,38 @@
+src-tauri/src/instructions/cursor_memories.rs
+  s_6e169dac3a3412::t_09e78627e9d1c3 45-49
+  s_6e169dac3a3412::t_112b894bfd554d 1-2,6-15,19-44,50-122
+  s_6e169dac3a3412::t_da9e654d5e9f49 3-5,16-18
+src-tauri/src/instructions/mod.rs
+  s_6e169dac3a3412::t_4d95ca0df0563f 45-49
+  s_6e169dac3a3412::t_5b735c6d2515cf 8
+src/components/InstructionCheckup.tsx
+  s_6e169dac3a3412::t_a7bc08b296ab7d 19
+src-tauri/src/instructions/checkup.rs
+  s_6e169dac3a3412::t_66ab52d920de17 163-164
+  s_6e169dac3a3412::t_ff6400b11ac080 22-26
+src/types.ts
+  s_6e169dac3a3412::t_ce010692436913 154-155
+src-tauri/src/tests/instructions.rs
+  s_6e169dac3a3412::t_e3c3fa87f87c6d 943-1041,1046-1053,1077-1086,1091-1097
+  s_6e169dac3a3412::t_da9e654d5e9f49 1042-1045,1087-1090
+  s_6e169dac3a3412::t_44737cbe3f4891 1054-1059,1061-1076
+  s_6e169dac3a3412::t_fa85900e61a581 1060
+src-tauri/src/domain.rs
+  s_6e169dac3a3412::t_b484c530c5cd04 319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "a38360590f6cf2ef3a128b0630192a2e4592edb6",
+  "prompts": {},
+  "sessions": {
+    "s_6e169dac3a3412": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7c68a692-68cf-40b9-b2a2-457afd5c76cd",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
