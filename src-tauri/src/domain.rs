@@ -338,11 +338,25 @@ pub struct InstructionCheckupFinding {
     pub consequence: String,
 }
 
+/// 关键词共现提示：两侧原文片段交给用户判断，不表示已确认冲突。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstructionOverlapHint {
+    pub keyword: String,
+    pub global_application: String,
+    pub global_display_path: String,
+    pub global_snippet: String,
+    pub project_display_path: String,
+    pub project_snippet: String,
+}
+
 /// 全局指令快照：不进消耗记录，不进 Token KPI，不写 sqlite。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalInstructionDto {
     pub sources: Vec<GlobalInstructionSourceRow>,
     pub findings: Vec<InstructionCheckupFinding>,
+    pub selected_project: Option<String>,
+    pub projects: Vec<String>,
+    pub hints: Vec<InstructionOverlapHint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

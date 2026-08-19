@@ -4035,3 +4035,72 @@ td.row-actions {
 .instruction-checkup-consequence {
   margin: 0;
 }
+
+.instruction-overlap {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-overlap-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.instruction-overlap h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.instruction-overlap-head .muted {
+  margin: 4px 0 0;
+}
+
+.instruction-overlap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-overlap-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--overlay-1);
+}
+
+.instruction-overlap-keyword {
+  margin: 0;
+  font-size: 13px;
+}
+
+.instruction-overlap-pair {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-overlap-pair blockquote {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line);
+  background: var(--overlay-2);
+  display: grid;
+  gap: 4px;
+}
+
+.instruction-overlap-pair span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.instruction-overlap-pair p {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+}

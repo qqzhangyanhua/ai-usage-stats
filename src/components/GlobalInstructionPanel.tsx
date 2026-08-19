@@ -15,6 +15,7 @@ import {
 } from "../lib/instructionAccess";
 import { InstructionCheckup } from "./InstructionCheckup";
 import { InstructionEditor } from "./InstructionEditor";
+import { InstructionOverlap } from "./InstructionOverlap";
 import { Button } from "./ui/Button";
 
 const STATUS_LABEL: Record<InstructionLoadStatus, string> = {
@@ -38,19 +39,22 @@ export function GlobalInstructionPanel() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const draftsRef = useRef(drafts);
+  const selectedProjectRef = useRef<string | null>(null);
   useEffect(() => {
     draftsRef.current = drafts;
   }, [drafts]);
 
-  const load = useCallback((force = false) => {
-    if (!force && Object.keys(draftsRef.current).length > 0) {
+  const load = useCallback((force = false, project?: string | null) => {
+    if (!force && Object.keys(draftsRef.current).length > 0 && project === undefined) {
       return;
     }
     setBusy(true);
     setError(null);
-    invoke<GlobalInstructionDto>("get_global_instructions")
+    const nextProject = project === undefined ? selectedProjectRef.current : project;
+    invoke<GlobalInstructionDto>("get_global_instructions", { project: nextProject })
       .then((next) => {
         setData(next);
+        selectedProjectRef.current = next.selected_project;
         if (force) {
           setDrafts({});
         }
@@ -115,6 +119,14 @@ export function GlobalInstructionPanel() {
       {error ? <EmptyState tone="warn" title="读取失败" hint={error} /> : null}
       {actionError ? <EmptyState tone="warn" title="无法打开" hint={actionError} /> : null}
       {data ? <InstructionCheckup findings={data.findings} /> : null}
+      {data ? (
+        <InstructionOverlap
+          selectedProject={data.selected_project}
+          projects={data.projects}
+          hints={data.hints}
+          onProjectChange={(project) => load(false, project)}
+        />
+      ) : null}
       {!error && !files.length && !busy ? (
         <EmptyState
           title="尚未发现全局指令"

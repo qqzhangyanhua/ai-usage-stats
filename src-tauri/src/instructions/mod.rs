@@ -1,6 +1,7 @@
 mod checkup;
 pub mod claude;
 pub mod codex;
+mod conflict;
 pub mod copilot;
 pub mod cursor;
 pub mod cursor_agent;
@@ -21,7 +22,7 @@ use crate::domain::{GlobalInstructionDto, InstructionUsageSummary};
 
 pub fn scan(
     home: &Path,
-    _project_root: Option<&Path>,
+    project_root: Option<&Path>,
     _usage: &InstructionUsageSummary,
 ) -> GlobalInstructionDto {
     let sources = vec![
@@ -40,7 +41,34 @@ pub fn scan(
         copilot::scan(home),
     ];
     let findings = checkup::collect(&sources);
-    GlobalInstructionDto { sources, findings }
+    let (selected_project, hints) = conflict::collect(&sources, project_root);
+    GlobalInstructionDto {
+        sources,
+        findings,
+        selected_project,
+        projects: Vec::new(),
+        hints,
+    }
+}
+
+pub fn scan_for_projects(
+    home: &Path,
+    requested: Option<&str>,
+    recent: &[String],
+    usage: &InstructionUsageSummary,
+) -> GlobalInstructionDto {
+    let comparable: Vec<String> = recent
+        .iter()
+        .filter(|path| Path::new(path.as_str()).is_dir())
+        .cloned()
+        .collect();
+    let selected = match requested {
+        Some(path) if comparable.iter().any(|item| item == path) => Some(path.to_string()),
+        _ => comparable.first().cloned(),
+    };
+    let mut dto = scan(home, selected.as_deref().map(Path::new), usage);
+    dto.projects = comparable;
+    dto
 }
 
 /// 解析「在外部打开」的目标：已存在的文件或目录原样打开；文件尚未创建则打开父目录。

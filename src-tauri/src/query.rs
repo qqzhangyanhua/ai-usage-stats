@@ -1025,3 +1025,19 @@ pub fn filter_options(conn: &Connection) -> Result<FilterOptions, String> {
         )?,
     })
 }
+
+pub fn recent_projects(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT project FROM usage_records
+             WHERE project != ''
+             GROUP BY project
+             ORDER BY MAX(occurred_at) DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}

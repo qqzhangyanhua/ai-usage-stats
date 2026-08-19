@@ -576,12 +576,21 @@ fn official_quota_snapshot(app: &tauri::AppHandle) -> Result<OfficialQuotaDto, S
 }
 
 #[tauri::command]
-async fn get_global_instructions() -> Result<GlobalInstructionDto, String> {
-    tauri::async_runtime::spawn_blocking(|| {
+async fn get_global_instructions(
+    app: tauri::AppHandle,
+    project: Option<String>,
+) -> Result<GlobalInstructionDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
         let home = dirs::home_dir().ok_or_else(|| "无法确定用户主目录".to_string())?;
-        Ok(instructions::scan(
+        let state = app.state::<AppState>();
+        let recent = {
+            let conn = state.lock_read()?;
+            query::recent_projects(&conn)?
+        };
+        Ok(instructions::scan_for_projects(
             &home,
-            None,
+            project.as_deref(),
+            &recent,
             &InstructionUsageSummary::default(),
         ))
     })

@@ -990,3 +990,13 @@ fn overview_and_turns_use_price_table_and_flag_unpriced() {
     assert_eq!(lifetime_cost, overview.cost);
     assert_eq!(lifetime_unpriced, overview.unpriced);
 }
+
+#[test]
+fn recent_projects_order_by_latest_activity() {
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &seed_records()).unwrap();
+    assert_eq!(
+        query::recent_projects(&conn).unwrap(),
+        vec!["/proj/b".to_string(), "/proj/a".to_string()]
+    );
+}

@@ -165,9 +165,21 @@ export type InstructionCheckupFinding = {
   consequence: string;
 };
 
+export type InstructionOverlapHint = {
+  keyword: string;
+  global_application: string;
+  global_display_path: string;
+  global_snippet: string;
+  project_display_path: string;
+  project_snippet: string;
+};
+
 export type GlobalInstructionDto = {
   sources: GlobalInstructionSourceRow[];
   findings: InstructionCheckupFinding[];
+  selected_project: string | null;
+  projects: string[];
+  hints: InstructionOverlapHint[];
 };
 
 export type WriteUserFileRequest = {

@@ -110,7 +110,7 @@ fn scan_marks_missing_claude_main_file_not_created() {
 }
 
 #[test]
-fn scan_ignores_reserved_project_and_usage_for_now() {
+fn scan_still_ignores_usage_summary() {
     let home = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(home.path().join(".claude")).unwrap();
     std::fs::write(home.path().join(".claude/CLAUDE.md"), "same\n").unwrap();
@@ -121,13 +121,126 @@ fn scan_ignores_reserved_project_and_usage_for_now() {
             total_tokens: 99_000,
         }],
     };
-    let without_project = crate::instructions::scan(home.path(), None, &empty);
-    let with_both = crate::instructions::scan(
+    let without = crate::instructions::scan(home.path(), None, &empty);
+    let with_usage = crate::instructions::scan(home.path(), None, &populated);
+    assert_eq!(without, with_usage);
+}
+
+#[test]
+fn scan_reports_keyword_overlap_between_global_and_project_rules() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(
+        home.path().join(".claude/CLAUDE.md"),
+        "样式统一：优先使用 Tailwind CSS，避免自定义 CSS\n",
+    )
+    .unwrap();
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("AGENTS.md"),
+        "没有引入 Tailwind CSS，不要引入新的样式方案\n",
+    )
+    .unwrap();
+
+    let dto = crate::instructions::scan(
         home.path(),
-        Some(home.path().join("other-project").as_path()),
-        &populated,
+        Some(project.path()),
+        &crate::domain::InstructionUsageSummary::default(),
     );
-    assert_eq!(without_project, with_both);
+
+    assert_eq!(
+        dto.selected_project.as_deref(),
+        Some(project.path().to_str().unwrap())
+    );
+    assert_eq!(dto.hints.len(), 1);
+    let hint = &dto.hints[0];
+    assert_eq!(hint.keyword, "tailwind");
+    assert_eq!(hint.global_application, "Claude");
+    assert_eq!(hint.global_display_path, "~/.claude/CLAUDE.md");
+    assert!(hint.global_snippet.contains("Tailwind"));
+    assert_eq!(hint.project_display_path, "AGENTS.md");
+    assert!(hint.project_snippet.contains("Tailwind"));
+}
+
+#[test]
+fn scan_does_not_report_overlap_when_keywords_differ() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(home.path().join(".claude/CLAUDE.md"), "prefer-chinese\n").unwrap();
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("CLAUDE.md"), "prefer-tabs\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        Some(project.path()),
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.hints.is_empty());
+}
+
+#[test]
+fn scan_reports_no_hints_without_project_root() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(
+        home.path().join(".claude/CLAUDE.md"),
+        "优先使用 Tailwind CSS\n",
+    )
+    .unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert!(dto.selected_project.is_none());
+    assert!(dto.hints.is_empty());
+}
+
+#[test]
+fn scan_reads_cursor_rules_under_selected_project() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".claude")).unwrap();
+    std::fs::write(
+        home.path().join(".claude/CLAUDE.md"),
+        "优先使用 Tailwind CSS\n",
+    )
+    .unwrap();
+    let project = tempfile::tempdir().unwrap();
+    let rules = project.path().join(".cursor/rules");
+    std::fs::create_dir_all(&rules).unwrap();
+    std::fs::write(rules.join("ui.mdc"), "没有引入 Tailwind CSS\n").unwrap();
+
+    let dto = crate::instructions::scan(
+        home.path(),
+        Some(project.path()),
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+    assert_eq!(dto.hints[0].project_display_path, ".cursor/rules/ui.mdc");
+}
+
+#[test]
+fn scan_for_projects_defaults_to_first_existing_directory() {
+    let home = tempfile::tempdir().unwrap();
+    let existing = tempfile::tempdir().unwrap();
+    let missing = existing.path().join("gone");
+    let recent = [
+        missing.to_string_lossy().into_owned(),
+        existing.path().to_string_lossy().into_owned(),
+    ];
+
+    let dto = crate::instructions::scan_for_projects(
+        home.path(),
+        None,
+        &recent,
+        &crate::domain::InstructionUsageSummary::default(),
+    );
+
+    assert_eq!(dto.selected_project.as_deref(), existing.path().to_str());
+    assert_eq!(
+        dto.projects,
+        vec![existing.path().to_string_lossy().into_owned()]
+    );
 }
 
 #[test]
