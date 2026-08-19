@@ -113,6 +113,9 @@ export default function App() {
                     setGrain={data.setGrain}
                     points={data.trend}
                     theme={theme}
+                    onRangeSelect={(from, to) =>
+                      data.applyPreset("custom", customRangeFilter(from, to))
+                    }
                   />
                 ) : null}
                 {view === "application" ? (

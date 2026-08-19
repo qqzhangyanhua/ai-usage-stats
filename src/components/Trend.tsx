@@ -1,7 +1,11 @@
-import { memo, useEffect, useMemo, useState } from "react";
-import { barTrendOption, formatBucket } from "../lib/chartTheme";
+import { memo, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { areaTrendOption, formatBucket } from "../lib/chartTheme";
+import { bucketToDateRange } from "../lib/calendar";
+import { chartClickDataIndex } from "../lib/chartClick";
+import { trendSeriesTable } from "../lib/exportRows";
+import { formatCompact, formatDelta, formatUsd } from "../lib/format";
+import { summarizeTrend, trendTableRowsNewestFirst } from "../lib/trendStats";
 import type { ResolvedTheme } from "../hooks/useTheme";
-import { deltaPct, formatCompact, formatDelta, formatUsd } from "../lib/format";
 import type { Grain, SeriesPoint } from "../types";
 import { EmptyState } from "./EmptyState";
 import { ExportableChart } from "./ExportableChart";
@@ -17,20 +21,25 @@ export const Trend = memo(function Trend({
   setGrain,
   points,
   theme,
+  onRangeSelect,
 }: {
   grain: Grain;
   setGrain: (grain: Grain) => void;
   points: SeriesPoint[];
   theme: ResolvedTheme;
+  onRangeSelect?: (from: string, to: string) => void;
 }) {
   const [page, setPage] = useState(1);
-  const option = useMemo(() => barTrendOption(points, theme), [points, theme]);
+  const option = useMemo(() => areaTrendOption(points, theme), [points, theme]);
+  const stats = useMemo(() => summarizeTrend(points), [points]);
+  const tableRows = useMemo(() => trendTableRowsNewestFirst(points), [points]);
+  const exportTable = useMemo(() => trendSeriesTable(points), [points]);
 
-  const pageCount = Math.max(1, Math.ceil(points.length / PAGE_SIZE));
-  const pagedPoints = useMemo(() => {
+  const pageCount = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
+  const pagedRows = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
-    return points.slice(start, start + PAGE_SIZE);
-  }, [page, points]);
+    return tableRows.slice(start, start + PAGE_SIZE);
+  }, [page, tableRows]);
 
   const rangeStart = points[0]?.bucket ?? "";
   const rangeEnd = points[points.length - 1]?.bucket ?? "";
@@ -43,21 +52,34 @@ export const Trend = memo(function Trend({
     setPage((current) => Math.min(current, pageCount));
   }, [pageCount]);
 
-  const stats = useMemo(() => {
-    const totalTokens = points.reduce((sum, p) => sum + p.total_tokens, 0);
-    const hasCost = points.some((p) => p.cost != null);
-    const totalCost = points.reduce((sum, p) => sum + (p.cost ?? 0), 0);
-    const dailyAvg = points.length > 0 ? totalTokens / points.length : 0;
-    const peak = points.reduce<SeriesPoint | null>(
-      (best, point) => (!best || point.total_tokens > best.total_tokens ? point : best),
-      null,
-    );
-    return { totalTokens, hasCost, totalCost, dailyAvg, peak };
-  }, [points]);
+  const selectBucket = useCallback(
+    (bucket: string) => {
+      const range = bucketToDateRange(grain, bucket);
+      if (!range) {
+        return;
+      }
+      onRangeSelect?.(range.from, range.to);
+    },
+    [grain, onRangeSelect],
+  );
 
-  const sparkTokens = points.map((p) => p.total_tokens);
-  const sparkCost = points.map((p) => p.cost ?? 0);
-  const maxTotal = Math.max(1, ...points.map((p) => p.total_tokens));
+  const selectTrendPoint = useCallback(
+    (params: unknown) => {
+      const index = chartClickDataIndex(params);
+      const point = index == null ? undefined : points[index];
+      if (point) {
+        selectBucket(point.bucket);
+      }
+    },
+    [points, selectBucket],
+  );
+
+  function onRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, bucket: string) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectBucket(bucket);
+    }
+  }
 
   return (
     <div className="stack">
@@ -67,21 +89,21 @@ export const Trend = memo(function Trend({
           tone="purple"
           label="区间总 Token"
           value={formatCompact(stats.totalTokens)}
-          spark={sparkTokens}
+          spark={stats.sparkTokens}
         />
         <KpiCard
           icon="cost"
           tone="orange"
           label="区间总费用"
           value={formatUsd(stats.hasCost ? stats.totalCost : null, !stats.hasCost)}
-          spark={sparkCost}
+          spark={stats.sparkCost}
         />
         <KpiCard
           icon="daily"
           tone="blue"
           label={`平均每${grainUnit[grain]} Token`}
-          value={formatCompact(Math.round(stats.dailyAvg))}
-          spark={sparkTokens}
+          value={formatCompact(Math.round(stats.bucketAvg))}
+          spark={stats.sparkTokens}
         />
         <KpiCard
           icon="trend"
@@ -96,27 +118,39 @@ export const Trend = memo(function Trend({
         <div className="panel-head">
           <div>
             <h2>时间趋势</h2>
-            <p className="panel-note">按{grainUnit[grain]}汇总当前筛选范围内的 Token 消耗</p>
+            <p className="panel-note">
+              按{grainUnit[grain]}查看输入 / 输出 Token
+              {onRangeSelect ? "。点击数据点可下钻到该时段" : ""}
+            </p>
           </div>
           <GrainSwitch value={grain} onChange={setGrain} />
         </div>
-        <ExportableChart option={option} style={{ height: 320 }} filename="时间趋势图" />
+        {points.length > 0 ? (
+          <ExportableChart
+            option={option}
+            style={{ height: 320 }}
+            filename="时间趋势图"
+            onEvents={onRangeSelect ? { click: selectTrendPoint } : undefined}
+          />
+        ) : (
+          <div className="analytics-empty chart-empty">
+            <EmptyState
+              icon="trend"
+              title="当前筛选条件下暂无趋势数据"
+              hint="调整时间范围或来源后再试"
+            />
+          </div>
+        )}
       </div>
 
       <div className="panel">
         <div className="panel-head">
           <h2>明细构成</h2>
-          <span className="muted">共 {points.length} 个时间桶</span>
+          <span className="muted">共 {points.length} 个时间桶 · 最新在上</span>
           <ExportButton
             filename="时间趋势"
-            headers={["时间", "总量", "输入", "输出", "费用"]}
-            rows={points.map((point) => [
-              formatBucket(point.bucket),
-              point.total_tokens,
-              point.input_tokens,
-              point.output_tokens,
-              point.cost ?? "",
-            ])}
+            headers={exportTable.headers}
+            rows={exportTable.rows}
           />
         </div>
         <div className="table-scroll">
@@ -133,18 +167,22 @@ export const Trend = memo(function Trend({
               </tr>
             </thead>
             <tbody>
-              {pagedPoints.map((point, index) => {
-                const globalIndex = (page - 1) * PAGE_SIZE + index;
-                const prev = points[globalIndex - 1];
-                const delta = prev
-                  ? formatDelta(deltaPct(point.total_tokens, prev.total_tokens))
-                  : null;
+              {pagedRows.map((row) => {
+                const { point } = row;
+                const delta = formatDelta(row.periodDelta);
                 return (
-                  <tr key={point.bucket}>
+                  <tr
+                    key={point.bucket}
+                    className={onRangeSelect ? "clickable" : undefined}
+                    onClick={onRangeSelect ? () => selectBucket(point.bucket) : undefined}
+                    onKeyDown={onRangeSelect ? (event) => onRowKeyDown(event, point.bucket) : undefined}
+                    tabIndex={onRangeSelect ? 0 : undefined}
+                    title={onRangeSelect ? "点击下钻到该时段" : undefined}
+                  >
                     <td>{formatBucket(point.bucket)}</td>
                     <td>
-                      <span className="cell-bar">
-                        <i style={{ width: `${(point.total_tokens / maxTotal) * 100}%` }} />
+                      <span className="cell-bar" title={`占总量 ${row.shareOfTotal.toFixed(1)}%`}>
+                        <i style={{ width: `${row.shareOfMax}%` }} />
                       </span>
                     </td>
                     <td>{formatCompact(point.total_tokens)}</td>

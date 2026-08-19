@@ -3097,6 +3097,13 @@ td.row-actions {
   vertical-align: middle;
 }
 
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 320px;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
