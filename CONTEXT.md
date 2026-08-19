@@ -33,7 +33,7 @@ _Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
 _Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混称；不要把 `~/.cursor-agent-usage` 当成官方会话目录；不要把子代理 jsonl 当成独立会话
 
 **官方额度 (Official Quota)**：
-Claude / Codex / Cursor 的账号级订阅限额（已用百分比与重置时间）。独立于消耗记录、本机 5 小时/7 天估计窗、Cursor 账号用量与代码量，不并入本机 token KPI。新鲜度分 official / stale / unavailable；取数失败保留上次正确缓存。Claude 来自 statusline 捕获，Codex 问本机 app-server，Cursor 用已有钥匙串打限额接口。
+Claude / Codex / Cursor / Grok 的账号级订阅限额（已用百分比与重置时间）。独立于消耗记录、本机 5 小时/7 天估计窗、Cursor 账号用量与代码量，不并入本机 token KPI。新鲜度分 official / stale / unavailable；取数失败保留上次正确缓存。Claude 来自 statusline 捕获，Codex 问本机 app-server，Cursor 用已有钥匙串打限额接口，Grok 读本机 `~/.grok/auth.json` 打 CLI 限额接口。
 _Avoid_: 把它叫成本机计费窗、消耗记录，或与本机 5 小时/7 天估计混成同一根进度条
 
 **全局指令 (Global Instruction)**：

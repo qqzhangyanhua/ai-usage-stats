@@ -1,16 +1,17 @@
 # 官方额度作为独立维度
 
-Claude / Codex / Cursor 的订阅限额是账号级事实，和本机消耗记录不是同一件事：官方 5 小时 / 周窗口还包含 claude.ai、Cowork 等没有本地 jsonl 的用量。本机计费窗只是本地时间戳估计，不能画在同一根进度条上。
+Claude / Codex / Cursor / Grok 的订阅限额是账号级事实，和本机消耗记录不是同一件事：官方 5 小时 / 周窗口还包含 claude.ai、Cowork、grok.com 等没有本地 jsonl 的用量。本机计费窗只是本地时间戳估计，不能画在同一根进度条上。
 
-**决定**：新增独立维度「官方额度 (Official Quota)」。三条受控取数通道各自失败、互不影响：
+**决定**：新增独立维度「官方额度 (Official Quota)」。四条受控取数通道各自失败、互不影响：
 
 - Claude：设置页 opt-in 写入 statusline hook，把 stdin 的 `rate_limits` 落到本机捕获文件；应用只读该文件。
 - Codex：在用户打开总览或手动刷新时，一次性启动本机 `codex app-server`，调用 `account/rateLimits/read`。
 - Cursor：复用已有钥匙串 token，请求 `GET /api/usage-summary`（与账号用量事件接口分开）。
+- Grok：读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token，请求 CLI chat proxy 的 `GET /v1/billing?format=credits`（周额度）和 `GET /v1/billing`（月额度，失败不影响周额度）。
 
-缓存遵循「最后一次正确结果」：取数失败不覆盖旧窗口，只更新错误文案。新鲜度三态：`official` / `stale`（捕获超过 10 分钟）/ `unavailable`。托盘只读缓存，不为菜单栏去打 Cursor HTTP 或拉起 Codex。
+缓存遵循「最后一次正确结果」：取数失败不覆盖旧窗口，只更新错误文案。新鲜度三态：`official` / `stale`（捕获超过 10 分钟）/ `unavailable`。托盘只读缓存，不为菜单栏去打 Cursor / Grok HTTP 或拉起 Codex。
 
-这是继 ADR 0006 之后的**第二个显式破例维度**。允许这三条受控通道，**禁止**把联网扩散成通用摄取，也禁止把官方百分比叠进本机 5 小时 / 7 天估计窗。官方额度不进入 `UsageRecord`、`Source` 或本机 token KPI。
+这是继 ADR 0006 之后的**第二个显式破例维度**。允许这四条受控通道，**禁止**把联网扩散成通用摄取，也禁止把官方百分比叠进本机 5 小时 / 7 天估计窗。官方额度不进入 `UsageRecord`、`Source` 或本机 token KPI。
 
 **理由**：用户真正怕的是下午断窗、周四撞线。官方百分比必须和本机估计并排，且来源/新鲜度可见，才能提高感知质量而不污染本机统计口径。
 
@@ -19,5 +20,6 @@ Claude / Codex / Cursor 的订阅限额是账号级事实，和本机消耗记�
 - Claude 在用户未写入 hook、或 Claude Code 未跑过 statusline 时，该行保持 `unavailable`。
 - 已有 `statusLine` 的 Claude 配置不得覆盖，只提供可复制 command。
 - Cursor 限额接口与账号用量一样是非公开的，结构变更时降级为可读中文错误。Cursor 一档订阅里并行有总量 / Auto / API / 按需，必须拆成多个官方额度窗口，不能只画 `totalPercentUsed`。
-- Codex 依赖本机 CLI；进程不在或超时不影响 Claude / Cursor。
+- Codex 依赖本机 CLI；进程不在或超时不影响 Claude / Cursor / Grok。
+- Grok 依赖本机 `grok login` 写入的会话凭证；文件缺失、过期或仅有 API key 时该行 `unavailable`，不影响另外三路。Grok 限额接口与消耗记录摄取分开，结构变更时保留上次正确缓存。
 - 80% / 100% 告警按 `provider + window_kind + resets_at` 去重，`stale` 不弹，与月度预算分开开关。

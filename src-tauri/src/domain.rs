@@ -153,16 +153,18 @@ pub enum OfficialQuotaProvider {
     Claude,
     Codex,
     Cursor,
+    Grok,
 }
 
 impl OfficialQuotaProvider {
-    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Cursor];
+    pub const ALL: [Self; 4] = [Self::Claude, Self::Codex, Self::Cursor, Self::Grok];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Cursor => "cursor",
+            Self::Grok => "grok",
         }
     }
 
@@ -171,6 +173,7 @@ impl OfficialQuotaProvider {
             Self::Claude => "Claude",
             Self::Codex => "Codex",
             Self::Cursor => "Cursor",
+            Self::Grok => "Grok",
         }
     }
 
@@ -179,6 +182,7 @@ impl OfficialQuotaProvider {
             "claude" => Some(Self::Claude),
             "codex" => Some(Self::Codex),
             "cursor" => Some(Self::Cursor),
+            "grok" => Some(Self::Grok),
             _ => None,
         }
     }

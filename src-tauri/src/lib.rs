@@ -33,9 +33,9 @@ use crate::domain::{
     CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
     CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
     GlobalInstructionDto, IngestReport, InstructionUsageSummary, NamedAmount, OfficialQuotaConfig,
-    OfficialQuotaDto, OfficialQuotaHookDto, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
-    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow, WriteUserFileRequest, WriteUserFileResult,
+    OfficialQuotaDto, OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot,
+    PriceSnapshotMeta, PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source,
+    SourceDiagnostic, TurnRow, WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -638,9 +638,18 @@ async fn refresh_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDt
         let claude = official_quota::claude::refresh_from_capture(&official_quota::capture_path());
         let codex = official_quota::codex::fetch_rate_limits();
         let cursor = official_quota::cursor::fetch_usage_summary();
+        let grok = official_quota::grok::fetch_rate_limits();
         let state = app.state::<AppState>();
         let conn = state.lock_write()?;
-        official_quota::apply_fetch_results(&conn, claude, codex, cursor)?;
+        official_quota::apply_fetch_results(
+            &conn,
+            [
+                (OfficialQuotaProvider::Claude, claude),
+                (OfficialQuotaProvider::Codex, codex),
+                (OfficialQuotaProvider::Cursor, cursor),
+                (OfficialQuotaProvider::Grok, grok),
+            ],
+        )?;
         let config = official_quota::load_config(&state.official_quota_path);
         let dto = official_quota::load_dto(&conn, &config, chrono::Utc::now());
         official_quota::notify::check_and_notify_with_config(

@@ -66,7 +66,8 @@ export function OfficialQuotaSettingsPanel({
           <h2>官方额度</h2>
           <p className="panel-note">
             Claude 通过 statusline 捕获本机官方百分比；Codex 问本机 app-server；Cursor
-            使用已有钥匙串打限额接口。已有 Claude statusLine 不会被覆盖。
+            使用已有钥匙串打限额接口；Grok 读取本机 <code>~/.grok/auth.json</code> 打 CLI
+            限额接口。已有 Claude statusLine 不会被覆盖。
           </p>
         </div>
         <div className="row-actions">

@@ -318,21 +318,214 @@ fn tray_title_includes_tightest_official_percent() {
 }
 
 #[test]
+fn grok_credits_parse_weekly_and_build() {
+    let raw = r#"{
+        "config": {
+            "creditUsagePercent": 34.0,
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "end": "2026-08-05T01:12:18.000Z"
+            },
+            "productUsage": [{ "product": "GrokBuild", "usagePercent": 45.0 }]
+        }
+    }"#;
+    let windows = official_quota::grok::parse_credits(raw).unwrap();
+    assert_eq!(windows.len(), 2);
+    assert_eq!(windows[0].kind, "weekly");
+    assert_eq!(windows[0].label, "周额度");
+    assert_eq!(windows[0].used_percent, Some(34.0));
+    assert_eq!(
+        windows[0].resets_at.as_deref(),
+        Some("2026-08-05T01:12:18.000Z")
+    );
+    assert_eq!(windows[1].kind, "product_grokbuild");
+    assert_eq!(windows[1].label, "Grok Build");
+    assert_eq!(windows[1].used_percent, Some(45.0));
+}
+
+#[test]
+fn grok_credits_use_build_percent_when_weekly_missing() {
+    let raw = r#"{
+        "config": {
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "end": "2026-08-05T01:12:18.000Z"
+            },
+            "productUsage": [{ "product": "GrokBuild", "usagePercent": 12.5 }]
+        }
+    }"#;
+    let windows = official_quota::grok::parse_credits(raw).unwrap();
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].kind, "weekly");
+    assert_eq!(windows[0].used_percent, Some(12.5));
+}
+
+#[test]
+fn grok_credits_treat_empty_weekly_period_as_zero() {
+    let raw = r#"{
+        "config": {
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "start": "2026-07-29T01:12:18.000Z",
+                "end": "2026-08-05T01:12:18.000Z"
+            }
+        }
+    }"#;
+    let windows = official_quota::grok::parse_credits(raw).unwrap();
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].kind, "weekly");
+    assert_eq!(windows[0].used_percent, Some(0.0));
+}
+
+#[test]
+fn grok_credits_skip_zero_on_demand_cap() {
+    let raw = r#"{
+        "config": {
+            "creditUsagePercent": 10,
+            "onDemandUsed": { "val": 0 },
+            "onDemandCap": { "val": 0 }
+        }
+    }"#;
+    let windows = official_quota::grok::parse_credits(raw).unwrap();
+    assert_eq!(windows.len(), 1);
+    assert!(windows.iter().all(|window| window.kind != "on_demand"));
+}
+
+#[test]
+fn grok_credits_parse_on_demand_when_cap_present() {
+    let raw = r#"{
+        "config": {
+            "creditUsagePercent": 10,
+            "onDemandUsed": { "val": 250 },
+            "onDemandCap": { "val": 1000 }
+        }
+    }"#;
+    let windows = official_quota::grok::parse_credits(raw).unwrap();
+    let on_demand = windows
+        .iter()
+        .find(|window| window.kind == "on_demand")
+        .unwrap();
+    assert_eq!(on_demand.label, "按需");
+    assert_eq!(on_demand.used_percent, Some(25.0));
+}
+
+#[test]
+fn grok_monthly_parses_used_limit_wrappers() {
+    let raw = r#"{
+        "config": {
+            "used": { "val": 2000 },
+            "monthlyLimit": { "val": 8000 },
+            "billingPeriodEnd": "2026-09-01T00:00:00Z"
+        }
+    }"#;
+    let windows = official_quota::grok::parse_monthly(raw).unwrap();
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].kind, "monthly");
+    assert_eq!(windows[0].label, "月额度");
+    assert_eq!(windows[0].used_percent, Some(25.0));
+    assert_eq!(
+        windows[0].resets_at.as_deref(),
+        Some("2026-09-01T00:00:00Z")
+    );
+}
+
+#[test]
+fn grok_monthly_skips_when_used_missing() {
+    let raw = r#"{ "config": { "monthlyLimit": { "val": 8000 } } }"#;
+    assert!(official_quota::grok::parse_monthly(raw).unwrap().is_empty());
+}
+
+#[test]
+fn grok_rejects_leaked_percent_and_unknown_shape() {
+    let leaked = r#"{ "config": { "creditUsagePercent": 1776950400 } }"#;
+    assert!(official_quota::grok::parse_credits(leaked)
+        .unwrap()
+        .is_empty());
+    assert!(official_quota::grok::parse_credits(r#"{"ok":true}"#)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn grok_auth_prefers_supergrok_scope_and_skips_expired() {
+    let now = chrono::DateTime::parse_from_rfc3339("2026-08-19T00:00:00+00:00")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let raw = r#"{
+        "https://auth.x.ai::openid": {
+            "key": "supergrok-token",
+            "auth_mode": "oidc",
+            "expires_at": "2026-08-20T00:00:00+00:00"
+        },
+        "https://accounts.x.ai/sign-in": {
+            "key": "legacy-token",
+            "auth_mode": "oidc",
+            "expires_at": "2026-08-20T00:00:00+00:00"
+        }
+    }"#;
+    assert_eq!(
+        official_quota::grok::parse_auth_json(raw, now).unwrap(),
+        "supergrok-token"
+    );
+
+    let expired = r#"{
+        "https://auth.x.ai::openid": {
+            "key": "old",
+            "auth_mode": "oidc",
+            "expires_at": "2026-08-18T00:00:00+00:00"
+        }
+    }"#;
+    let error = official_quota::grok::parse_auth_json(expired, now).unwrap_err();
+    assert!(error.contains("已过期"));
+}
+
+#[test]
+fn grok_auth_rejects_api_key_and_weblogin() {
+    let now = chrono::Utc::now();
+    let api_key = r#"{
+        "xai::api_key": { "key": "xai-secret", "auth_mode": "api_key" }
+    }"#;
+    let error = official_quota::grok::parse_auth_json(api_key, now).unwrap_err();
+    assert!(error.contains("会话登录"));
+
+    let web_login = r#"{
+        "https://accounts.x.ai/sign-in": { "key": "legacy-web", "auth_mode": "web_login" }
+    }"#;
+    let error = official_quota::grok::parse_auth_json(web_login, now).unwrap_err();
+    assert!(error.contains("无效"));
+}
+
+#[test]
 fn apply_fetch_results_isolates_provider_failures() {
     let conn = store::open_memory().unwrap();
     official_quota::apply_fetch_results(
         &conn,
-        Ok((
-            vec![crate::domain::OfficialQuotaWindow {
-                kind: "session_5h".into(),
-                label: "5 小时".into(),
-                used_percent: Some(10.0),
-                resets_at: None,
-            }],
-            "2026-08-18T12:00:00+00:00".into(),
-        )),
-        Err("Codex 不可用".into()),
-        Err("尚未配置 Cursor 会话 token".into()),
+        [
+            (
+                crate::domain::OfficialQuotaProvider::Claude,
+                Ok((
+                    vec![crate::domain::OfficialQuotaWindow {
+                        kind: "session_5h".into(),
+                        label: "5 小时".into(),
+                        used_percent: Some(10.0),
+                        resets_at: None,
+                    }],
+                    "2026-08-18T12:00:00+00:00".into(),
+                )),
+            ),
+            (
+                crate::domain::OfficialQuotaProvider::Codex,
+                Err("Codex 不可用".into()),
+            ),
+            (
+                crate::domain::OfficialQuotaProvider::Cursor,
+                Err("尚未配置 Cursor 会话 token".into()),
+            ),
+            (
+                crate::domain::OfficialQuotaProvider::Grok,
+                Err("尚未登录 Grok CLI，请先运行 grok login".into()),
+            ),
+        ],
     )
     .unwrap();
     let claude = store::load_official_quota_row(&conn, "claude")
@@ -344,4 +537,12 @@ fn apply_fetch_results_isolates_provider_failures() {
         .unwrap();
     assert_eq!(codex.2.as_deref(), Some("Codex 不可用"));
     assert!(codex.0.is_empty());
+    let grok = store::load_official_quota_row(&conn, "grok")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        grok.2.as_deref(),
+        Some("尚未登录 Grok CLI，请先运行 grok login")
+    );
+    assert!(grok.0.is_empty());
 }

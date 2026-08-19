@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod codex;
 pub mod cursor;
+pub mod grok;
 pub mod hook;
 pub mod notify;
 
@@ -132,16 +133,19 @@ pub fn apply_failure(
     store::set_official_quota_error(conn, provider.as_str(), error)
 }
 
-/// 打开总览或手动刷新时尝试更新三路；取数在调用方锁外完成，写入彼此隔离。
+/// 打开总览或手动刷新时尝试更新各路；取数在调用方锁外完成，写入彼此隔离。
 pub fn apply_fetch_results(
     conn: &Connection,
-    claude: Result<(Vec<OfficialQuotaWindow>, String), String>,
-    codex: Result<(Vec<OfficialQuotaWindow>, String), String>,
-    cursor: Result<(Vec<OfficialQuotaWindow>, String), String>,
+    results: impl IntoIterator<
+        Item = (
+            OfficialQuotaProvider,
+            Result<(Vec<OfficialQuotaWindow>, String), String>,
+        ),
+    >,
 ) -> Result<(), String> {
-    apply_result(conn, OfficialQuotaProvider::Claude, claude)?;
-    apply_result(conn, OfficialQuotaProvider::Codex, codex)?;
-    apply_result(conn, OfficialQuotaProvider::Cursor, cursor)?;
+    for (provider, result) in results {
+        apply_result(conn, provider, result)?;
+    }
     Ok(())
 }
 
@@ -226,10 +230,12 @@ fn short_label(kind: &str, label: &str) -> String {
     match kind {
         "session_5h" => "5h".to_string(),
         "weekly" => "7d".to_string(),
+        "monthly" => "月".to_string(),
         "billing_cycle" => "总量".to_string(),
         "auto" => "Auto".to_string(),
         "api" => "API".to_string(),
         "on_demand" => "按需".to_string(),
+        "product_grokbuild" => "Build".to_string(),
         _ => label.to_string(),
     }
 }
