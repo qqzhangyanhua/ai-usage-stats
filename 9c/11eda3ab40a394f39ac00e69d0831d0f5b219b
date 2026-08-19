@@ -1,0 +1,50 @@
+src-tauri/src/instructions/mod.rs
+  s_6e169dac3a3412::t_07deed2b4e357c 3
+  s_6e169dac3a3412::t_2f01b604b8cb41 50-54,65
+src/components/InstructionClaudeMemory.tsx
+  s_6e169dac3a3412::t_6303bd25847b41 1-63
+src/components/GlobalInstructionPanel.tsx
+  s_6e169dac3a3412::t_0a433f8de27dbd 124
+  s_6e169dac3a3412::t_3c797ec10b7422 17
+src/components/InstructionCheckup.tsx
+  s_6e169dac3a3412::t_6e81dbf0ae20e8 19
+src-tauri/src/domain.rs
+  s_6e169dac3a3412::t_6b3e1e54f55004 372-391
+  s_6e169dac3a3412::t_df91a31f4c19b3 403
+  s_6e169dac3a3412::t_d5dc06ca3fb97e 320
+  s_6e169dac3a3412::t_b77f4f8ebf2f64 402
+src-tauri/src/instructions/checkup.rs
+  s_6e169dac3a3412::t_b638ef26960aff 163-165
+src-tauri/src/instructions/claude_memory.rs
+  s_6e169dac3a3412::t_f41cdf7af92e75 63
+  s_6e169dac3a3412::t_00c3c62cccf0f0 1-19,21-62,64-85,87-117,126-137
+  s_6e169dac3a3412::t_e6d63b54766c6e 86
+  s_6e169dac3a3412::t_6fa257904d3795 20
+  s_6e169dac3a3412::t_041a58c4a46cd4 118-125
+src/styles.css
+  s_6e169dac3a3412::t_2dc6b7434dd7a2 4166-4258
+src/types.ts
+  s_6e169dac3a3412::t_e1037c21b2f1e3 155-156
+  s_6e169dac3a3412::t_7397358c9d6f0d 193-209,218
+src-tauri/src/tests/instructions.rs
+  s_6e169dac3a3412::t_e036a38d43f57d 1003
+  s_6e169dac3a3412::t_4266831ef2aaf9 941-976,983-1002,1004-1023,1028-1032
+  s_6e169dac3a3412::t_eed6488c63903b 1024-1027
+  s_6e169dac3a3412::t_dcb2dce7ec792a 977-982
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "9c11eda3ab40a394f39ac00e69d0831d0f5b219b",
+  "prompts": {},
+  "sessions": {
+    "s_6e169dac3a3412": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7c68a692-68cf-40b9-b2a2-457afd5c76cd",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
