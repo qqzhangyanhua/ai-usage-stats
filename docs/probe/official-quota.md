@@ -28,7 +28,12 @@ Claude Code 2.1.80+ 在 statusline 命令的 stdin JSON 里提供：
 
 复用钥匙串 `WorkosCursorSessionToken`，`GET https://cursor.com/api/usage-summary`。
 
-- `individualUsage.plan.totalPercentUsed`（或 `used` / `limit`）
+Cursor 订阅限额是多档并行，不能只取总量：
+
+- `individualUsage.plan.totalPercentUsed`（或 `used` / `limit`）→ 窗口 `billing_cycle` / 总量
+- `individualUsage.plan.autoPercentUsed` → 窗口 `auto` / Auto
+- `individualUsage.plan.apiPercentUsed` → 窗口 `api` / API
+- `individualUsage.onDemand.used` / `limit`（无 limit 时回退 `teamUsage.onDemand`）→ 窗口 `on_demand` / 按需
 - `billingCycleEnd`
 
 与账号用量事件接口 `get-filtered-usage-events` 分开。结构变更时保留上次正确缓存。

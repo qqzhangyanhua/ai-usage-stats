@@ -18,6 +18,6 @@ Claude / Codex / Cursor 的订阅限额是账号级事实，和本机消耗记�
 
 - Claude 在用户未写入 hook、或 Claude Code 未跑过 statusline 时，该行保持 `unavailable`。
 - 已有 `statusLine` 的 Claude 配置不得覆盖，只提供可复制 command。
-- Cursor 限额接口与账号用量一样是非公开的，结构变更时降级为可读中文错误。
+- Cursor 限额接口与账号用量一样是非公开的，结构变更时降级为可读中文错误。Cursor 一档订阅里并行有总量 / Auto / API / 按需，必须拆成多个官方额度窗口，不能只画 `totalPercentUsed`。
 - Codex 依赖本机 CLI；进程不在或超时不影响 Claude / Cursor。
 - 80% / 100% 告警按 `provider + window_kind + resets_at` 去重，`stale` 不弹，与月度预算分开开关。
