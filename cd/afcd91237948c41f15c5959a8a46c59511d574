@@ -1,0 +1,39 @@
+src-tauri/src/official_quota/grok.rs
+  s_4a0d9ae01d5139::t_9cb829d7d208d1 31-33,35-37
+  s_4a0d9ae01d5139::t_e48d860e22f534 12,17-26,29-30,38,120,153-156,158,162,164,168-169,182-189,198,204-210,227-228,231-233,235-237,246,256-277,376-390
+  s_4a0d9ae01d5139::t_6832e3d2942be6 199-203,247-250
+  s_4a0d9ae01d5139::t_65ab78da2e104d 34
+src-tauri/src/tests/official_quota.rs
+  s_4a0d9ae01d5139::t_0ade72745d2115 527,530,533,557
+  s_4a0d9ae01d5139::t_031a7679ab418d 466-468,497-522
+  s_4a0d9ae01d5139::t_acdfd21f77dbca 523,525-526,528-529,531-532,534-556,558-577
+  s_4a0d9ae01d5139::t_6a717a59799059 524
+docs/probe/official-quota.md
+  s_4a0d9ae01d5139::t_db10c333e1f5ac 47
+  s_4a0d9ae01d5139::t_d42ea9ac298982 45
+  s_4a0d9ae01d5139::t_174604838efa39 46
+src-tauri/src/official_quota/mod.rs
+  s_4a0d9ae01d5139::t_62656022236b44 5
+src-tauri/src/official_quota/grok_grpc.rs
+  s_4a0d9ae01d5139::t_ec0825ed5129b6 156,167,244,278,310
+  s_4a0d9ae01d5139::t_65ab78da2e104d 38-116
+  s_4a0d9ae01d5139::t_0fdbd75d6eaec5 1-37,117-155,157-166,168-243,245-277,279-309,311-333
+docs/adr/0008-official-quota-dimension.md
+  s_4a0d9ae01d5139::t_3c643ff86ec000 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "cdafcd91237948c41f15c5959a8a46c59511d574",
+  "prompts": {},
+  "sessions": {
+    "s_4a0d9ae01d5139": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a01809-e054-74c0-a33b-a337c8d20776",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
