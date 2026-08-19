@@ -1,0 +1,39 @@
+src/styles.css
+  s_a51f26ed0c4ac7::t_d88be20f9cc8a8 3429-3437
+  s_a51f26ed0c4ac7::t_5c7a0e57d1d128 1371-1374,1378-1481,1484-1485,2792-2793
+src/hooks/viewCache.test.ts
+  s_a51f26ed0c4ac7::t_76511d5c44a3e4 37
+src/components/Settings.tsx
+  s_a51f26ed0c4ac7::t_2f637bad64c68b 111
+  s_a51f26ed0c4ac7::t_39681fc2d89d8a 89,92-95,97-99,102-107,115,121-122,125-126
+  s_a51f26ed0c4ac7::t_90264304a76521 88
+  s_a51f26ed0c4ac7::t_88f8c205c91cb8 108-110
+  s_a51f26ed0c4ac7::t_c3213ed76df461 112-114
+  s_a51f26ed0c4ac7::t_4bb115fd8eb2e1 116-120
+  s_a51f26ed0c4ac7::t_7422bf12de1624 123-124
+  s_a51f26ed0c4ac7::t_25e3ab7254b8a6 127-129
+src/hooks/useUsageData.ts
+  s_a51f26ed0c4ac7::t_2b116ab7321d04 300-304
+src/App.tsx
+  s_a51f26ed0c4ac7::t_68c1bfb5c48185 193-196
+src/hooks/usage/constants.ts
+  s_a51f26ed0c4ac7::t_c209a7f82e3f98 5-13
+src/components/Sidebar.tsx
+  s_a51f26ed0c4ac7::t_dbb83be9ba92e9 160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "de72d674a84c490c09c7fc18fa12a0b50da2709c",
+  "prompts": {},
+  "sessions": {
+    "s_a51f26ed0c4ac7": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a017b5-0793-73a0-a1d6-3cb5f96fad14",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}

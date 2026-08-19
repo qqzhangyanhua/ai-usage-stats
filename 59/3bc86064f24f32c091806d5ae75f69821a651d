@@ -1,0 +1,52 @@
+src/components/Overview.tsx
+  s_a51f26ed0c4ac7::t_5d51a831628e51 8,134-142,225
+src/components/OverviewLayoutBar.tsx
+  s_a51f26ed0c4ac7::t_4dc929eec558a1 5,60-68,75-78
+  s_a51f26ed0c4ac7::t_777e091e78b7e8 79
+src/components/OverviewLayoutControls.tsx
+  s_a51f26ed0c4ac7::t_dc77328d810c28 7,9-10,15,18,64-91
+  s_a51f26ed0c4ac7::t_20f781a35f3900 92-94
+src/components/OverviewLayoutPanel.tsx
+  s_a51f26ed0c4ac7::t_758e5469ea57aa 22
+src/lib/overviewLayout.ts
+  s_a51f26ed0c4ac7::t_63872d0b160149 1-4,116,127-131,168-183
+  s_a51f26ed0c4ac7::t_a7fdf6458b777c 52,54-58,60-61,65,71
+  s_4a0d9ae01d5139::t_19b90a52ac2e88 53,59,91
+  s_a51f26ed0c4ac7::t_4c6d1749fe0fbe 87-90,92
+  s_a51f26ed0c4ac7::t_35ffa1c009daab 184,230-251,260-263,329-332
+  s_a51f26ed0c4ac7::t_9c02c10e9abb28 185
+src/components/OfficialQuotaPanel.tsx
+  s_4a0d9ae01d5139::t_12728fe2012e8f 32
+  s_a51f26ed0c4ac7::t_52e93c66d54849 28-31,33
+src/lib/type.ts
+  s_a51f26ed0c4ac7::t_a3d56a22e8c5ee 15
+  s_4a0d9ae01d5139::t_0030d9dd774ef6 17
+  s_4a0d9ae01d5139::t_7a5799df29bf17 16
+src/lib/overviewLayout.test.ts
+  s_a51f26ed0c4ac7::t_7ea9a9dde52300 7,10,12,20,23,27,66,91-100,102,135-149,166-172,204-206
+  s_4a0d9ae01d5139::t_bafb0d37f41f50 83-88,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "593bc86064f24f32c091806d5ae75f69821a651d",
+  "prompts": {},
+  "sessions": {
+    "s_4a0d9ae01d5139": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a01809-e054-74c0-a33b-a337c8d20776",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_a51f26ed0c4ac7": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a017b5-0793-73a0-a1d6-3cb5f96fad14",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
