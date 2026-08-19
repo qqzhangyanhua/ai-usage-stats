@@ -10,6 +10,7 @@ import type {
   BudgetConfig,
   BudgetStatusDto,
   CodeVolumeSummary,
+  CursorAccountUsageDto,
   CursorSessionSummaryDto,
   Filter,
   FilterOptions,
@@ -68,6 +69,7 @@ export function useUsageData() {
   const [overview, setOverview] = useState<OverviewDto | null>(null);
   const [billingWindows, setBillingWindows] = useState<BillingWindowsDto | null>(null);
   const [officialQuota, setOfficialQuota] = useState<OfficialQuotaDto | null>(null);
+  const [cursorAccountUsage, setCursorAccountUsage] = useState<CursorAccountUsageDto | null>(null);
   const [previous, setPrevious] = useState<OverviewDto | null>(null);
   const [trend, setTrend] = useState<SeriesPoint[]>([]);
   const [heatmap, setHeatmap] = useState<SeriesPoint[]>([]);
@@ -169,6 +171,7 @@ export function useUsageData() {
     setSessions,
     setBillingWindows,
     setOfficialQuota,
+    setCursorAccountUsage,
     setBudgetStatus,
     setHeatmap,
     setHeatmapRange,
@@ -387,6 +390,7 @@ export function useUsageData() {
     billingWindows,
     officialQuota,
     setOfficialQuota,
+    cursorAccountUsage,
     previous,
     trend,
     heatmap,

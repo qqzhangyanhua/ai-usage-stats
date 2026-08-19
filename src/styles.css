@@ -3068,6 +3068,35 @@ td.row-actions {
   padding: 12px 14px 10px;
 }
 
+.cursor-overview-panel {
+  flex: 0 0 auto;
+  padding: 12px 14px 12px;
+}
+
+.cursor-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cursor-overview-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cursor-overview-metric strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+}
+
+.cursor-overview-models {
+  margin-top: 12px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 .official-quota-list {
   list-style: none;
   margin: 10px 0 0;
@@ -3398,7 +3427,8 @@ td.row-actions {
   .kpi-row,
   .dash-bottom,
   .status-bar,
-  .efficiency-cards {
+  .efficiency-cards,
+  .cursor-overview-metrics {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -3432,7 +3462,8 @@ td.row-actions {
     align-items: stretch;
   }
 
-  .efficiency-cards {
+  .efficiency-cards,
+  .cursor-overview-metrics {
     grid-template-columns: 1fr;
   }
 

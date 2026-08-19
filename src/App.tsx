@@ -79,6 +79,7 @@ export default function App() {
                     overview={data.overview}
                     billingWindows={data.billingWindows}
                     officialQuota={data.officialQuota}
+                    cursorAccountUsage={data.cursorAccountUsage}
                     previous={data.previous}
                     trend={data.trend}
                     heatmap={data.heatmap}
@@ -93,6 +94,7 @@ export default function App() {
                     theme={theme}
                     onGrain={data.setGrain}
                     onOpenSessions={data.openSessions}
+                    onOpenCursor={() => data.navigate("cursor")}
                     onProjectClick={(project) =>
                       data.applyFilter({ ...data.filter, projects: [project] })
                     }

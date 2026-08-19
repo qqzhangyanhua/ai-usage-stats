@@ -509,11 +509,14 @@ async fn refresh_cursor_account_usage(
 }
 
 #[tauri::command]
-async fn get_cursor_account_usage(app: tauri::AppHandle) -> Result<CursorAccountUsageDto, String> {
+async fn get_cursor_account_usage(
+    app: tauri::AppHandle,
+    filter: Option<Filter>,
+) -> Result<CursorAccountUsageDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.lock_read()?;
-        cursor_account::load_summary(&conn)
+        cursor_account::load_summary_filtered(&conn, filter.as_ref())
     })
     .await
     .map_err(|e| e.to_string())?

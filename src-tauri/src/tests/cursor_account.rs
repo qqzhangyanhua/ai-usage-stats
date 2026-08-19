@@ -146,6 +146,62 @@ fn cursor_account_summary_splits_by_model_and_headless() {
 }
 
 #[test]
+fn cursor_account_filter_keeps_time_and_model_only() {
+    use crate::domain::CursorUsageEvent;
+
+    fn ev(occurred_at: &str, model: &str, input: i64) -> CursorUsageEvent {
+        CursorUsageEvent {
+            occurred_at: occurred_at.into(),
+            model: model.into(),
+            input_tokens: input,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        }
+    }
+
+    let early = ev("2024-01-15T12:00:00+00:00", "composer-2", 10);
+    let mid = ev("2024-01-16T12:00:00+00:00", "gpt-5", 20);
+    let late = ev("2024-01-17T12:00:00+00:00", "gpt-5", 40);
+    let conn = store::open_memory().unwrap();
+    store::upsert_cursor_account_events(&conn, &[early, mid, late]).unwrap();
+    store::set_cursor_account_as_of(&conn, "2024-01-17T18:00:00+00:00").unwrap();
+
+    let range = Filter {
+        from: Some("2024-01-16T00:00:00.000Z".into()),
+        to: Some("2024-01-16T23:59:59.000Z".into()),
+        ..Filter::default()
+    };
+    let by_day = crate::cursor_account::load_summary_filtered(&conn, Some(&range)).unwrap();
+    assert_eq!(by_day.event_count, 1);
+    assert_eq!(by_day.total_tokens, 20);
+    assert_eq!(by_day.as_of.as_deref(), Some("2024-01-17T18:00:00+00:00"));
+
+    let by_model = crate::cursor_account::load_summary_filtered(
+        &conn,
+        Some(&Filter {
+            models: vec!["gpt-5".into()],
+            ..Filter::default()
+        }),
+    )
+    .unwrap();
+    assert_eq!(by_model.event_count, 2);
+    assert_eq!(by_model.total_tokens, 60);
+
+    let sources_ignored = crate::cursor_account::event_matches_filter(
+        &ev("2024-01-16T12:00:00+00:00", "gpt-5", 1),
+        &Filter {
+            sources: vec!["codex".into()],
+            projects: vec!["/tmp".into()],
+            providers: vec!["openai".into()],
+            ..Filter::default()
+        },
+    );
+    assert!(sources_ignored);
+}
+
+#[test]
 fn cursor_account_store_dedups_by_fingerprint() {
     let events = cursor_account::parse_cursor_usage_events(&fixture("cursor_account_usage.json"))
         .expect("parse");

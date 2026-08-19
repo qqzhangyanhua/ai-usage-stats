@@ -12,6 +12,7 @@ import type {
   BillingWindowsDto,
   BudgetStatusDto,
   CodeVolumeSummary,
+  CursorAccountUsageDto,
   CursorSessionSummaryDto,
   Filter,
   FilterOptions,
@@ -50,6 +51,7 @@ type ViewRefreshArgs = {
   setSessions: Dispatch<SetStateAction<SessionRow[]>>;
   setBillingWindows: Dispatch<SetStateAction<BillingWindowsDto | null>>;
   setOfficialQuota: Dispatch<SetStateAction<OfficialQuotaDto | null>>;
+  setCursorAccountUsage: Dispatch<SetStateAction<CursorAccountUsageDto | null>>;
   setBudgetStatus: Dispatch<SetStateAction<BudgetStatusDto | null>>;
   setHeatmap: Dispatch<SetStateAction<SeriesPoint[]>>;
   setHeatmapRange: Dispatch<SetStateAction<{ from: string; to: string }>>;
@@ -88,6 +90,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
     setSessions,
     setBillingWindows,
     setOfficialQuota,
+    setCursorAccountUsage,
     setBudgetStatus,
     setHeatmap,
     setHeatmapRange,
@@ -170,6 +173,9 @@ export function useViewRefresh(args: ViewRefreshArgs) {
             commit(setBillingWindows),
           ),
           invoke<OfficialQuotaDto>("refresh_official_quota").then(commit(setOfficialQuota)),
+          invoke<CursorAccountUsageDto>("get_cursor_account_usage", {
+            filter: nextFilter,
+          }).then(commit(setCursorAccountUsage)),
           invoke<BudgetStatusDto>("get_budget_status").then(commit(setBudgetStatus)),
           invoke<SeriesPoint[]>("get_trend", { filter: heat.filter, grain: "day" }).then(
             (points) => {
@@ -295,6 +301,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
       setSessions,
       setBillingWindows,
       setOfficialQuota,
+      setCursorAccountUsage,
       setBudgetStatus,
       setHeatmap,
       setHeatmapRange,

@@ -7,6 +7,7 @@ export const OVERVIEW_LAYOUT_STORAGE_KEY = "ai-usage-stats:overview-layout";
 export const OVERVIEW_MODULE_IDS = [
   "kpi",
   "official",
+  "cursorAccount",
   "billing",
   "weekly",
   "trend",
@@ -20,6 +21,7 @@ export type OverviewModuleId = (typeof OVERVIEW_MODULE_IDS)[number];
 export const OVERVIEW_MODULE_LABELS: Record<OverviewModuleId, string> = {
   kpi: "指标卡片",
   official: "官方额度",
+  cursorAccount: "Cursor 账号用量",
   billing: "5 小时计费窗",
   weekly: "滚动用量",
   trend: "趋势与模型",
@@ -76,6 +78,7 @@ export function defaultOverviewLayout(): OverviewLayout {
     modules: {
       kpi: true,
       official: true,
+      cursorAccount: true,
       billing: true,
       weekly: true,
       trend: true,

@@ -75,6 +75,7 @@ describe("parseOverviewLayout", () => {
     );
     expect(layout.modules.heatmap).toBe(false);
     expect(layout.modules.official).toBe(true);
+    expect(layout.modules.cursorAccount).toBe(true);
     expect(layout.modules.billing).toBe(true);
     expect(layout.quotaSources.codex).toBe(true);
     expect(layout.quotaSources.claude).toBe(false);
@@ -150,10 +151,13 @@ describe("visibility helpers", () => {
   it("toggles modules and sources without mutating the original", () => {
     const original = defaultOverviewLayout();
     const hiddenHeatmap = setModuleVisible(original, "heatmap", false);
+    const hiddenCursorAccount = setModuleVisible(original, "cursorAccount", false);
     const hiddenCodex = setQuotaSourceVisible(original, "codex", false);
     expect(original.modules.heatmap).toBe(true);
+    expect(original.modules.cursorAccount).toBe(true);
     expect(original.quotaSources.codex).toBe(true);
     expect(hiddenHeatmap.modules.heatmap).toBe(false);
+    expect(hiddenCursorAccount.modules.cursorAccount).toBe(false);
     expect(hiddenCodex.quotaSources.codex).toBe(false);
   });
 

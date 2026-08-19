@@ -14,6 +14,7 @@ import {
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { BillingWindows } from "./BillingWindows";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { CursorOverviewPanel } from "./CursorOverviewPanel";
 import { OfficialQuotaPanel } from "./OfficialQuotaPanel";
 import { EmptyState } from "./EmptyState";
 import { KpiCard, Spark } from "./Kpi";
@@ -27,6 +28,7 @@ import type {
   Grain,
   OfficialQuotaDto,
   NamedAmount,
+  CursorAccountUsageDto,
   OverviewDto,
   SeriesPoint,
   SessionRow,
@@ -56,6 +58,7 @@ export const Overview = memo(function Overview({
   overview,
   billingWindows,
   officialQuota,
+  cursorAccountUsage,
   previous,
   trend,
   heatmap,
@@ -70,6 +73,7 @@ export const Overview = memo(function Overview({
   theme,
   onGrain,
   onOpenSessions,
+  onOpenCursor,
   onProjectClick,
   onSessionClick,
   onRangeSelect,
@@ -82,6 +86,7 @@ export const Overview = memo(function Overview({
   overview: OverviewDto | null;
   billingWindows: BillingWindowsDto | null;
   officialQuota: OfficialQuotaDto | null;
+  cursorAccountUsage: CursorAccountUsageDto | null;
   previous: OverviewDto | null;
   trend: SeriesPoint[];
   heatmap: SeriesPoint[];
@@ -96,6 +101,7 @@ export const Overview = memo(function Overview({
   theme: ResolvedTheme;
   onGrain: (grain: Grain) => void;
   onOpenSessions: () => void;
+  onOpenCursor: () => void;
   onProjectClick?: (project: string) => void;
   onSessionClick?: (session: { id: string; source: string }) => void;
   onRangeSelect?: (from: string, to: string) => void;
@@ -158,6 +164,7 @@ export const Overview = memo(function Overview({
 
   const showKpi = isModuleVisible(layout, "kpi");
   const showOfficial = isModuleVisible(layout, "official");
+  const showCursorAccount = isModuleVisible(layout, "cursorAccount");
   const showBilling = isModuleVisible(layout, "billing");
   const showWeekly = isModuleVisible(layout, "weekly");
   const showTrend = isModuleVisible(layout, "trend");
@@ -223,6 +230,14 @@ export const Overview = memo(function Overview({
       ) : null}
 
       {showOfficial ? <OfficialQuotaPanel data={visibleOfficialQuota} /> : null}
+
+      {showCursorAccount ? (
+        <CursorOverviewPanel
+          data={cursorAccountUsage}
+          onOpenCursor={onOpenCursor}
+          onModelClick={onModelClick}
+        />
+      ) : null}
 
       {showBilling ? (
         <CollapsibleSection

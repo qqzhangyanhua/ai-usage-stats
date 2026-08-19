@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::adapters::cursor_account::{
     parse_cursor_usage_events, parse_cursor_usage_page, summarize_cursor_usage,
 };
-use crate::domain::CursorAccountUsageDto;
+use crate::domain::{CursorAccountUsageDto, CursorUsageEvent, Filter};
 use crate::store;
 
 const KEYRING_SERVICE: &str = "ai-usage-stats";
@@ -171,10 +171,62 @@ pub fn events_page(
 }
 
 pub fn load_summary(conn: &Connection) -> Result<CursorAccountUsageDto, String> {
+    load_summary_filtered(conn, None)
+}
+
+pub fn load_summary_filtered(
+    conn: &Connection,
+    filter: Option<&Filter>,
+) -> Result<CursorAccountUsageDto, String> {
     let events = store::load_cursor_account_events(conn)?;
-    let mut dto = summarize_cursor_usage(&events);
+    let filtered = match filter {
+        Some(filter) => events
+            .into_iter()
+            .filter(|event| event_matches_filter(event, filter))
+            .collect(),
+        None => events,
+    };
+    let mut dto = summarize_cursor_usage(&filtered);
     dto.as_of = store::cursor_account_as_of(conn)?;
     Ok(dto)
+}
+
+/// 账号用量只认时间与模型；来源 / 项目 / provider 是本机消耗记录维度，不套到这里。
+pub fn event_matches_filter(event: &CursorUsageEvent, filter: &Filter) -> bool {
+    if let Some(from) = filter.from.as_deref() {
+        if !timestamp_ge(&event.occurred_at, from) {
+            return false;
+        }
+    }
+    if let Some(to) = filter.to.as_deref() {
+        if !timestamp_le(&event.occurred_at, to) {
+            return false;
+        }
+    }
+    if !filter.models.is_empty() && !filter.models.iter().any(|model| model == &event.model) {
+        return false;
+    }
+    true
+}
+
+fn timestamp_ge(occurred_at: &str, bound: &str) -> bool {
+    match (parse_millis(occurred_at), parse_millis(bound)) {
+        (Some(value), Some(limit)) => value >= limit,
+        _ => occurred_at >= bound,
+    }
+}
+
+fn timestamp_le(occurred_at: &str, bound: &str) -> bool {
+    match (parse_millis(occurred_at), parse_millis(bound)) {
+        (Some(value), Some(limit)) => value <= limit,
+        _ => occurred_at <= bound,
+    }
+}
+
+fn parse_millis(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp_millis())
 }
 
 pub fn clear_cache(conn: &Connection) -> Result<CursorAccountUsageDto, String> {
