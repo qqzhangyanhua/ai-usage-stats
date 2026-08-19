@@ -1,0 +1,21 @@
+src/styles.css
+  s_49a16412eafe39::t_e5a6d18ce945bc 284-285,288-289,291-293,298-304
+  s_49a16412eafe39::t_856192a20fb434 396
+  s_49a16412eafe39::t_21f54b2c5053ca 435-438
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "f7881a90af1e0ef9828e05de4114740cddab48a5",
+  "prompts": {},
+  "sessions": {
+    "s_49a16412eafe39": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a34353d9-186e-4c3c-af73-b2f38caa5e12",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
