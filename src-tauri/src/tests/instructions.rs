@@ -938,6 +938,98 @@ fn scan_emits_no_findings_when_loaded_files_are_healthy() {
         &crate::domain::InstructionUsageSummary::default(),
     );
     assert!(dto.findings.is_empty());
+    assert!(dto.claude_memories.is_empty());
+}
+
+fn write_claude_auto_memory(home: &std::path::Path, slug: &str, files: &[(&str, &str)]) {
+    let dir = home.join(".claude/projects").join(slug).join("memory");
+    std::fs::create_dir_all(&dir).unwrap();
+    for (name, content) in files {
+        std::fs::write(dir.join(name), content).unwrap();
+    }
+}
+
+#[test]
+fn scan_lists_claude_auto_memory_for_readonly_browse() {
+    let home = tempfile::tempdir().unwrap();
+    write_claude_auto_memory(
+        home.path(),
+        "-Users-demo-app",
+        &[
+            (
+                "MEMORY.md",
+                "# Memory Index\n- [note](note.md) — fixture index\n",
+            ),
+            ("note.md", "fixture-note\n"),
+        ],
+    );
+    std::fs::create_dir_all(home.path().join(".claude/projects/-Users-empty/memory")).unwrap();
+
+    let dto = scan_home(home.path());
+
+    assert_eq!(dto.claude_memories.len(), 1);
+    let repo = &dto.claude_memories[0];
+    assert_eq!(repo.repo, "/Users/demo/app");
+    assert_eq!(
+        repo.display_path,
+        "~/.claude/projects/-Users-demo-app/memory/"
+    );
+    let memory_dir = home.path().join(".claude/projects/-Users-demo-app/memory");
+    let expected_size = std::fs::metadata(memory_dir.join("MEMORY.md"))
+        .unwrap()
+        .len()
+        + std::fs::metadata(memory_dir.join("note.md")).unwrap().len();
+    assert_eq!(repo.byte_size, expected_size);
+    assert!(repo.modified_at.as_deref().is_some_and(|t| !t.is_empty()));
+    assert_eq!(
+        repo.files
+            .iter()
+            .map(|file| file.name.as_str())
+            .collect::<Vec<_>>(),
+        ["MEMORY.md", "note.md"]
+    );
+    assert_eq!(
+        repo.files[0].content,
+        "# Memory Index\n- [note](note.md) — fixture index\n"
+    );
+    assert_eq!(repo.files[1].content, "fixture-note\n");
+
+    let finding = dto
+        .findings
+        .iter()
+        .find(|item| item.kind == crate::domain::InstructionCheckupKind::AutoMemory)
+        .expect("missing auto memory finding");
+    assert_eq!(finding.source, "claude");
+    assert!(finding.problem.contains("自动记忆"));
+    assert!(finding.consequence.contains("注入"));
+    assert!(!finding.problem.contains("fixture-note"));
+    assert!(!finding.consequence.contains("fixture-note"));
+
+    let claude = instruction_source(&dto, "claude");
+    assert!(claude.files.iter().all(|file| {
+        !file.display_path.contains("memory") && !file.content.contains("fixture-note")
+    }));
+}
+
+#[test]
+fn scan_omits_claude_auto_memory_when_absent() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+    std::fs::create_dir_all(home.path().join(".claude/projects/-Users-empty/memory")).unwrap();
+
+    let dto = scan_home(home.path());
+
+    assert!(dto.claude_memories.is_empty());
+    assert!(dto
+        .findings
+        .iter()
+        .all(|finding| { finding.kind != crate::domain::InstructionCheckupKind::AutoMemory }));
+    checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::Empty,
+        "~/.gemini/GEMINI.md",
+    );
 }
 
 fn cursor_state_vscdb(home: &std::path::Path) -> std::path::PathBuf {

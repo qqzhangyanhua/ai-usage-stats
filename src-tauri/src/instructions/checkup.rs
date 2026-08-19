@@ -160,8 +160,9 @@ fn kind_rank(kind: InstructionCheckupKind) -> u8 {
         InstructionCheckupKind::Empty => 1,
         InstructionCheckupKind::PresentUnloaded => 2,
         InstructionCheckupKind::OverrideShields => 3,
-        InstructionCheckupKind::OrphanMemories => 4,
-        InstructionCheckupKind::NearLimit => 5,
+        InstructionCheckupKind::AutoMemory => 4,
+        InstructionCheckupKind::OrphanMemories => 5,
+        InstructionCheckupKind::NearLimit => 6,
     }
 }
 

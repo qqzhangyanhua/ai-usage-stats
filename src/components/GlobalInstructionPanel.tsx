@@ -14,6 +14,7 @@ import {
   showsLoadStatus,
 } from "../lib/instructionAccess";
 import { InstructionCheckup } from "./InstructionCheckup";
+import { InstructionClaudeMemory } from "./InstructionClaudeMemory";
 import { InstructionEditor } from "./InstructionEditor";
 import { InstructionInsight } from "./InstructionInsight";
 import { InstructionOverlap } from "./InstructionOverlap";
@@ -120,6 +121,7 @@ export function GlobalInstructionPanel() {
       {error ? <EmptyState tone="warn" title="读取失败" hint={error} /> : null}
       {actionError ? <EmptyState tone="warn" title="无法打开" hint={actionError} /> : null}
       {data ? <InstructionCheckup findings={data.findings} /> : null}
+      {data ? <InstructionClaudeMemory repos={data.claude_memories} /> : null}
       {data ? (
         <InstructionInsight investments={data.investments} imbalances={data.imbalances} />
       ) : null}

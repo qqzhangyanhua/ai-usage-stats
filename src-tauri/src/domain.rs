@@ -317,6 +317,7 @@ pub enum InstructionCheckupKind {
     NearLimit,
     OverLimit,
     OrphanMemories,
+    AutoMemory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -368,6 +369,26 @@ pub struct InstructionImbalance {
     pub note: String,
 }
 
+/// Claude 按仓库隔离的自动记忆，不进全局指令 sources。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClaudeAutoMemoryFile {
+    pub name: String,
+    pub abs_path: String,
+    pub byte_size: u64,
+    pub modified_at: Option<String>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClaudeAutoMemoryRepo {
+    pub repo: String,
+    pub display_path: String,
+    pub abs_path: String,
+    pub byte_size: u64,
+    pub modified_at: Option<String>,
+    pub files: Vec<ClaudeAutoMemoryFile>,
+}
+
 /// 全局指令快照：不进消耗记录，不进 Token KPI，不写 sqlite。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalInstructionDto {
@@ -378,6 +399,8 @@ pub struct GlobalInstructionDto {
     pub hints: Vec<InstructionOverlapHint>,
     pub investments: Vec<InstructionInvestment>,
     pub imbalances: Vec<InstructionImbalance>,
+    /// 旁路只读，不进 sources/files。机器记忆不是手写全局指令。
+    pub claude_memories: Vec<ClaudeAutoMemoryRepo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

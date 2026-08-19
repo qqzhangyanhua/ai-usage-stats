@@ -4163,3 +4163,96 @@ td.row-actions {
   background: var(--overlay-1);
   font-size: 13px;
 }
+
+.instruction-memory {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-memory h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.instruction-memory > div .muted {
+  margin: 4px 0 0;
+}
+
+.instruction-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-memory-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--overlay-1);
+}
+
+.instruction-memory-head {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.instruction-memory-title {
+  display: grid;
+  gap: 2px;
+}
+
+.instruction-memory-title span,
+.instruction-memory-meta,
+.instruction-memory-file header span,
+.instruction-memory-file header em {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.instruction-memory-meta {
+  display: flex;
+  gap: 12px;
+}
+
+.instruction-memory-body {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-memory-file {
+  display: grid;
+  gap: 6px;
+}
+
+.instruction-memory-file header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.instruction-memory-file header em {
+  font-style: normal;
+}
+
+.instruction-memory-file pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--line);
+  background: var(--overlay-2);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -152,7 +152,8 @@ export type InstructionCheckupKind =
   | "override_shields"
   | "near_limit"
   | "over_limit"
-  | "orphan_memories";
+  | "orphan_memories"
+  | "auto_memory";
 
 export type InstructionCheckupSeverity = "low" | "medium" | "high" | "critical";
 
@@ -189,6 +190,23 @@ export type InstructionImbalance = {
   note: string;
 };
 
+export type ClaudeAutoMemoryFile = {
+  name: string;
+  abs_path: string;
+  byte_size: number;
+  modified_at: string | null;
+  content: string;
+};
+
+export type ClaudeAutoMemoryRepo = {
+  repo: string;
+  display_path: string;
+  abs_path: string;
+  byte_size: number;
+  modified_at: string | null;
+  files: ClaudeAutoMemoryFile[];
+};
+
 export type GlobalInstructionDto = {
   sources: GlobalInstructionSourceRow[];
   findings: InstructionCheckupFinding[];
@@ -197,6 +215,7 @@ export type GlobalInstructionDto = {
   hints: InstructionOverlapHint[];
   investments: InstructionInvestment[];
   imbalances: InstructionImbalance[];
+  claude_memories: ClaudeAutoMemoryRepo[];
 };
 
 export type WriteUserFileRequest = {

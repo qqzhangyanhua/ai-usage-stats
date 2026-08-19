@@ -1,5 +1,6 @@
 mod checkup;
 pub mod claude;
+mod claude_memory;
 pub mod codex;
 mod conflict;
 pub mod copilot;
@@ -45,8 +46,12 @@ pub fn scan(
     let mut findings = checkup::collect(&sources);
     if let Some(finding) = cursor_memories::detect(home) {
         findings.push(finding);
-        checkup::sort(&mut findings);
     }
+    let claude_memories = claude_memory::collect(home);
+    if let Some(finding) = claude_memory::finding(&claude_memories) {
+        findings.push(finding);
+    }
+    checkup::sort(&mut findings);
     let (selected_project, hints) = conflict::collect(&sources, project_root);
     let (investments, imbalances) = insight::collect(&sources, usage);
     GlobalInstructionDto {
@@ -57,6 +62,7 @@ pub fn scan(
         hints,
         investments,
         imbalances,
+        claude_memories,
     }
 }
 
