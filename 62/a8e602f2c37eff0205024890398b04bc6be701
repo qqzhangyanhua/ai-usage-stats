@@ -1,0 +1,34 @@
+src/components/CollapsibleSection.tsx
+  s_49a16412eafe39::t_14830b9b7dabb4 2,4
+  s_49a16412eafe39::t_a3db6e4ed9a402 44-46,49,53-54
+src/components/OverviewLayoutBar.tsx
+  s_49a16412eafe39::t_83347bd8d4c38c 32-33,39,44-50
+  s_49a16412eafe39::t_1a7cf3a8e594f8 2
+src/styles.css
+  s_49a16412eafe39::t_0a9dcb9ced4563 1321-1322,1327
+  s_49a16412eafe39::t_4c785cedaaebfa 1606-1610
+  s_49a16412eafe39::t_b62053fd28d746 1502-1538
+  s_49a16412eafe39::t_453e00f2cc7129 3169-3170,3179-3180
+  s_49a16412eafe39::t_e2c3a86e02bf28 1579-1581,1583-1588
+src/components/OverviewLayoutControls.tsx
+  s_49a16412eafe39::t_cb65686faad1ff 46-50,53-57
+  s_49a16412eafe39::t_c9519b01afaaa0 110-114,118-119,125-129,132-136
+  s_49a16412eafe39::t_1768436e32158b 156-160
+  s_49a16412eafe39::t_739109f2437990 78-79,85-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "62a8e602f2c37eff0205024890398b04bc6be701",
+  "prompts": {},
+  "sessions": {
+    "s_49a16412eafe39": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a34353d9-186e-4c3c-af73-b2f38caa5e12",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
