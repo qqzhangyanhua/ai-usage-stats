@@ -157,7 +157,10 @@ export function setAllModulesVisible(layout: OverviewLayout, visible: boolean): 
   return { ...layout, modules };
 }
 
-export function setAllQuotaSourcesVisible(layout: OverviewLayout, visible: boolean): OverviewLayout {
+export function setAllQuotaSourcesVisible(
+  layout: OverviewLayout,
+  visible: boolean,
+): OverviewLayout {
   const quotaSources = { ...layout.quotaSources };
   for (const id of QUOTA_SOURCE_IDS) {
     quotaSources[id] = visible;

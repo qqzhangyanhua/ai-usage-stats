@@ -27,7 +27,9 @@ export function OverviewLayoutBar({
         </Button>
         <span className="muted">选择首页模块，以及额度里的 Codex、Cursor 等来源</span>
         <div className="overview-layout-bar-actions">
-          {open ? <Button onClick={() => onChange(defaultOverviewLayout())}>恢复默认</Button> : null}
+          {open ? (
+            <Button onClick={() => onChange(defaultOverviewLayout())}>恢复默认</Button>
+          ) : null}
           {onOpenSettings ? (
             <Button variant="text" onClick={onOpenSettings}>
               打开设置
