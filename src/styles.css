@@ -281,20 +281,27 @@ button {
 .sidebar-collapse-btn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
   width: 100%;
   padding: 8px 12px;
-  margin: 6px 0 2px;
-  border: 1px solid var(--line);
+  margin: 4px 0 0;
+  border: 0;
   border-radius: 10px;
-  background: var(--overlay-1);
-  color: var(--muted);
+  background: transparent;
+  color: var(--text-faint-2);
+  font-size: 12px;
 }
 
 .sidebar-collapse-btn:hover {
   color: var(--purple-fg);
-  border-color: rgba(139, 108, 255, 0.35);
+  background: var(--overlay-2);
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+  justify-content: center;
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .flip {
@@ -386,7 +393,7 @@ button {
   border: 0;
   background: transparent;
   color: var(--nav-text);
-  padding: 9px 12px;
+  padding: 8px 12px;
   border-radius: 10px;
 }
 
@@ -425,10 +432,10 @@ button {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--overlay-1);
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
 }
 
 .conn-title {
