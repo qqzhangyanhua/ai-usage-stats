@@ -67,6 +67,7 @@ describe("parseOverviewLayout", () => {
       }),
     );
     expect(layout.modules.heatmap).toBe(false);
+    expect(layout.modules.official).toBe(true);
     expect(layout.modules.billing).toBe(true);
     expect(layout.quotaSources.codex).toBe(true);
     expect(layout.quotaSources.claude).toBe(false);

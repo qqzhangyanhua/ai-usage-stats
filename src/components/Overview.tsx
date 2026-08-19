@@ -147,6 +147,7 @@ export const Overview = memo(function Overview({
   }
 
   const showKpi = isModuleVisible(layout, "kpi");
+  const showOfficial = isModuleVisible(layout, "official");
   const showBilling = isModuleVisible(layout, "billing");
   const showWeekly = isModuleVisible(layout, "weekly");
   const showTrend = isModuleVisible(layout, "trend");
@@ -211,7 +212,7 @@ export const Overview = memo(function Overview({
         </section>
       ) : null}
 
-      <OfficialQuotaPanel data={officialQuota} />
+      {showOfficial ? <OfficialQuotaPanel data={officialQuota} /> : null}
 
       {showBilling ? (
         <CollapsibleSection
