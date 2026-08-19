@@ -1,0 +1,50 @@
+src-tauri/src/tests/official_quota.rs
+  s_49a16412eafe39::t_686744002d4d4d 27-40
+  s_49a16412eafe39::t_24571f10e86d86 26
+src-tauri/src/lib.rs
+  s_49a16412eafe39::t_540804576c5818 663-668
+  s_49a16412eafe39::t_29cfa38d234b08 641,648-660,662,669,673
+  s_49a16412eafe39::t_d1ea70bdeb8e9a 661
+  s_49a16412eafe39::t_167e1a4d13a109 642,670-672,898
+src/components/Overview.tsx
+  s_49a16412eafe39::t_b471011bbeda01 236-242
+  s_49a16412eafe39::t_bd841732d32c83 85-86
+  s_49a16412eafe39::t_f7ca4ba42b3b32 115-116
+src/components/OfficialQuotaPanel.tsx
+  s_49a16412eafe39::t_80cb186ca1aea7 3
+  s_49a16412eafe39::t_a9f3d20312c9de 51-54
+  s_49a16412eafe39::t_6673510f873973 1-2,7,17-18,21-22,25-37,59-65,73-83,100-101
+  s_49a16412eafe39::t_24bbbad99aecc9 89-99
+src/App.tsx
+  s_49a16412eafe39::t_97a6add64edf41 111-112
+src-tauri/src/official_quota/mod.rs
+  s_49a16412eafe39::t_b9d537df5e80d9 137-140,144-151
+  s_49a16412eafe39::t_790e9eaf1efbec 141-143,153
+  s_49a16412eafe39::t_912015ffb830d1 152,154-159
+src/styles.css
+  s_49a16412eafe39::t_0cbdbf556db8b5 3118-3119,3144-3145
+  s_49a16412eafe39::t_97b21f167191c1 3180-3190
+  s_49a16412eafe39::t_d5477589f011c9 3472-3553,3607-3630
+  s_49a16412eafe39::t_c69b073252a4b9 3146-3151
+  s_49a16412eafe39::t_2a2c20faca9c37 474-475
+  s_49a16412eafe39::t_9c80f645548ff8 3117,3120-3143
+  s_49a16412eafe39::t_370abfeb814c58 3631
+src/hooks/usage/useViewRefresh.ts
+  s_49a16412eafe39::t_a291a1e3d87215 175-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "ed16d5997606b418a374ec9ea84bbb2db771af09",
+  "prompts": {},
+  "sessions": {
+    "s_49a16412eafe39": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a34353d9-186e-4c3c-af73-b2f38caa5e12",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
