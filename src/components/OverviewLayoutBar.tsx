@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "../icons";
 import { applicationLabel } from "../lib/format";
 import {
   defaultOverviewLayout,
@@ -28,17 +29,25 @@ export function OverviewLayoutBar({
     <section className="overview-layout-bar">
       <div className="overview-layout-bar-head">
         <Button
-          size="sm"
+          variant="text"
+          className={open ? "overview-layout-trigger is-open" : "overview-layout-trigger"}
           aria-expanded={open}
           aria-controls="overview-layout-editor"
           onClick={() => setOpen((prev) => !prev)}
         >
           {open ? "收起显示配置" : "配置显示"}
+          <Icon name="chevron" size={12} className="caret" />
         </Button>
         <span className="muted">{summary}</span>
         {open ? (
           <div className="overview-layout-bar-actions">
-            <Button onClick={() => onChange(defaultOverviewLayout())}>恢复默认</Button>
+            <Button
+              variant="text"
+              className="overview-layout-action"
+              onClick={() => onChange(defaultOverviewLayout())}
+            >
+              恢复默认
+            </Button>
           </div>
         ) : null}
       </div>

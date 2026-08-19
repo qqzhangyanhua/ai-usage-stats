@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
+import { Icon } from "../icons";
 import { readSectionOpen, writeSectionOpen } from "../lib/sectionCollapse";
+import { Button } from "./ui/Button";
 
 export function CollapsibleSection({
   sectionId,
@@ -39,18 +41,17 @@ export function CollapsibleSection({
         <h2>{title}</h2>
         <div className="collapsible-actions">
           {open ? extra : <span className="muted collapsible-summary">{collapsedSummary}</span>}
-          <button
-            type="button"
-            className="icon-btn collapsible-toggle"
+          <Button
+            variant="icon"
+            className="collapsible-toggle"
             aria-expanded={open}
             aria-controls={bodyId}
+            aria-label={open ? "收起" : "展开"}
             title={open ? "收起" : "展开"}
             onClick={toggle}
           >
-            <span className="caret" aria-hidden="true">
-              ▾
-            </span>
-          </button>
+            <Icon name="chevron" size={13} className="caret" />
+          </Button>
         </div>
       </div>
       {open ? (

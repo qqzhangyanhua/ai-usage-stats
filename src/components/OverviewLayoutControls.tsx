@@ -43,10 +43,18 @@ export function OverviewLayoutControls({
         note="关掉后首页不再展示该区块，数据仍会照常采集。"
         actions={
           <>
-            <Button size="sm" onClick={() => onChange(setAllModulesVisible(layout, true))}>
+            <Button
+              variant="text"
+              className="overview-layout-action"
+              onClick={() => onChange(setAllModulesVisible(layout, true))}
+            >
               全部显示
             </Button>
-            <Button size="sm" onClick={() => onChange(setAllModulesVisible(layout, false))}>
+            <Button
+              variant="text"
+              className="overview-layout-action"
+              onClick={() => onChange(setAllModulesVisible(layout, false))}
+            >
               全部隐藏
             </Button>
           </>
@@ -67,13 +75,15 @@ export function OverviewLayoutControls({
         actions={
           <>
             <Button
-              size="sm"
+              variant="text"
+              className="overview-layout-action"
               onClick={() => onChange(setAllOfficialProvidersVisible(layout, true))}
             >
               全部显示
             </Button>
             <Button
-              size="sm"
+              variant="text"
+              className="overview-layout-action"
               onClick={() => onChange(setAllOfficialProvidersVisible(layout, false))}
             >
               全部隐藏
@@ -97,20 +107,33 @@ export function OverviewLayoutControls({
         note="只影响 5 小时计费窗和滚动用量里的行，不是官方配额接口。"
         actions={
           <>
-            <Button size="sm" onClick={() => onChange(setAllQuotaSourcesVisible(layout, true))}>
+            <Button
+              variant="text"
+              className="overview-layout-action"
+              onClick={() => onChange(setAllQuotaSourcesVisible(layout, true))}
+            >
               全部显示
             </Button>
             <Button
-              size="sm"
+              variant="text"
+              className="overview-layout-action"
               disabled={detectedSources.length === 0}
               onClick={() => onChange(applyDetectedQuotaSources(layout, detectedSources))}
             >
               仅已检测
             </Button>
-            <Button size="sm" onClick={() => onChange(applyFavoriteQuotaSources(layout))}>
+            <Button
+              variant="text"
+              className="overview-layout-action"
+              onClick={() => onChange(applyFavoriteQuotaSources(layout))}
+            >
               常用：Codex / Claude / Cursor
             </Button>
-            <Button size="sm" onClick={() => onChange(setAllQuotaSourcesVisible(layout, false))}>
+            <Button
+              variant="text"
+              className="overview-layout-action"
+              onClick={() => onChange(setAllQuotaSourcesVisible(layout, false))}
+            >
               全部隐藏
             </Button>
           </>
@@ -130,7 +153,11 @@ export function OverviewLayoutControls({
       </ToggleGroup>
       {presentSources.length > 0 ? (
         <div className="overview-layout-source-more">
-          <Button size="sm" onClick={() => setShowAllSources((prev) => !prev)}>
+          <Button
+            variant="text"
+            className="overview-layout-action"
+            onClick={() => setShowAllSources((prev) => !prev)}
+          >
             {showAllSources ? "只看来源有数据的项" : "显示全部来源"}
           </Button>
         </div>

@@ -1318,13 +1318,13 @@ button.heat-cell {
 }
 
 .collapsible-toggle .caret {
-  display: inline-block;
-  line-height: 1;
+  display: block;
+  transform: rotate(-90deg);
   transition: transform 0.15s ease;
 }
 
 .collapsible-section.is-collapsed .collapsible-toggle .caret {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 
 .collapsible-section.is-collapsed {
@@ -1499,6 +1499,43 @@ button.heat-cell {
   gap: 8px 12px;
 }
 
+.overview-layout-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-weight: 600;
+  padding: 2px 4px;
+}
+
+.overview-layout-trigger:hover:not(:disabled),
+.overview-layout-trigger.is-open {
+  color: var(--purple-fg);
+  background: transparent;
+}
+
+.overview-layout-trigger .caret {
+  display: block;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.overview-layout-trigger.is-open .caret {
+  transform: rotate(90deg);
+}
+
+.overview-layout-action {
+  min-height: 24px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.overview-layout-action:hover:not(:disabled) {
+  color: var(--purple-fg);
+  background: var(--overlay-2);
+}
+
 .overview-layout-bar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1539,13 +1576,18 @@ button.heat-cell {
   align-items: center;
   gap: 6px;
   max-width: 240px;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--line-strong);
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid transparent;
   border-radius: 999px;
+  background: var(--overlay-1);
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.layout-toggle.is-on {
   background: var(--tone-codex-bg);
   color: var(--purple-fg);
-  font-size: 12px;
 }
 
 .layout-toggle span {
@@ -1561,13 +1603,16 @@ button.heat-cell {
 }
 
 .layout-toggle:hover:not(:disabled) {
-  border-color: rgba(139, 108, 255, 0.5);
+  background: var(--overlay-2);
+}
+
+.layout-toggle.is-on:hover:not(:disabled) {
+  background: var(--tone-codex-bg);
 }
 
 .layout-toggle.is-off {
   background: transparent;
   color: var(--muted);
-  border-style: dashed;
 }
 
 .layout-toggle.is-off em {
@@ -3121,7 +3166,8 @@ td.row-actions {
   min-width: 0;
 }
 
-.official-quota-refresh {
+.official-quota-refresh,
+.collapsible-toggle {
   width: 22px;
   height: 22px;
   border: 0;
@@ -3130,7 +3176,8 @@ td.row-actions {
   color: var(--text-faint-2);
 }
 
-.official-quota-refresh:hover:not(:disabled) {
+.official-quota-refresh:hover:not(:disabled),
+.collapsible-toggle:hover:not(:disabled) {
   color: var(--purple-fg);
   background: var(--overlay-2);
 }
