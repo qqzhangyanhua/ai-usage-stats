@@ -3048,6 +3048,11 @@ td.row-actions {
   font-size: 12px;
 }
 
+.official-quota-window > span:first-child {
+  flex: 0 0 2.75em;
+  min-width: 2.75em;
+}
+
 .official-quota-window strong {
   font-variant-numeric: tabular-nums;
   min-width: 2.5em;
