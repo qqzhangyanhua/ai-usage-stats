@@ -32,7 +32,7 @@ Rust 测试按模块拆分在 `src-tauri/src/tests/`，共享辅助函数在 `sr
 
 ## 什么不能 / 不应在 Cloud 里测
 
-- **`pnpm tauri dev` / 菜单栏托盘**：需 macOS 图形会话与本机数据；Cloud 上跳过 GUI  walkthrough，除非环境明确支持。
+- **`pnpm tauri dev` / `pnpm tauri build` / 菜单栏托盘**：需图形会话与本机数据；Cloud 上跳过 GUI walkthrough 与完整打包。跨平台安装包由 `.github/workflows/release.yml` 在 GitHub-hosted runner 上打（见 `docs/platforms.md`）。
 - **真实 `~/.codex`、`~/.claude` 等路径**：禁止依赖；用 `src-tauri/tests/fixtures/` + `tempfile`（见 `ingest_all_fixtures_is_stable_on_refresh`）。
 - **Cursor 账号联网拉取**：需用户 cookie / 钥匙串；只测 parser 与 store fixture。
 - **Probe 本机字段**：`cargo run --bin probe` 仅在开发者机器上跑，结果写入 `docs/probe/`。
@@ -78,3 +78,10 @@ Rust 测试按模块拆分在 `src-tauri/src/tests/`，共享辅助函数在 `sr
 - 功能分支命名：`cursor/<描述>-eedd`
 - 推送：`git push -u origin <branch>`
 - PR 默认 **draft**；CI 绿后再 mark ready
+
+## 发版
+
+1. 同步 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 的 version
+2. 推送 `v*` tag，或在 Actions 手动跑 **Release**
+3. 检查 draft Release 的 macOS / Linux / Windows 产物后 Publish
+4. Cloud / 本机 CI **不要**用 `pnpm tauri build` 代替这条流水线

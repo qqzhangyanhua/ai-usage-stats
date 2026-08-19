@@ -2,6 +2,25 @@
 
 扫描本机各 AI 编程 CLI 的会话数据，归一成「消耗记录」并展示 token 消耗与可选费用。
 
+## 下载安装
+
+安装包由 GitHub Actions 打好后挂在 [Releases](https://github.com/qqzhangyanhua/ai-usage-stats/releases)（首次发版为 draft，发布后即可下载）：
+
+| 平台 | 产物 |
+|------|------|
+| macOS Apple Silicon | `.dmg`（`aarch64-apple-darwin`） |
+| macOS Intel | `.dmg`（`x86_64-apple-darwin`） |
+| Linux x64 | `.deb` 或 AppImage |
+| Windows x64 | NSIS `.exe` |
+
+当前构建**未做代码签名**。macOS 首次打开若提示无法验证开发者，在访达中右键 → 打开，或：
+
+```bash
+xattr -cr "/Applications/AI Usage Stats.app"
+```
+
+Windows 可能被 SmartScreen 拦截，选择「仍要运行」即可。发版步骤与产物说明见 [`docs/platforms.md`](docs/platforms.md)。
+
 ## 主要统计
 
 - 总览、时间趋势（支持按时/日/周/月切换粒度），以及按应用、模型、Provider、项目和会话拆分
@@ -26,22 +45,29 @@
 - 菜单栏显示今日花费，若有官方额度则附带最紧的已用百分比；关闭窗口后应用继续在菜单栏运行，点菜单可打开主窗口或退出
 - 托盘心跳仅在源文件（含 sidecar）、Cursor 会话 transcript 或代码量 sqlite 有变化时全量摄取，无变化则只刷新今日花费展示
 
-## 启动
+各来源默认路径、本机 token / 费用能力见 [`CONTEXT.md`](CONTEXT.md)。
+
+## 数据范围
+
+- 默认只读扫描本机各来源会话目录，**不上传本机消耗记录**
+- 聚合结果缓存在本机 sqlite，可在设置页备份、恢复或重建
+- Cursor 账号用量与部分官方额度需要你主动提供本机已有凭证；不会改写会话正文
+- Cursor 会话 token 目前写入 macOS 钥匙串（`keyring` 仅启用 `apple-native`），Windows / Linux 打包后该入口可能不可用
+
+## 从源码启动
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-开发时会弹出原生窗口，标题为「本机 AI 用量统计」。
-
-打包：
+开发时会弹出原生窗口，标题为「本机 AI 用量统计」。本地打包：
 
 ```bash
 pnpm tauri build
 ```
 
-产物为可双击运行的 `.app`（macOS）。
+macOS 产物为可双击的 `.app` / `.dmg`。Linux / Windows 的依赖与产物见 [`docs/platforms.md`](docs/platforms.md)。
 
 ## 技术栈
 
@@ -49,7 +75,15 @@ pnpm tauri build
 - React + Vite + ECharts 界面
 - 包管理统一使用 `pnpm`（请勿使用 npm/yarn，避免产生多份 lockfile）
 
-详见 `CONTEXT.md`、`docs/adr/`、`docs/probe/token-fields.md`。
+## 文档地图
+
+| 文档 | 内容 |
+|------|------|
+| [`CONTEXT.md`](CONTEXT.md) | 领域词汇、各来源采集现状 |
+| [`docs/platforms.md`](docs/platforms.md) | 跨平台构建、GitHub 打包与发版 |
+| [`docs/adr/`](docs/adr/) | 架构决策 |
+| [`AGENTS.md`](AGENTS.md) | Cloud Agent / CI 怎么测 |
+| [`docs/probe/`](docs/probe/) | 本机字段探测记录 |
 
 ## 开发脚本
 
