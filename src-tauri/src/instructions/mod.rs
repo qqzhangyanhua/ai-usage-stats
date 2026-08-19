@@ -5,6 +5,7 @@ mod conflict;
 pub mod copilot;
 pub mod cursor;
 pub mod cursor_agent;
+mod cursor_memories;
 pub mod dsh;
 pub mod factory;
 mod file;
@@ -41,7 +42,11 @@ pub fn scan(
         cursor_agent::scan(),
         copilot::scan(home),
     ];
-    let findings = checkup::collect(&sources);
+    let mut findings = checkup::collect(&sources);
+    if let Some(finding) = cursor_memories::detect(home) {
+        findings.push(finding);
+        checkup::sort(&mut findings);
+    }
     let (selected_project, hints) = conflict::collect(&sources, project_root);
     let (investments, imbalances) = insight::collect(&sources, usage);
     GlobalInstructionDto {

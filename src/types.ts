@@ -151,7 +151,8 @@ export type InstructionCheckupKind =
   | "present_unloaded"
   | "override_shields"
   | "near_limit"
-  | "over_limit";
+  | "over_limit"
+  | "orphan_memories";
 
 export type InstructionCheckupSeverity = "low" | "medium" | "high" | "critical";
 

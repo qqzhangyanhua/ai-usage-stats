@@ -316,6 +316,7 @@ pub enum InstructionCheckupKind {
     OverrideShields,
     NearLimit,
     OverLimit,
+    OrphanMemories,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

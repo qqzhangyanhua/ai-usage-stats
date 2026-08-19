@@ -940,6 +940,161 @@ fn scan_emits_no_findings_when_loaded_files_are_healthy() {
     assert!(dto.findings.is_empty());
 }
 
+fn cursor_state_vscdb(home: &std::path::Path) -> std::path::PathBuf {
+    home.join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+}
+
+fn write_cursor_state_vscdb(home: &std::path::Path, rows: &[(&str, &str)]) {
+    let path = cursor_state_vscdb(home);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute(
+        "CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)",
+        [],
+    )
+    .unwrap();
+    for (key, value) in rows {
+        conn.execute(
+            "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)",
+            rusqlite::params![*key, *value],
+        )
+        .unwrap();
+    }
+}
+
+fn scan_home(home: &std::path::Path) -> crate::domain::GlobalInstructionDto {
+    crate::instructions::scan(
+        home,
+        None,
+        &crate::domain::InstructionUsageSummary::default(),
+    )
+}
+
+#[test]
+fn scan_reports_orphan_cursor_memories_as_checkup_only() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+    write_cursor_state_vscdb(
+        home.path(),
+        &[(
+            "cursor/pendingMemories",
+            r#"[{"id":"m1","memory":"fixture-alpha","title":"alpha","timestamp":1755188329776},{"id":"m2","memory":"fixture-beta","title":"beta","timestamp":1757074594123}]"#,
+        )],
+    );
+    let db_path = cursor_state_vscdb(home.path());
+    let before_bytes = std::fs::read(&db_path).unwrap();
+    let before_mtime = std::fs::metadata(&db_path).unwrap().modified().unwrap();
+
+    let dto = scan_home(home.path());
+
+    let finding = checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::OrphanMemories,
+        "cursor/pendingMemories",
+    );
+    assert_eq!(finding.source, "cursor");
+    assert_eq!(
+        finding.severity,
+        crate::domain::InstructionCheckupSeverity::Medium
+    );
+    assert!(finding.problem.contains("残留"));
+    assert!(finding.problem.contains('2'));
+    assert!(finding.problem.contains("2025-08-14"));
+    assert!(finding.problem.contains("2025-09-05"));
+    assert!(!finding.problem.contains("正在生效"));
+    assert!(!finding.consequence.contains("正在生效"));
+    assert!(finding.consequence.contains("移除"));
+    assert!(finding.consequence.contains("管理"));
+    assert!(!finding.problem.contains("fixture-alpha"));
+    assert!(!finding.consequence.contains("fixture-alpha"));
+    checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::Empty,
+        "~/.gemini/GEMINI.md",
+    );
+
+    let cursor = instruction_source(&dto, "cursor");
+    assert_eq!(cursor.files.len(), 1);
+    assert_eq!(cursor.files[0].display_path, "Cursor 账号级偏好");
+    assert!(dto.sources.iter().all(|row| {
+        row.files.iter().all(|file| {
+            !file.display_path.contains("pendingMemories")
+                && !file.content.contains("fixture-alpha")
+        })
+    }));
+    assert_eq!(std::fs::read(&db_path).unwrap(), before_bytes);
+    assert_eq!(
+        std::fs::metadata(&db_path).unwrap().modified().unwrap(),
+        before_mtime
+    );
+}
+
+#[test]
+fn scan_skips_orphan_memories_when_key_missing_and_keeps_other_findings() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+    write_cursor_state_vscdb(home.path(), &[("cursor/memoriesEnabled", "true")]);
+
+    let dto = scan_home(home.path());
+
+    assert!(dto
+        .findings
+        .iter()
+        .all(|finding| { finding.kind != crate::domain::InstructionCheckupKind::OrphanMemories }));
+    checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::Empty,
+        "~/.gemini/GEMINI.md",
+    );
+}
+
+#[test]
+fn scan_skips_orphan_memories_when_structure_changed() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+    write_cursor_state_vscdb(
+        home.path(),
+        &[("cursor/pendingMemories", r#"["not-a-memory-object", 1]"#)],
+    );
+
+    let dto = scan_home(home.path());
+
+    assert!(dto
+        .findings
+        .iter()
+        .all(|finding| { finding.kind != crate::domain::InstructionCheckupKind::OrphanMemories }));
+    checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::Empty,
+        "~/.gemini/GEMINI.md",
+    );
+}
+
+#[test]
+fn scan_skips_orphan_memories_when_database_unreadable() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(home.path().join(".gemini")).unwrap();
+    std::fs::write(home.path().join(".gemini/GEMINI.md"), "").unwrap();
+    let db_path = cursor_state_vscdb(home.path());
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    std::fs::write(&db_path, "not-a-sqlite-database").unwrap();
+
+    let dto = scan_home(home.path());
+
+    assert!(dto
+        .findings
+        .iter()
+        .all(|finding| { finding.kind != crate::domain::InstructionCheckupKind::OrphanMemories }));
+    checkup_named(
+        &dto,
+        crate::domain::InstructionCheckupKind::Empty,
+        "~/.gemini/GEMINI.md",
+    );
+}
+
 fn file_mtime(path: &std::path::Path) -> String {
     let meta = std::fs::metadata(path).unwrap();
     chrono::DateTime::<chrono::Utc>::from(meta.modified().unwrap()).to_rfc3339()

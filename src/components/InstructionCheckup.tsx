@@ -16,7 +16,7 @@ export function InstructionCheckup({ findings }: { findings: InstructionCheckupF
         <EmptyState
           compact
           title="未发现静默失效"
-          hint="已检查空文件、未被加载、override 屏蔽和体积上限。"
+          hint="已检查空文件、未被加载、override 屏蔽、体积上限和 Cursor 孤儿 memories。"
         />
       ) : (
         <ul className="instruction-checkup-list">

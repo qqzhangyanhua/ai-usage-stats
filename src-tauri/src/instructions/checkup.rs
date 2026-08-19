@@ -19,6 +19,11 @@ pub fn collect(sources: &[GlobalInstructionSourceRow]) -> Vec<InstructionCheckup
         findings.extend(present_unloaded(row));
         findings.extend(size_limit(row));
     }
+    sort(&mut findings);
+    findings
+}
+
+pub fn sort(findings: &mut [InstructionCheckupFinding]) {
     findings.sort_by(|a, b| {
         b.severity
             .cmp(&a.severity)
@@ -26,7 +31,6 @@ pub fn collect(sources: &[GlobalInstructionSourceRow]) -> Vec<InstructionCheckup
             .then_with(|| a.source.cmp(&b.source))
             .then_with(|| a.display_path.cmp(&b.display_path))
     });
-    findings
 }
 
 fn empty_files(row: &GlobalInstructionSourceRow) -> Vec<InstructionCheckupFinding> {
@@ -156,7 +160,8 @@ fn kind_rank(kind: InstructionCheckupKind) -> u8 {
         InstructionCheckupKind::Empty => 1,
         InstructionCheckupKind::PresentUnloaded => 2,
         InstructionCheckupKind::OverrideShields => 3,
-        InstructionCheckupKind::NearLimit => 4,
+        InstructionCheckupKind::OrphanMemories => 4,
+        InstructionCheckupKind::NearLimit => 5,
     }
 }
 
