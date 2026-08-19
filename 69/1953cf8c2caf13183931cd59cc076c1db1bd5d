@@ -1,0 +1,46 @@
+src/lib/rangeHistory.test.ts
+  s_0aa6860afcb8cd::t_aaa7d9aec28622 1-42
+src/components/Topbar.tsx
+  s_0aa6860afcb8cd::t_7abc9867fadd83 78-91,96-98,137,145
+  s_0aa6860afcb8cd::t_382d6b3253debc 21,58,69,120
+src/styles.css
+  s_0aa6860afcb8cd::t_25762ca8f4a0b2 1330-1341
+  s_0aa6860afcb8cd::t_437781cb86cc4e 1329
+src/components/RangeBackButton.tsx
+  s_0aa6860afcb8cd::t_7333d0fab40e16 1-24
+src/hooks/usage/useRangeHistory.ts
+  s_0aa6860afcb8cd::t_9949cf5cf3695c 2-29,31-33,38,40-44,49
+  s_0aa6860afcb8cd::t_1d191a003f25c6 1,30,34-37,39
+  s_0aa6860afcb8cd::t_b0401bef202b5b 45-48
+src/components/Overview.tsx
+  s_0aa6860afcb8cd::t_43dd0266210642 67,90,199
+src/App.tsx
+  s_0aa6860afcb8cd::t_2e771d2903f09f 62,100-101,115-116
+src/hooks/useUsageData.ts
+  s_0aa6860afcb8cd::t_348365b93dda89 56-61,320,323,329,338,342,347,430
+  s_0aa6860afcb8cd::t_8eacf6a15b8b49 428-429
+  s_0aa6860afcb8cd::t_ad8fa478b7af1f 5-6,39,305-307,311,313,318-319,321-322,324-328,330-337,339-341,343-346
+  s_0aa6860afcb8cd::t_aaa907f0f8310d 348
+src/components/Trend.tsx
+  s_0aa6860afcb8cd::t_3e26d6b3f1aff0 15,26,33,127,130-133
+src/lib/rangeHistory.ts
+  s_0aa6860afcb8cd::t_0d3dd048ee179d 1-40
+src/components/OverviewTrend.tsx
+  s_0aa6860afcb8cd::t_120a1b9164c072 11,23,33,67-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "691953cf8c2caf13183931cd59cc076c1db1bd5d",
+  "prompts": {},
+  "sessions": {
+    "s_0aa6860afcb8cd": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a01771-1d3b-79c0-9721-86f66cbe3adf",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
