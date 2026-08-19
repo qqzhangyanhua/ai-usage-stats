@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon, type IconName } from "../icons";
-import type { ThemeMode } from "../hooks/useTheme";
 import type { View } from "../types";
-import { Select } from "./ui/Select";
 
 const SIDEBAR_COLLAPSED_KEY = "ai-usage-stats:sidebar-collapsed";
 
@@ -43,41 +41,18 @@ const navGroups: { label: string; items: { id: View; label: string; icon: IconNa
   },
 ];
 
-export const AUTO_REFRESH_OPTIONS: { value: string; label: string }[] = [
-  { value: "off", label: "关闭" },
-  { value: "1", label: "每 1 分钟" },
-  { value: "5", label: "每 5 分钟" },
-  { value: "10", label: "每 10 分钟" },
-  { value: "30", label: "每 30 分钟" },
-  { value: "60", label: "每 1 小时" },
-];
-
-const THEME_OPTIONS: { value: ThemeMode; label: string; icon: IconName }[] = [
-  { value: "system", label: "跟随系统", icon: "monitor" },
-  { value: "light", label: "浅色", icon: "sun" },
-  { value: "dark", label: "深色", icon: "moon" },
-];
-
 export function Sidebar({
   view,
   busy,
   connected,
   status,
-  autoRefresh,
-  themeMode,
   onNavigate,
-  onAutoRefreshChange,
-  onThemeModeChange,
 }: {
   view: View;
   busy: boolean;
   connected: boolean;
   status: string;
-  autoRefresh: string;
-  themeMode: ThemeMode;
   onNavigate: (view: View) => void;
-  onAutoRefreshChange: (value: string) => void;
-  onThemeModeChange: (mode: ThemeMode) => void;
 }) {
   const [collapsed, setCollapsed] = useState(loadCollapsed);
 
@@ -132,35 +107,6 @@ export function Sidebar({
       </button>
       {!collapsed ? (
         <div className="sidebar-foot">
-          <div className="theme-toggle" role="group" aria-label="外观主题">
-            {THEME_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={
-                  themeMode === option.value ? "theme-toggle-btn active" : "theme-toggle-btn"
-                }
-                title={option.label}
-                aria-label={option.label}
-                aria-pressed={themeMode === option.value}
-                onClick={() => onThemeModeChange(option.value)}
-              >
-                <Icon name={option.icon} size={14} />
-              </button>
-            ))}
-          </div>
-          <div className="auto-refresh">
-            <Icon name="clock" size={14} />
-            <span>自动刷新</span>
-            <Select
-              variant="plain"
-              align="left"
-              ariaLabel="自动刷新间隔"
-              value={autoRefresh}
-              options={AUTO_REFRESH_OPTIONS}
-              onChange={onAutoRefreshChange}
-            />
-          </div>
           <div className="conn-card">
             <span className={connected ? "live-dot" : "live-dot off"} />
             <div>
@@ -211,6 +157,6 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
     case "instructions":
       return { title: "全局指令", subtitle: "跨来源的全局指令与体检" };
     case "settings":
-      return { title: "设置", subtitle: "模型单价配置" };
+      return { title: "设置", subtitle: "外观、数据源与单价" };
   }
 }

@@ -421,31 +421,6 @@ button {
   gap: 10px;
 }
 
-.theme-toggle {
-  display: flex;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--overlay-1);
-  gap: 2px;
-}
-
-.theme-toggle-btn {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 6px 0;
-  border-radius: 9px;
-}
-
-.theme-toggle-btn.active {
-  background: var(--tone-codex-bg);
-  color: var(--purple-fg);
-}
-
 .conn-card {
   display: flex;
   gap: 10px;
@@ -454,23 +429,6 @@ button {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--overlay-1);
-}
-
-.auto-refresh {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--overlay-1);
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.auto-refresh .select {
-  flex: 1;
-  min-width: 0;
 }
 
 .conn-title {
@@ -1410,15 +1368,121 @@ button.heat-cell {
   flex: 1;
 }
 
-.settings-toc {
+.settings-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-panel);
 }
 
-.settings-toc .filter-chip {
-  text-decoration: none;
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-tab:hover:not(.active) {
+  color: var(--text-soft);
+  background: var(--overlay-2);
+}
+
+.settings-tab.active {
+  background: var(--tone-codex-bg);
+  color: var(--purple-fg);
+}
+
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 2px 4px;
+}
+
+.settings-block,
+.settings-row {
+  display: flex;
+  gap: 12px 20px;
+}
+
+.settings-block {
+  flex-direction: column;
+}
+
+.settings-row {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-row-copy h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.settings-row-copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.theme-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.theme-choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 92px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--overlay-1);
+  color: var(--text);
+  text-align: left;
+}
+
+.theme-choice-btn strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.theme-choice-btn small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.theme-choice-btn:hover:not(.active) {
+  border-color: var(--line-strong);
+  background: var(--overlay-2);
+}
+
+.theme-choice-btn.active {
+  border-color: rgba(139, 108, 255, 0.5);
+  background: var(--tone-codex-bg);
+  color: var(--purple-fg);
+}
+
+.theme-choice-btn.active small {
+  color: var(--purple-fg);
 }
 
 .overview-layout-bar {
@@ -2725,7 +2789,8 @@ tr.selected {
 .select-option:focus-visible,
 .date-cell:focus-visible,
 .nav-btn:focus-visible,
-.theme-toggle-btn:focus-visible,
+.settings-tab:focus-visible,
+.theme-choice-btn:focus-visible,
 .sidebar-collapse-btn:focus-visible {
   outline: 2px solid rgba(139, 108, 255, 0.55);
   outline-offset: 1px;
@@ -3361,6 +3426,15 @@ td.row-actions {
 }
 
 @media (max-width: 720px) {
+  .theme-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .efficiency-cards {
     grid-template-columns: 1fr;
   }

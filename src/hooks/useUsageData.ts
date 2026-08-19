@@ -297,7 +297,11 @@ export function useUsageData() {
       setSessionsVisited(true);
     }
     setView(next);
-    if (window.location.hash.replace(/^#/, "") !== next) {
+    const current = window.location.hash.replace(/^#/, "");
+    if (next === "settings" && (current === "settings" || current.startsWith("settings-"))) {
+      return;
+    }
+    if (current !== next) {
       window.history.replaceState(null, "", `#${next}`);
     }
   }, []);

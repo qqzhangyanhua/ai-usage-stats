@@ -34,6 +34,7 @@ describe("parseViewHash", () => {
     expect(parseViewHash("#settings")).toBe("settings");
     expect(parseViewHash("#settings-budget")).toBe("settings");
     expect(parseViewHash("settings-diagnostics")).toBe("settings");
+    expect(parseViewHash("#settings-appearance")).toBe("settings");
   });
 
   it("falls back to overview for unknown hashes", () => {

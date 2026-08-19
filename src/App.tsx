@@ -45,11 +45,7 @@ export default function App() {
         busy={data.busy}
         connected={data.connected}
         status={data.status}
-        autoRefresh={data.autoRefresh}
-        themeMode={themeMode}
-        onAutoRefreshChange={data.setAutoRefresh}
         onNavigate={data.navigate}
-        onThemeModeChange={setThemeMode}
       />
       <div className="workspace">
         <Topbar
@@ -194,6 +190,10 @@ export default function App() {
                     onQuotaError={data.reportError}
                     overviewLayout={overviewLayout}
                     onOverviewLayoutChange={setOverviewLayout}
+                    themeMode={themeMode}
+                    autoRefresh={data.autoRefresh}
+                    onThemeModeChange={setThemeMode}
+                    onAutoRefreshChange={data.setAutoRefresh}
                   />
                 ) : null}
               </Suspense>

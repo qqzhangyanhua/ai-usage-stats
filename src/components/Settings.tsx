@@ -1,14 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
+import type { ThemeMode } from "../hooks/useTheme";
 import type { OverviewLayout } from "../lib/overviewLayout";
-import { BackupPanel } from "./BackupPanel";
-import { BudgetPanel } from "./BudgetPanel";
-import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
-import { OfficialQuotaSettingsPanel } from "./OfficialQuotaSettingsPanel";
-import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
-import { OverviewLayoutPanel } from "./OverviewLayoutPanel";
-import { PriceConfigPanel } from "./PriceConfigPanel";
-import { PricePresetPanel } from "./PricePresetPanel";
-import { SourceDiagnosticsPanel } from "./SourceDiagnosticsPanel";
+import { hashForTab, SETTINGS_TABS, tabFromHash } from "../lib/settingsTabs";
+import type { SettingsTabId } from "../lib/type";
+import { Icon } from "../icons";
 import type {
   BudgetStatusDto,
   IngestReport,
@@ -16,18 +11,27 @@ import type {
   PriceTable,
   SourceDiagnostic,
 } from "../types";
+import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
+import { BackupPanel } from "./BackupPanel";
+import { BudgetPanel } from "./BudgetPanel";
+import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
+import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
+import { OfficialQuotaSettingsPanel } from "./OfficialQuotaSettingsPanel";
+import { OverviewLayoutPanel } from "./OverviewLayoutPanel";
+import { PriceConfigPanel } from "./PriceConfigPanel";
+import { PricePresetPanel } from "./PricePresetPanel";
+import { SourceDiagnosticsPanel } from "./SourceDiagnosticsPanel";
+import type { SettingsTabIcon } from "./type";
 
-const SETTINGS_ANCHORS = [
-  { id: "settings-diagnostics", label: "数据源" },
-  { id: "settings-overview", label: "概览" },
-  { id: "settings-budget", label: "预算" },
-  { id: "settings-official-quota", label: "官方额度" },
-  { id: "settings-backup", label: "备份" },
-  { id: "settings-cursor-account", label: "Cursor 账号" },
-  { id: "settings-litellm", label: "LiteLLM" },
-  { id: "settings-presets", label: "预设" },
-  { id: "settings-prices", label: "单价" },
-] as const;
+const TAB_ICONS: SettingsTabIcon = {
+  general: "monitor",
+  sources: "source",
+  display: "overview",
+  budget: "cost",
+  backup: "download",
+  cursor: "cursor",
+  pricing: "tokens",
+};
 
 export function Settings({
   prices,
@@ -39,6 +43,8 @@ export function Settings({
   observedModels,
   budgetStatus,
   savingBudget,
+  themeMode,
+  autoRefresh,
   onChange,
   onSave,
   onRebuild,
@@ -50,6 +56,8 @@ export function Settings({
   onQuotaError,
   overviewLayout,
   onOverviewLayoutChange,
+  onThemeModeChange,
+  onAutoRefreshChange,
 }: {
   prices: PriceTable;
   diagnostics: SourceDiagnostic[];
@@ -60,6 +68,8 @@ export function Settings({
   observedModels: string[];
   budgetStatus: BudgetStatusDto | null;
   savingBudget: boolean;
+  themeMode: ThemeMode;
+  autoRefresh: string;
   onChange: (prices: PriceTable) => void;
   onSave: () => void;
   onRebuild: (source: string | null) => void;
@@ -71,52 +81,140 @@ export function Settings({
   onQuotaError: (error: unknown) => void;
   overviewLayout: OverviewLayout;
   onOverviewLayoutChange: (layout: OverviewLayout) => void;
+  onThemeModeChange: (mode: ThemeMode) => void;
+  onAutoRefreshChange: (value: string) => void;
 }) {
   const detectedSources = diagnostics.filter((row) => row.detected).map((row) => row.source);
+  const [tab, setTab] = useState<SettingsTabId>(() => tabFromHash(window.location.hash));
+  const [anchor, setAnchor] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = window.location.hash.replace(/^#/, "");
-    if (!id.startsWith("settings-")) {
+    function applyHash() {
+      const hash = window.location.hash.replace(/^#/, "");
+      setTab(tabFromHash(hash));
+      setAnchor(hash.startsWith("settings-") ? hash : null);
+    }
+    window.addEventListener("hashchange", applyHash);
+    applyHash();
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, []);
+
+  useEffect(() => {
+    if (!anchor) {
       return;
     }
-    document.getElementById(id)?.scrollIntoView({ block: "start" });
-  }, []);
+    document.getElementById(anchor)?.scrollIntoView({ block: "start" });
+  }, [tab, anchor]);
+
+  function selectTab(id: SettingsTabId) {
+    setTab(id);
+    setAnchor(null);
+    const next = hashForTab(id);
+    if (window.location.hash.replace(/^#/, "") !== next) {
+      window.history.replaceState(null, "", `#${next}`);
+    }
+    document.querySelector("main.main")?.scrollTo({ top: 0 });
+  }
+
+  function onTabListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") {
+      return;
+    }
+    const index = SETTINGS_TABS.findIndex((item) => item.id === tab);
+    if (index < 0) {
+      return;
+    }
+    event.preventDefault();
+    const delta = event.key === "ArrowRight" ? 1 : -1;
+    const next = SETTINGS_TABS[(index + delta + SETTINGS_TABS.length) % SETTINGS_TABS.length];
+    selectTab(next.id);
+    event.currentTarget
+      .querySelector<HTMLButtonElement>(`[data-settings-tab="${next.id}"]`)
+      ?.focus();
+  }
 
   return (
     <div className="stack">
-      <nav className="settings-toc" aria-label="设置目录">
-        {SETTINGS_ANCHORS.map((anchor) => (
-          <a key={anchor.id} className="filter-chip" href={`#${anchor.id}`}>
-            {anchor.label}
-          </a>
-        ))}
-      </nav>
-      <SourceDiagnosticsPanel
-        diagnostics={diagnostics}
-        ingestReport={ingestReport}
-        rebuilding={rebuilding}
-        purging={purging}
-        operationBusy={operationBusy}
-        onRebuild={onRebuild}
-        onPurgeArchived={onPurgeArchived}
-      />
-      <OverviewLayoutPanel
-        layout={overviewLayout}
-        detectedSources={detectedSources}
-        presentSources={detectedSources}
-        onChange={onOverviewLayoutChange}
-      />
-      <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
-      <OfficialQuotaSettingsPanel
-        quota={officialQuota}
-        onQuota={onOfficialQuota}
-        onError={onQuotaError}
-      />
-      <BackupPanel onRestored={onSnapshotRefreshed} />
-      <CursorAccountSettingsPanel />
-      <LiteLlmSnapshotPanel onRefreshed={onSnapshotRefreshed} />
-      <PricePresetPanel prices={prices} observedModels={observedModels} onChange={onChange} />
-      <PriceConfigPanel prices={prices} onChange={onChange} onSave={onSave} />
+      <div
+        className="settings-tabs"
+        role="tablist"
+        aria-label="设置分类"
+        onKeyDown={onTabListKeyDown}
+      >
+        {SETTINGS_TABS.map((item) => {
+          const active = item.id === tab;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              data-settings-tab={item.id}
+              id={`settings-tab-${item.id}`}
+              aria-selected={active}
+              aria-controls={`settings-panel-${item.id}`}
+              tabIndex={active ? 0 : -1}
+              className={active ? "settings-tab active" : "settings-tab"}
+              onClick={() => selectTab(item.id)}
+            >
+              <Icon name={TAB_ICONS[item.id]} size={14} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div
+        role="tabpanel"
+        id={`settings-panel-${tab}`}
+        aria-labelledby={`settings-tab-${tab}`}
+        className="stack"
+      >
+        {tab === "general" ? (
+          <AppearanceSettingsPanel
+            themeMode={themeMode}
+            autoRefresh={autoRefresh}
+            onThemeModeChange={onThemeModeChange}
+            onAutoRefreshChange={onAutoRefreshChange}
+          />
+        ) : null}
+        {tab === "sources" ? (
+          <SourceDiagnosticsPanel
+            diagnostics={diagnostics}
+            ingestReport={ingestReport}
+            rebuilding={rebuilding}
+            purging={purging}
+            operationBusy={operationBusy}
+            onRebuild={onRebuild}
+            onPurgeArchived={onPurgeArchived}
+          />
+        ) : null}
+        {tab === "display" ? (
+          <OverviewLayoutPanel
+            layout={overviewLayout}
+            detectedSources={detectedSources}
+            presentSources={detectedSources}
+            onChange={onOverviewLayoutChange}
+          />
+        ) : null}
+        {tab === "budget" ? (
+          <>
+            <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
+            <OfficialQuotaSettingsPanel
+              quota={officialQuota}
+              onQuota={onOfficialQuota}
+              onError={onQuotaError}
+            />
+          </>
+        ) : null}
+        {tab === "backup" ? <BackupPanel onRestored={onSnapshotRefreshed} /> : null}
+        {tab === "cursor" ? <CursorAccountSettingsPanel /> : null}
+        {tab === "pricing" ? (
+          <>
+            <LiteLlmSnapshotPanel onRefreshed={onSnapshotRefreshed} />
+            <PricePresetPanel prices={prices} observedModels={observedModels} onChange={onChange} />
+            <PriceConfigPanel prices={prices} onChange={onChange} onSave={onSave} />
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
