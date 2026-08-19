@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Filter } from "../types";
 import {
   applicationLabel,
+  weeklyCountLabel,
   customRangeFilter,
   deltaPct,
   formatBytes,
@@ -116,6 +117,12 @@ describe("applicationLabel", () => {
   it("maps known sources to display names", () => {
     expect(applicationLabel("claude")).toBe("Claude Code");
     expect(applicationLabel("codex")).toBe("Codex");
+    expect(applicationLabel("cursor")).toBe("Cursor");
+  });
+
+  it("labels cursor weekly rows as events", () => {
+    expect(weeklyCountLabel("cursor", 12)).toBe("共 12 条事件");
+    expect(weeklyCountLabel("claude", 3)).toBe("共 3 个会话");
   });
 
   it("falls back to the raw source id when unknown", () => {

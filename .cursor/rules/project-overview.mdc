@@ -43,6 +43,7 @@ docs/adr/        # 架构决策记录，重大架构变更需新增一份 ADR
 - **Token 口径 (Token Dimension)**：input/output/cache_read/cache_creation/reasoning/total
 - **代码量 (Code Volume)**：仅 Cursor 编辑器的 AI 生成代码行数统计，与 token 无关，界面上严格分区，避免与「用量/消耗」混用
 - **官方额度 (Official Quota)**：Claude / Codex / Cursor / Grok 的账号级订阅限额，不进 UsageRecord / 本机 token KPI，不与本机 5 小时/7 天估计窗混条
+- **Cursor 账号用量**：不进 UsageRecord / 本机 KPI / 5 小时窗；概览 7 天滚动可单独挂一行，缺价时用 LiteLLM 快照估算
 
 ## 关键架构约束
 

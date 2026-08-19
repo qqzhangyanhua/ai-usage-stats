@@ -263,7 +263,10 @@ export const Overview = memo(function Overview({
           title={`${weeklyDays} 天滚动用量`}
           className="panel weekly-panel"
           extra={
-            <span className="muted">按来源统计最近 {weeklyDays} 天的累计消耗，非官方配额</span>
+            <span className="muted">
+              按来源统计最近 {weeklyDays} 天的累计消耗；Cursor 来自账号用量，费用按价目 / LiteLLM
+              估算，非官方配额
+            </span>
           }
           collapsedSummary={`${weeklyCount} 个 ${weeklyDays} 天窗口`}
         >

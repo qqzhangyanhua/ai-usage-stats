@@ -88,9 +88,17 @@ const applicationNames: Record<string, string> = {
   gemini: "Gemini CLI",
   grok: "Grok CLI",
   qwen: "Qwen Code",
+  cursor: "Cursor",
   cursor_agent: "Cursor Agent",
   copilot: "GitHub Copilot CLI",
 };
+
+export function weeklyCountLabel(source: string, count: number): string {
+  if (source === "cursor") {
+    return `共 ${count} 条事件`;
+  }
+  return `共 ${count} 个会话`;
+}
 
 export function applicationLabel(source: string): string {
   return applicationNames[source] ?? source;

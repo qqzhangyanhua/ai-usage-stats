@@ -459,3 +459,81 @@ fn cursor_account_failed_refresh_keeps_last_good_cache() {
     assert_eq!(empty.event_count, 2);
     assert_eq!(empty.total_tokens, 465);
 }
+
+#[test]
+fn billing_windows_query_appends_cursor_weekly_from_account_cache() {
+    use crate::domain::{CursorUsageEvent, PriceEntry, PriceOrigin};
+
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    let conn = store::open_memory().unwrap();
+    store::insert_records(
+        &conn,
+        &[window_rec("2026-08-16T09:00:00Z", Source::Claude, "s1", 50)],
+    )
+    .unwrap();
+    store::upsert_cursor_account_events(
+        &conn,
+        &[CursorUsageEvent {
+            occurred_at: "2026-08-16T10:00:00Z".into(),
+            model: "claude-4.5-sonnet".into(),
+            input_tokens: 100,
+            output_tokens: 20,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        }],
+    )
+    .unwrap();
+    let prices = PriceTable {
+        prices: vec![PriceEntry {
+            model: "claude-4.5-sonnet".into(),
+            provider: None,
+            input: 0.01,
+            output: 0.02,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            origin: PriceOrigin::Snapshot,
+        }],
+    };
+
+    let dto = query::billing_windows(&conn, &Filter::default(), &prices, now).unwrap();
+    let cursor = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "cursor")
+        .expect("cursor weekly from query");
+    assert_eq!(cursor.total_tokens, 120);
+    assert_eq!(cursor.session_count, 1);
+    let cost = cursor.cost.expect("LiteLLM fallback cost");
+    assert!((cost - 1.4).abs() < 1e-9);
+    assert!(!cursor.unpriced);
+
+    let only_claude = Filter {
+        sources: vec!["claude".into()],
+        ..Filter::default()
+    };
+    let filtered = query::billing_windows(&conn, &only_claude, &prices, now).unwrap();
+    assert!(filtered
+        .weekly
+        .iter()
+        .all(|window| window.source != "cursor"));
+
+    let only_cursor = Filter {
+        sources: vec!["cursor".into()],
+        ..Filter::default()
+    };
+    let cursor_only = query::billing_windows(&conn, &only_cursor, &prices, now).unwrap();
+    assert_eq!(cursor_only.weekly.len(), 1);
+    assert_eq!(cursor_only.weekly[0].source, "cursor");
+    assert!(cursor_only.current.is_empty());
+
+    let other_model = Filter {
+        models: vec!["composer-2".into()],
+        ..Filter::default()
+    };
+    let by_model = query::billing_windows(&conn, &other_model, &prices, now).unwrap();
+    assert!(by_model
+        .weekly
+        .iter()
+        .all(|window| window.source != "cursor"));
+}

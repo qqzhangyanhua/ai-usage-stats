@@ -90,6 +90,7 @@ pub fn billing_windows(
         projects: filter.projects.clone(),
         providers: filter.providers.clone(),
     };
+    // Cursor 账号用量在 query.rs 里从独立表挂进 7 天滚动；内存路径只对照消耗记录。
     billing_window::summarize(apply_filter(records, &scoped), prices, now)
 }
 

@@ -25,8 +25,8 @@ Cursor `scored_commits` 记录的提交行数：新增/删除/净增、Composer�
 _Avoid_: 用量、消耗（避免与 token 混淆）；不要把 hash 条数当成行数
 
 **Cursor 账号用量 (Cursor Account Usage)**：
-从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量。会话 token 在设置页或 Cursor 页粘贴进钥匙串；缓存可在设置页独立清空，不参与本机文件对账。界面可翻看已缓存的单条事件，对不上本机会话。概览页单独展示缓存摘要（跟随当前时间/模型筛选），仍不并入本机 token KPI。
-_Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称
+从 Cursor 云端仪表盘拉回的账号级 token 事件，含全部设备与全时段，self-serve 计划下仅有 token、没有费用。独立于本机消耗记录与代码量，不并入本机 token 总量、不进 `UsageRecord` / `Source` / 5 小时计费窗。会话 token 在设置页或 Cursor 页粘贴进钥匙串；缓存可在设置页独立清空，不参与本机文件对账。界面可翻看已缓存的单条事件，对不上本机会话。概览页单独展示缓存摘要（跟随当前时间/模型筛选），仍不并入本机 token KPI。例外：概览「7 天滚动用量」可单独挂一行 `source=cursor`，费用按用户价目、缺价时用 LiteLLM 快照按模型估算。
+_Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称；不要把它并进本机 token KPI 或 5 小时窗
 
 **Cursor 会话 (Cursor Session)**：
 从本机 `~/.cursor/projects/*/agent-transcripts` jsonl 解析的行为统计（会话数、轮次、工具调用、失败率、提问数、工具分类等）。`subagents/` 子代理并入父会话，不单独计数。Cursor IDE Agent 与 `cursor-agent` CLI 写同一套目录，无法从路径区分来源；hash 的 `source` 可标 composer/cli。只存聚合、不含对话正文。点开会话可按需重读该 jsonl 看工具次数、读写 path 和 hash 文件列表，仍不索引正文。独立于消耗记录、代码量与账号用量；随 `ingest_all` 自动扫描，不进总览 token KPI。

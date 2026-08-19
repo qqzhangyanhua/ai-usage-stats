@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { sourceTone } from "../icons";
-import { applicationLabel, formatCompact, formatUsd } from "../lib/format";
+import { applicationLabel, formatCompact, formatUsd, weeklyCountLabel } from "../lib/format";
 import type { WeeklyWindowDto } from "../types";
 import { EmptyState } from "./EmptyState";
 
@@ -49,8 +49,8 @@ function WeeklyRow({ window, maxTokens }: { window: WeeklyWindowDto; maxTokens: 
           <i style={{ width: `${progress}%` }} />
         </div>
         <div className="weekly-list-meta muted">
-          日均 {dailyAvgTokens} Token{dailyAvgCost ? ` · 日均 ${dailyAvgCost}` : ""} · 共{" "}
-          {window.session_count} 个会话
+          日均 {dailyAvgTokens} Token{dailyAvgCost ? ` · 日均 ${dailyAvgCost}` : ""} ·{" "}
+          {weeklyCountLabel(window.source, window.session_count)}
         </div>
       </div>
     </li>

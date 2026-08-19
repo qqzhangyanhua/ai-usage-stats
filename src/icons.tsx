@@ -282,6 +282,7 @@ export const sourceTone: Record<string, string> = {
   qwen: "tone-qwen",
   factory: "tone-factory",
   dsh: "tone-dsh",
+  cursor: "tone-cursor",
   cursor_agent: "tone-cursor",
   copilot: "tone-copilot",
 };

@@ -191,6 +191,34 @@ pub fn load_summary_filtered(
     Ok(dto)
 }
 
+/// 供概览 7 天滚动挂一行：只认模型筛选，不套用来源/项目/provider，也不跟总览日期预设。
+pub fn events_for_weekly_window(
+    conn: &Connection,
+    filter: &Filter,
+) -> Result<Vec<CursorUsageEvent>, String> {
+    if !filter.sources.is_empty()
+        && !filter
+            .sources
+            .iter()
+            .any(|source| source == crate::billing_window::CURSOR_WEEKLY_SOURCE)
+    {
+        return Ok(Vec::new());
+    }
+    let scoped = Filter {
+        from: None,
+        to: None,
+        sources: Vec::new(),
+        models: filter.models.clone(),
+        projects: Vec::new(),
+        providers: Vec::new(),
+    };
+    let events = store::load_cursor_account_events(conn)?;
+    Ok(events
+        .into_iter()
+        .filter(|event| event_matches_filter(event, &scoped))
+        .collect())
+}
+
 /// 账号用量只认时间与模型；来源 / 项目 / provider 是本机消耗记录维度，不套到这里。
 pub fn event_matches_filter(event: &CursorUsageEvent, filter: &Filter) -> bool {
     if let Some(from) = filter.from.as_deref() {

@@ -34,6 +34,7 @@ export const OVERVIEW_MODULE_LABELS: Record<OverviewModuleId, string> = {
 export const QUOTA_SOURCE_IDS = [
   "codex",
   "claude",
+  "cursor",
   "cursor_agent",
   "copilot",
   "factory",
@@ -49,7 +50,7 @@ export const QUOTA_SOURCE_IDS = [
 export type QuotaSourceId = (typeof QUOTA_SOURCE_IDS)[number];
 
 /** 额度区块里最常单独盯的来源，对应「常用」一键。 */
-export const FAVORITE_QUOTA_SOURCES = ["codex", "claude", "cursor_agent"] as const;
+export const FAVORITE_QUOTA_SOURCES = ["codex", "claude", "cursor", "cursor_agent"] as const;
 
 /** 官方额度区块可单独开关的账号，顺序与首页展示一致。 */
 export const OFFICIAL_QUOTA_PROVIDER_IDS = ["codex", "claude", "cursor", "grok"] as const;

@@ -179,6 +179,7 @@ describe("visibility helpers", () => {
   it("applies favorite and detected source sets", () => {
     const favorites = applyFavoriteQuotaSources(defaultOverviewLayout());
     expect(favorites.quotaSources.codex).toBe(true);
+    expect(favorites.quotaSources.cursor).toBe(true);
     expect(favorites.quotaSources.cursor_agent).toBe(true);
     expect(favorites.quotaSources.grok).toBe(false);
     const detected = applyDetectedQuotaSources(favorites, ["codex", "kimi"]);

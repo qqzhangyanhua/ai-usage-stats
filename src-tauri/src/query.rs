@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, params_from_iter, types::Value, Connection};
 
 use crate::billing_window;
+use crate::cursor_account;
 use crate::domain::{
     ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, BillingWindowsDto,
     CostSource, EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
@@ -294,7 +295,14 @@ pub fn billing_windows(
     let records = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-    Ok(billing_window::summarize(&records, prices, now))
+    let dto = billing_window::summarize(&records, prices, now);
+    let cursor_events = cursor_account::events_for_weekly_window(conn, filter)?;
+    Ok(billing_window::attach_cursor_weekly(
+        dto,
+        &cursor_events,
+        prices,
+        now,
+    ))
 }
 
 pub fn trend(

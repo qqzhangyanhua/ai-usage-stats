@@ -135,3 +135,104 @@ fn weekly_window_excludes_activity_older_than_seven_days_but_within_the_lookback
     // 仍应出现在 recent（5 小时窗）里，证明记录本身被正常摄取，只是不满足 weekly 的时间范围。
     assert_eq!(dto.recent.len(), 1);
 }
+
+#[test]
+fn weekly_window_includes_cursor_account_usage_priced_by_snapshot() {
+    use crate::domain::{CursorUsageEvent, PriceEntry, PriceOrigin};
+
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    let records = vec![window_rec("2026-08-16T09:00:00Z", Source::Claude, "s1", 50)];
+    let events = vec![
+        CursorUsageEvent {
+            occurred_at: "2026-08-16T10:00:00Z".into(),
+            model: "claude-4.5-sonnet".into(),
+            input_tokens: 1_000_000,
+            output_tokens: 500_000,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        },
+        // 8 天前：超出 7 天滚动窗口。
+        CursorUsageEvent {
+            occurred_at: "2026-08-09T10:00:00Z".into(),
+            model: "claude-4.5-sonnet".into(),
+            input_tokens: 9_000_000,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        },
+        // 无 LiteLLM / 用户单价的模型：计入 token，费用标记 unpriced。
+        CursorUsageEvent {
+            occurred_at: "2026-08-15T08:00:00Z".into(),
+            model: "composer-2".into(),
+            input_tokens: 200,
+            output_tokens: 80,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 5,
+            is_headless: true,
+        },
+    ];
+    let prices = PriceTable {
+        prices: vec![PriceEntry {
+            model: "claude-4.5-sonnet".into(),
+            provider: None,
+            input: 3.0 / 1_000_000.0,
+            output: 15.0 / 1_000_000.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            origin: PriceOrigin::Snapshot,
+        }],
+    };
+
+    let dto = billing_window::attach_cursor_weekly(
+        billing_window::summarize(&records, &prices, now),
+        &events,
+        &prices,
+        now,
+    );
+    assert!(dto.current.iter().all(|window| window.source != "cursor"));
+    assert!(dto.recent.iter().all(|window| window.source != "cursor"));
+
+    let cursor = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "cursor")
+        .expect("cursor weekly window");
+    assert_eq!(cursor.application, "Cursor");
+    assert_eq!(cursor.total_tokens, 1_500_285);
+    assert_eq!(cursor.input_tokens, 1_000_200);
+    assert_eq!(cursor.output_tokens, 500_080);
+    assert_eq!(cursor.cache_creation_tokens, 5);
+    assert_eq!(cursor.session_count, 2);
+    assert!(cursor.unpriced);
+    let cost = cursor.cost.expect("priced cursor events should contribute");
+    assert!((cost - 10.5).abs() < 1e-9);
+    assert!((cursor.daily_average_tokens - 1_500_285.0 / 7.0).abs() < 1e-9);
+    let daily_cost = cursor.daily_average_cost.expect("daily cost");
+    assert!((daily_cost - cost / 7.0).abs() < 1e-9);
+    assert_eq!(dto.weekly[0].source, "cursor");
+}
+
+#[test]
+fn weekly_window_omits_cursor_when_account_events_are_outside_window() {
+    use crate::domain::CursorUsageEvent;
+
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    let events = vec![CursorUsageEvent {
+        occurred_at: "2026-08-09T12:00:00Z".into(),
+        model: "claude-4.5-sonnet".into(),
+        input_tokens: 100,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        is_headless: false,
+    }];
+    let dto = billing_window::attach_cursor_weekly(
+        billing_window::summarize(&[] as &[UsageRecord], &PriceTable::default(), now),
+        &events,
+        &PriceTable::default(),
+        now,
+    );
+    assert!(dto.weekly.is_empty());
+}

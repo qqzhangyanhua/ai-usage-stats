@@ -410,6 +410,7 @@ pub struct BillingWindowDto {
 
 /// 按来源统计的 7 天滚动窗口：不像 5 小时窗那样按活动间隔切块，而是持续滚动的
 /// "最近 N 天用了多少"，贴近 Claude 等工具的周度限额心智模型（仅本地估计，非官方配额）。
+/// `source=cursor` 是例外：来自 Cursor 账号用量缓存，不进 `UsageRecord` / 5 小时窗。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WeeklyWindowDto {
     pub source: String,

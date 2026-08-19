@@ -4,10 +4,10 @@
 use chrono::{DateTime, Duration, NaiveDateTime, SecondsFormat, Timelike, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::cost::sum_costs;
+use crate::cost::{sum_costs, sum_cursor_event_costs};
 use crate::domain::{
-    BillingWindowDto, BillingWindowsDto, BurnRateDto, PriceTable, ProjectionDto, UsageRecord,
-    WeeklyWindowDto,
+    BillingWindowDto, BillingWindowsDto, BurnRateDto, CursorUsageEvent, PriceTable, ProjectionDto,
+    UsageRecord, WeeklyWindowDto,
 };
 
 pub const WINDOW_HOURS: i64 = 5;
@@ -15,6 +15,9 @@ pub const LOOKBACK_DAYS: i64 = 14;
 pub const RECENT_LIMIT: usize = 6;
 /// 7 天滚动窗口：与官方「周配额」概念对齐，用来提前预警周度限额。
 pub const WEEKLY_WINDOW_DAYS: i64 = 7;
+/// 概览 7 天滚动里挂的 Cursor 账号用量行；不是 `Source`，也不进 5 小时窗。
+pub const CURSOR_WEEKLY_SOURCE: &str = "cursor";
+pub const CURSOR_WEEKLY_APPLICATION: &str = "Cursor";
 
 struct Timed<'a> {
     at: DateTime<Utc>,
@@ -89,6 +92,73 @@ where
         weekly_window_days: WEEKLY_WINDOW_DAYS,
         weekly,
     }
+}
+
+/// 把 Cursor 账号用量挂进 7 天滚动（不进 5 小时窗，也不改本机消耗记录）。
+/// 费用：用户价目优先，否则 LiteLLM 快照按模型兜底。
+pub fn attach_cursor_weekly(
+    mut dto: BillingWindowsDto,
+    events: &[CursorUsageEvent],
+    prices: &PriceTable,
+    now: DateTime<Utc>,
+) -> BillingWindowsDto {
+    dto.weekly
+        .retain(|window| window.source != CURSOR_WEEKLY_SOURCE);
+    if let Some(window) = weekly_from_cursor_events(events, prices, now) {
+        dto.weekly.push(window);
+        dto.weekly
+            .sort_by_key(|window| std::cmp::Reverse(window.total_tokens));
+    }
+    dto
+}
+
+fn weekly_from_cursor_events(
+    events: &[CursorUsageEvent],
+    prices: &PriceTable,
+    now: DateTime<Utc>,
+) -> Option<WeeklyWindowDto> {
+    let start = now - Duration::days(WEEKLY_WINDOW_DAYS);
+    let items: Vec<&CursorUsageEvent> = events
+        .iter()
+        .filter(|event| parse_occurred_at(&event.occurred_at).is_some_and(|at| at >= start))
+        .collect();
+    if items.is_empty() {
+        return None;
+    }
+
+    let mut total_tokens = 0;
+    let mut input_tokens = 0;
+    let mut output_tokens = 0;
+    let mut cache_read_tokens = 0;
+    let mut cache_creation_tokens = 0;
+    for event in &items {
+        total_tokens += event.total_tokens();
+        input_tokens += event.input_tokens;
+        output_tokens += event.output_tokens;
+        cache_read_tokens += event.cache_read_tokens;
+        cache_creation_tokens += event.cache_creation_tokens;
+    }
+    let (cost, unpriced) = sum_cursor_event_costs(&items, prices);
+    let days = WEEKLY_WINDOW_DAYS as f64;
+
+    Some(WeeklyWindowDto {
+        source: CURSOR_WEEKLY_SOURCE.to_string(),
+        application: CURSOR_WEEKLY_APPLICATION.to_string(),
+        window_days: WEEKLY_WINDOW_DAYS,
+        start: iso(start),
+        end: iso(now),
+        total_tokens,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        reasoning_tokens: 0,
+        session_count: items.len() as i64,
+        cost,
+        unpriced,
+        daily_average_tokens: total_tokens as f64 / days,
+        daily_average_cost: cost.map(|amount| amount / days),
+    })
 }
 
 fn build_weekly_window(

@@ -24,8 +24,8 @@ alwaysApply: false
 
 ## 费用计算（cost.rs）
 
-- 费用优先级固定为：`native_cost`（来源自带）> 价目表精确匹配（model+provider）> 价目表 model 兜底（provider 为 None）> 标记 `unpriced`
-- 任何聚合路径（`aggregate.rs` 与 `query.rs`）都必须保持这个优先级语义一致
+- 费用优先级固定为：`native_cost`（来源自带）> 价目表精确匹配（model+provider）> 价目表 model 兜底（provider 为 None，含 LiteLLM 快照）> 标记 `unpriced`
+- 任何聚合路径（`aggregate.rs` 与 `query.rs`）都必须保持这个优先级语义一致；Cursor 账号用量走同一套 `cost.rs` 计价，不写进 UsageRecord
 
 ## 通用
 
