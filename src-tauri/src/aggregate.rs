@@ -107,6 +107,9 @@ pub fn trend(
         entry.total_tokens += record.total_tokens;
         entry.input_tokens += record.input_tokens;
         entry.output_tokens += record.output_tokens;
+        entry.cache_read_tokens += record.cache_read_tokens;
+        entry.cache_creation_tokens += record.cache_creation_tokens;
+        entry.reasoning_tokens += record.reasoning_tokens;
         let derived = derive_cost(record, prices);
         if let Some(amount) = derived.amount {
             entry.cost = Some(entry.cost.unwrap_or(0.0) + amount);
@@ -122,6 +125,9 @@ pub fn trend(
             total_tokens: acc.total_tokens,
             input_tokens: acc.input_tokens,
             output_tokens: acc.output_tokens,
+            cache_read_tokens: acc.cache_read_tokens,
+            cache_creation_tokens: acc.cache_creation_tokens,
+            reasoning_tokens: acc.reasoning_tokens,
             cost: acc.cost,
         })
         .collect()
@@ -132,6 +138,9 @@ struct TrendBucket {
     total_tokens: i64,
     input_tokens: i64,
     output_tokens: i64,
+    cache_read_tokens: i64,
+    cache_creation_tokens: i64,
+    reasoning_tokens: i64,
     cost: Option<f64>,
     unpriced: bool,
 }

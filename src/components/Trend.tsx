@@ -1,10 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { memo, useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { areaTrendOption, formatBucket } from "../lib/chartTheme";
 import { bucketToDateRange } from "../lib/calendar";
 import { chartClickDataIndex } from "../lib/chartClick";
 import { trendSeriesTable } from "../lib/exportRows";
-import { formatCompact, formatDelta, formatUsd } from "../lib/format";
-import { summarizeTrend, trendTableRowsNewestFirst } from "../lib/trendStats";
+import { formatCompact, formatDelta, formatTokens, formatUsd } from "../lib/format";
+import { cacheTokens, summarizeTrend, trendTableRowsNewestFirst } from "../lib/trendStats";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import type { Grain, SeriesPoint } from "../types";
 import { EmptyState } from "./EmptyState";
@@ -13,9 +13,14 @@ import { ExportButton } from "./ExportButton";
 import { KpiCard } from "./Kpi";
 import { Pagination } from "./Pagination";
 import { RangeBackButton } from "./RangeBackButton";
-import { GrainSwitch, grainUnit } from "./ui/GrainSwitch";
+import { GrainSwitch, grainDetailTitle, grainSparsePrev, grainUnit } from "./ui/GrainSwitch";
 
 const PAGE_SIZE = 20;
+const TABLE_COLUMNS = 9;
+
+function TokenCell({ value }: { value: number }) {
+  return <td title={formatCompact(value)}>{formatTokens(value)}</td>;
+}
 
 export const Trend = memo(function Trend({
   grain,
@@ -32,28 +37,30 @@ export const Trend = memo(function Trend({
   onRangeSelect?: (from: string, to: string) => void;
   onRangeBack?: () => void;
 }) {
+  const rangeStart = points[0]?.bucket ?? "";
+  const rangeEnd = points[points.length - 1]?.bucket ?? "";
+  const pagingKey = `${grain}:${rangeStart}:${rangeEnd}`;
   const [page, setPage] = useState(1);
+  const [pageKey, setPageKey] = useState(pagingKey);
+  if (pageKey !== pagingKey) {
+    setPageKey(pagingKey);
+    setPage(1);
+  }
+
   const option = useMemo(() => areaTrendOption(points, theme), [points, theme]);
   const stats = useMemo(() => summarizeTrend(points), [points]);
   const tableRows = useMemo(() => trendTableRowsNewestFirst(points), [points]);
   const exportTable = useMemo(() => trendSeriesTable(points), [points]);
 
   const pageCount = Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE));
+  if (pageKey === pagingKey && page > pageCount) {
+    setPage(pageCount);
+  }
+  const currentPage = Math.min(page, pageCount);
   const pagedRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
+    const start = (currentPage - 1) * PAGE_SIZE;
     return tableRows.slice(start, start + PAGE_SIZE);
-  }, [page, tableRows]);
-
-  const rangeStart = points[0]?.bucket ?? "";
-  const rangeEnd = points[points.length - 1]?.bucket ?? "";
-
-  useEffect(() => {
-    setPage(1);
-  }, [grain, rangeStart, rangeEnd]);
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, pageCount));
-  }, [pageCount]);
+  }, [currentPage, tableRows]);
 
   const selectBucket = useCallback(
     (bucket: string) => {
@@ -152,10 +159,15 @@ export const Trend = memo(function Trend({
 
       <div className="panel">
         <div className="panel-head">
-          <h2>明细构成</h2>
-          <span className="muted">共 {points.length} 个时间桶 · 最新在上</span>
+          <div>
+            <h2>{grainDetailTitle[grain]}</h2>
+            <p className="panel-note">
+              总量含缓存和推理。无用量时段不出现，环比相对{grainSparsePrev[grain]}。共{" "}
+              {points.length} 段，最新在上。
+            </p>
+          </div>
           <ExportButton
-            filename="时间趋势"
+            filename={grainDetailTitle[grain]}
             headers={exportTable.headers}
             rows={exportTable.rows}
           />
@@ -165,10 +177,12 @@ export const Trend = memo(function Trend({
             <thead>
               <tr>
                 <th>时间</th>
-                <th>占比</th>
+                <th>占总量</th>
                 <th>总量</th>
                 <th>输入</th>
                 <th>输出</th>
+                <th>缓存</th>
+                <th>推理</th>
                 <th>费用</th>
                 <th>环比</th>
               </tr>
@@ -176,7 +190,7 @@ export const Trend = memo(function Trend({
             <tbody>
               {pagedRows.map((row) => {
                 const { point } = row;
-                const delta = formatDelta(row.periodDelta);
+                const delta = formatDelta(row.periodDelta, grainSparsePrev[grain]);
                 return (
                   <tr
                     key={point.bucket}
@@ -188,29 +202,26 @@ export const Trend = memo(function Trend({
                   >
                     <td>{formatBucket(point.bucket)}</td>
                     <td>
-                      <span className="cell-bar" title={`占总量 ${row.shareOfTotal.toFixed(1)}%`}>
-                        <i style={{ width: `${row.shareOfMax}%` }} />
+                      <span className="cell-bar">
+                        <i style={{ width: `${row.shareOfTotal}%` }} />
                       </span>
+                      <span className="cell-bar-label">{row.shareOfTotal.toFixed(1)}%</span>
                     </td>
-                    <td>{formatCompact(point.total_tokens)}</td>
-                    <td>{formatCompact(point.input_tokens)}</td>
-                    <td>{formatCompact(point.output_tokens)}</td>
+                    <TokenCell value={point.total_tokens} />
+                    <TokenCell value={point.input_tokens} />
+                    <TokenCell value={point.output_tokens} />
+                    <TokenCell value={cacheTokens(point)} />
+                    <TokenCell value={point.reasoning_tokens} />
                     <td>{formatUsd(point.cost, point.cost == null)}</td>
                     <td>
-                      {delta ? (
-                        <span className={`delta ${delta.tone}`}>
-                          {delta.text.replace(" vs 上期", "")}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                      {delta ? <span className={`delta ${delta.tone}`}>{delta.text}</span> : "—"}
                     </td>
                   </tr>
                 );
               })}
               {points.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="analytics-empty">
+                  <td colSpan={TABLE_COLUMNS} className="analytics-empty">
                     <EmptyState icon="trend" title="暂无趋势数据" />
                   </td>
                 </tr>
@@ -219,7 +230,7 @@ export const Trend = memo(function Trend({
           </table>
         </div>
         <Pagination
-          page={page}
+          page={currentPage}
           pageCount={pageCount}
           totalCount={points.length}
           onPageChange={setPage}

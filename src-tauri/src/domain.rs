@@ -446,6 +446,9 @@ pub struct SeriesPoint {
     pub total_tokens: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub reasoning_tokens: i64,
     pub cost: Option<f64>,
 }
 

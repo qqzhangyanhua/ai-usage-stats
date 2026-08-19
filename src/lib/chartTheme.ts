@@ -100,6 +100,8 @@ function seriesPointTooltip(points: SeriesPoint[]) {
       `总量 ${formatCompact(point.total_tokens)}`,
       `输入 ${formatCompact(point.input_tokens)}`,
       `输出 ${formatCompact(point.output_tokens)}`,
+      `缓存 ${formatCompact(point.cache_read_tokens + point.cache_creation_tokens)}`,
+      `推理 ${formatCompact(point.reasoning_tokens)}`,
     ];
     if (point.cost != null) {
       lines.push(`费用 $${point.cost.toFixed(2)}`);

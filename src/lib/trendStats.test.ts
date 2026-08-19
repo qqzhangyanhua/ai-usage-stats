@@ -1,17 +1,30 @@
 import { describe, expect, it } from "vitest";
 import type { SeriesPoint } from "../types";
-import { summarizeTrend, trendTableRows, trendTableRowsNewestFirst } from "./trendStats";
+import { cacheTokens, summarizeTrend, trendTableRows, trendTableRowsNewestFirst } from "./trendStats";
 
 function point(
   bucket: string,
   total: number,
-  extras: Partial<Pick<SeriesPoint, "input_tokens" | "output_tokens" | "cost">> = {},
+  extras: Partial<
+    Pick<
+      SeriesPoint,
+      | "input_tokens"
+      | "output_tokens"
+      | "cache_read_tokens"
+      | "cache_creation_tokens"
+      | "reasoning_tokens"
+      | "cost"
+    >
+  > = {},
 ): SeriesPoint {
   return {
     bucket,
     total_tokens: total,
     input_tokens: extras.input_tokens ?? total,
     output_tokens: extras.output_tokens ?? 0,
+    cache_read_tokens: extras.cache_read_tokens ?? 0,
+    cache_creation_tokens: extras.cache_creation_tokens ?? 0,
+    reasoning_tokens: extras.reasoning_tokens ?? 0,
     cost: extras.cost ?? null,
   };
 }
@@ -49,7 +62,7 @@ describe("summarizeTrend", () => {
 });
 
 describe("trendTableRows", () => {
-  it("computes share vs peak/total and period delta against the previous bucket", () => {
+  it("computes share of total and period delta against the previous bucket", () => {
     const rows = trendTableRows([
       point("2026-08-01", 100),
       point("2026-08-02", 200),
@@ -58,9 +71,21 @@ describe("trendTableRows", () => {
     expect(rows[0]?.periodDelta).toBeNull();
     expect(rows[1]?.periodDelta).toBe(100);
     expect(rows[2]?.periodDelta).toBe(-50);
-    expect(rows[1]?.shareOfMax).toBe(100);
     expect(rows[0]?.shareOfTotal).toBe(25);
     expect(rows[1]?.shareOfTotal).toBe(50);
+  });
+
+  it("sums cache read and creation", () => {
+    expect(
+      cacheTokens(
+        point("2026-08-01", 130, {
+          input_tokens: 80,
+          output_tokens: 20,
+          cache_read_tokens: 20,
+          cache_creation_tokens: 10,
+        }),
+      ),
+    ).toBe(30);
   });
 
   it("keeps period delta when reversing to newest-first", () => {

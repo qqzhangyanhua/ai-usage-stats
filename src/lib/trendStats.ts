@@ -1,24 +1,12 @@
 import type { SeriesPoint } from "../types";
+import type { TrendStats, TrendTableRow } from "./type";
 import { deltaPct } from "./format";
 
-export type TrendStats = {
-  totalTokens: number;
-  hasCost: boolean;
-  totalCost: number;
-  bucketAvg: number;
-  peak: SeriesPoint | null;
-  sparkTokens: number[];
-  sparkCost: number[];
-  maxTotal: number;
-};
+export type { TrendStats, TrendTableRow };
 
-export type TrendTableRow = {
-  point: SeriesPoint;
-  chronologicalIndex: number;
-  shareOfMax: number;
-  shareOfTotal: number;
-  periodDelta: number | null;
-};
+export function cacheTokens(point: SeriesPoint): number {
+  return point.cache_read_tokens + point.cache_creation_tokens;
+}
 
 export function summarizeTrend(points: SeriesPoint[]): TrendStats {
   if (points.length === 0) {
@@ -67,21 +55,20 @@ export function summarizeTrend(points: SeriesPoint[]): TrendStats {
 }
 
 export function trendTableRows(points: SeriesPoint[]): TrendTableRow[] {
-  const { totalTokens, maxTotal } = summarizeTrend(points);
+  const { totalTokens } = summarizeTrend(points);
   const denom = Math.max(totalTokens, 1);
   return points.map((point, chronologicalIndex) => {
     const previous = chronologicalIndex > 0 ? points[chronologicalIndex - 1] : undefined;
     return {
       point,
       chronologicalIndex,
-      shareOfMax: (point.total_tokens / maxTotal) * 100,
       shareOfTotal: (point.total_tokens / denom) * 100,
       periodDelta: previous ? deltaPct(point.total_tokens, previous.total_tokens) : null,
     };
   });
 }
 
-/** 明细表按时间倒序，最新 bucket 在上；环比仍相对更早的那个时间桶。 */
+/** 明细表按时间倒序，最新 bucket 在上；环比相对上一有数据桶，不是日历上一档。 */
 export function trendTableRowsNewestFirst(points: SeriesPoint[]): TrendTableRow[] {
   return [...trendTableRows(points)].reverse();
 }

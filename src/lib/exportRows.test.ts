@@ -66,6 +66,9 @@ describe("trend series table", () => {
         total_tokens: 100,
         input_tokens: 80,
         output_tokens: 20,
+        cache_read_tokens: 6,
+        cache_creation_tokens: 4,
+        reasoning_tokens: 5,
         cost: 1.2,
       },
       {
@@ -73,12 +76,25 @@ describe("trend series table", () => {
         total_tokens: 200,
         input_tokens: 150,
         output_tokens: 50,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        reasoning_tokens: 0,
         cost: null,
       },
     ]);
-    expect(table.headers).toEqual(["时间", "总量", "输入", "输出", "费用", "占总量%", "环比%"]);
-    expect(table.rows[0]).toEqual(["08-01", 100, 80, 20, 1.2, 33.33, ""]);
-    expect(table.rows[1]).toEqual(["08-02", 200, 150, 50, "", 66.67, 100]);
+    expect(table.headers).toEqual([
+      "时间",
+      "总量",
+      "输入",
+      "输出",
+      "缓存",
+      "推理",
+      "费用",
+      "占总量%",
+      "环比%",
+    ]);
+    expect(table.rows[0]).toEqual(["08-01", 100, 80, 20, 10, 5, 1.2, 33.33, ""]);
+    expect(table.rows[1]).toEqual(["08-02", 200, 150, 50, 0, 0, "", 66.67, 100]);
   });
 });
 
@@ -174,6 +190,9 @@ describe("cursor export tables", () => {
           total_tokens: 10,
           input_tokens: 8,
           output_tokens: 2,
+          cache_read_tokens: 0,
+          cache_creation_tokens: 0,
+          reasoning_tokens: 0,
           cost: null,
         },
       ],

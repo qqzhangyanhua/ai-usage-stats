@@ -1,6 +1,6 @@
 import { projectLabel } from "./format";
 import { formatBucket } from "./chartTheme";
-import { trendTableRows } from "./trendStats";
+import { cacheTokens, trendTableRows } from "./trendStats";
 import type {
   ApplicationAnalyticsDto,
   CodeVolumeCommit,
@@ -27,12 +27,14 @@ function ratioCell(value: number | null): string | number {
 
 export function trendSeriesTable(points: SeriesPoint[]): ExportTable {
   return {
-    headers: ["时间", "总量", "输入", "输出", "费用", "占总量%", "环比%"],
+    headers: ["时间", "总量", "输入", "输出", "缓存", "推理", "费用", "占总量%", "环比%"],
     rows: trendTableRows(points).map((row) => [
       formatBucket(row.point.bucket),
       row.point.total_tokens,
       row.point.input_tokens,
       row.point.output_tokens,
+      cacheTokens(row.point),
+      row.point.reasoning_tokens,
       costCell(row.point.cost),
       Number(row.shareOfTotal.toFixed(2)),
       row.periodDelta == null ? "" : Number(row.periodDelta.toFixed(2)),

@@ -311,6 +311,9 @@ pub fn trend(
             SUM(r.total_tokens),
             SUM(r.input_tokens),
             SUM(r.output_tokens),
+            SUM(r.cache_read_tokens),
+            SUM(r.cache_creation_tokens),
+            SUM(r.reasoning_tokens),
             SUM({COST_EXPR})
         FROM usage_records r
         {PRICE_JOINS}
@@ -327,7 +330,10 @@ pub fn trend(
                 total_tokens: row.get(1)?,
                 input_tokens: row.get(2)?,
                 output_tokens: row.get(3)?,
-                cost: row.get(4)?,
+                cache_read_tokens: row.get(4)?,
+                cache_creation_tokens: row.get(5)?,
+                reasoning_tokens: row.get(6)?,
+                cost: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?;

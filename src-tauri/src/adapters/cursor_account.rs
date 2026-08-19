@@ -130,25 +130,37 @@ fn bucket_models(events: &[CursorUsageEvent], grand: i64) -> Vec<NamedAmount> {
 }
 
 fn bucket_daily(events: &[CursorUsageEvent]) -> Vec<SeriesPoint> {
-    let mut buckets: BTreeMap<String, (i64, i64, i64)> = BTreeMap::new();
+    #[derive(Default)]
+    struct DayAcc {
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+        total_tokens: i64,
+    }
+
+    let mut buckets: BTreeMap<String, DayAcc> = BTreeMap::new();
     for event in events {
         let key = local_day(&event.occurred_at);
-        let entry = buckets.entry(key).or_insert((0, 0, 0));
-        entry.0 += event.input_tokens;
-        entry.1 += event.output_tokens;
-        entry.2 += event.total_tokens();
+        let entry = buckets.entry(key).or_default();
+        entry.input_tokens += event.input_tokens;
+        entry.output_tokens += event.output_tokens;
+        entry.cache_read_tokens += event.cache_read_tokens;
+        entry.cache_creation_tokens += event.cache_creation_tokens;
+        entry.total_tokens += event.total_tokens();
     }
     buckets
         .into_iter()
-        .map(
-            |(bucket, (input_tokens, output_tokens, total_tokens))| SeriesPoint {
-                bucket,
-                total_tokens,
-                input_tokens,
-                output_tokens,
-                cost: None,
-            },
-        )
+        .map(|(bucket, acc)| SeriesPoint {
+            bucket,
+            total_tokens: acc.total_tokens,
+            input_tokens: acc.input_tokens,
+            output_tokens: acc.output_tokens,
+            cache_read_tokens: acc.cache_read_tokens,
+            cache_creation_tokens: acc.cache_creation_tokens,
+            reasoning_tokens: 0,
+            cost: None,
+        })
         .collect()
 }
 

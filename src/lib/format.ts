@@ -62,16 +62,17 @@ export function deltaPct(current: number, previous: number | null): number | nul
 
 export function formatDelta(
   pct: number | null,
+  vsLabel = "上期",
 ): { text: string; tone: "up" | "down" | "flat" } | null {
   if (pct == null) {
     return null;
   }
   if (Math.abs(pct) < 0.05) {
-    return { text: "持平 vs 上期", tone: "flat" };
+    return { text: `持平 vs ${vsLabel}`, tone: "flat" };
   }
   const arrow = pct > 0 ? "↑" : "↓";
   return {
-    text: `${arrow} ${Math.abs(pct).toFixed(1)}% vs 上期`,
+    text: `${arrow} ${Math.abs(pct).toFixed(1)}% vs ${vsLabel}`,
     tone: pct > 0 ? "up" : "down",
   };
 }

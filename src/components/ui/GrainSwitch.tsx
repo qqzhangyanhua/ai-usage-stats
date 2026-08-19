@@ -15,6 +15,21 @@ export const grainUnit: Record<Grain, string> = {
   month: "月",
 };
 
+export const grainDetailTitle: Record<Grain, string> = {
+  hour: "按时明细",
+  day: "按日明细",
+  week: "按周明细",
+  month: "按月明细",
+};
+
+/** 环比对照的是上一有数据桶，不是日历上的上一档。 */
+export const grainSparsePrev: Record<Grain, string> = {
+  hour: "上一有数据小时",
+  day: "上一有数据日",
+  week: "上一有数据周",
+  month: "上一有数据月",
+};
+
 export function GrainSwitch({
   value,
   disabled,

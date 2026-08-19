@@ -117,6 +117,9 @@ fn filter_options_list_distinct_sources_models_projects() {
 #[test]
 fn trend_buckets_by_day_and_week() {
     let mut records = seed_records();
+    records[0].cache_read_tokens = 10;
+    records[0].cache_creation_tokens = 4;
+    records[0].reasoning_tokens = 6;
     records.push(rec(
         "2026-08-01T11:00:00Z",
         Source::Codex,
@@ -137,6 +140,9 @@ fn trend_buckets_by_day_and_week() {
     assert_eq!(days[0].total_tokens, 120);
     assert_eq!(days[0].input_tokens, 120);
     assert_eq!(days[0].output_tokens, 0);
+    assert_eq!(days[0].cache_read_tokens, 10);
+    assert_eq!(days[0].cache_creation_tokens, 4);
+    assert_eq!(days[0].reasoning_tokens, 6);
     assert_eq!(days[1].bucket, "2026-08-02");
     assert_eq!(days[1].total_tokens, 300);
     assert_eq!(days[2].bucket, "2026-08-08");

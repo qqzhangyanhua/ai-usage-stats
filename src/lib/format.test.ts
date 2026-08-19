@@ -103,6 +103,13 @@ describe("formatDelta", () => {
     expect(formatDelta(12.34)).toEqual({ text: "↑ 12.3% vs 上期", tone: "up" });
     expect(formatDelta(-12.34)).toEqual({ text: "↓ 12.3% vs 上期", tone: "down" });
   });
+
+  it("accepts a custom comparison label", () => {
+    expect(formatDelta(10, "上一有数据日")).toEqual({
+      text: "↑ 10.0% vs 上一有数据日",
+      tone: "up",
+    });
+  });
 });
 
 describe("applicationLabel", () => {

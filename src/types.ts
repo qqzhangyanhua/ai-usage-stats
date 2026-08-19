@@ -218,6 +218,9 @@ export type SeriesPoint = {
   total_tokens: number;
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  reasoning_tokens: number;
   cost: number | null;
 };
 
