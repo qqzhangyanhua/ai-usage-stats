@@ -108,6 +108,8 @@ export default function App() {
                     layout={overviewLayout}
                     onLayoutChange={setOverviewLayout}
                     detectedSources={detectedSources}
+                    onOfficialQuota={data.setOfficialQuota}
+                    onQuotaError={data.reportError}
                   />
                 ) : null}
                 {view === "trend" ? (

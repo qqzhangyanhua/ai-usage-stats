@@ -82,6 +82,8 @@ export const Overview = memo(function Overview({
   layout,
   onLayoutChange,
   detectedSources,
+  onOfficialQuota,
+  onQuotaError,
 }: {
   overview: OverviewDto | null;
   billingWindows: BillingWindowsDto | null;
@@ -110,6 +112,8 @@ export const Overview = memo(function Overview({
   layout: OverviewLayout;
   onLayoutChange: (layout: OverviewLayout) => void;
   detectedSources: string[];
+  onOfficialQuota: (value: OfficialQuotaDto) => void;
+  onQuotaError: (error: unknown) => void;
 }) {
   const data = overview ?? emptyOverview;
   const palette = chartPalette(theme);
@@ -229,7 +233,13 @@ export const Overview = memo(function Overview({
         </section>
       ) : null}
 
-      {showOfficial ? <OfficialQuotaPanel data={visibleOfficialQuota} /> : null}
+      {showOfficial ? (
+        <OfficialQuotaPanel
+          data={visibleOfficialQuota}
+          onQuota={onOfficialQuota}
+          onError={onQuotaError}
+        />
+      ) : null}
 
       {showCursorAccount ? (
         <CursorOverviewPanel

@@ -24,6 +24,21 @@ fn claude_statusline_parses_rate_limits_and_rejects_leaked_epoch() {
 }
 
 #[test]
+fn parse_provider_accepts_known_accounts_and_rejects_unknown() {
+    assert_eq!(
+        official_quota::parse_provider("cursor").unwrap(),
+        crate::domain::OfficialQuotaProvider::Cursor
+    );
+    assert_eq!(
+        official_quota::parse_provider("grok").unwrap(),
+        crate::domain::OfficialQuotaProvider::Grok
+    );
+    assert!(official_quota::parse_provider("amp")
+        .unwrap_err()
+        .contains("未知的官方额度账号"));
+}
+
+#[test]
 fn official_quota_keeps_last_good_windows_on_fetch_failure() {
     let conn = store::open_memory().unwrap();
     let windows = vec![crate::domain::OfficialQuotaWindow {

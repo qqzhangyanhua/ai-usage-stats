@@ -638,33 +638,37 @@ async fn get_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDto, S
 #[tauri::command]
 async fn refresh_official_quota(app: tauri::AppHandle) -> Result<OfficialQuotaDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let claude = official_quota::claude::refresh_from_capture(&official_quota::capture_path());
-        let codex = official_quota::codex::fetch_rate_limits();
-        let cursor = official_quota::cursor::fetch_usage_summary();
-        let grok = official_quota::grok::fetch_rate_limits();
-        let state = app.state::<AppState>();
-        let conn = state.lock_write()?;
-        official_quota::apply_fetch_results(
-            &conn,
-            [
-                (OfficialQuotaProvider::Claude, claude),
-                (OfficialQuotaProvider::Codex, codex),
-                (OfficialQuotaProvider::Cursor, cursor),
-                (OfficialQuotaProvider::Grok, grok),
-            ],
-        )?;
-        let config = official_quota::load_config(&state.official_quota_path);
-        let dto = official_quota::load_dto(&conn, &config, chrono::Utc::now());
-        official_quota::notify::check_and_notify_with_config(
-            &app,
-            &dto,
-            &config,
-            &state.official_quota_notify_path,
-        )?;
-        Ok(dto)
+        let results = official_quota::fetch_all_providers();
+        persist_official_quota_fetches(&app, results)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn refresh_official_quota_provider(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<OfficialQuotaDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let parsed = official_quota::parse_provider(&provider)?;
+        persist_official_quota_fetches(&app, [(parsed, official_quota::fetch_provider(parsed))])
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn persist_official_quota_fetches(
+    app: &tauri::AppHandle,
+    results: impl IntoIterator<Item = (OfficialQuotaProvider, official_quota::ProviderFetch)>,
+) -> Result<OfficialQuotaDto, String> {
+    {
+        let state = app.state::<AppState>();
+        let conn = state.lock_write()?;
+        official_quota::apply_fetch_results(&conn, results)?;
+    }
+    // snapshot 自己再取锁；这里必须先放下，std::sync::Mutex 不可重入。
+    official_quota_snapshot(app)
 }
 
 #[tauri::command]
@@ -891,6 +895,7 @@ pub fn run() {
             open_cursor_instruction_settings,
             get_official_quota,
             refresh_official_quota,
+            refresh_official_quota_provider,
             get_official_quota_hook,
             apply_official_quota_hook,
             save_official_quota_config,

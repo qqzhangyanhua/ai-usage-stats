@@ -172,7 +172,12 @@ export function useViewRefresh(args: ViewRefreshArgs) {
           invoke<BillingWindowsDto>("get_billing_windows", { filter: nextFilter }).then(
             commit(setBillingWindows),
           ),
-          invoke<OfficialQuotaDto>("refresh_official_quota").then(commit(setOfficialQuota)),
+          invoke<OfficialQuotaDto>("get_official_quota").then((value) => {
+            commit(setOfficialQuota)(value);
+            void invoke<OfficialQuotaDto>("refresh_official_quota")
+              .then(commit(setOfficialQuota))
+              .catch(() => undefined);
+          }),
           invoke<CursorAccountUsageDto>("get_cursor_account_usage", {
             filter: nextFilter,
           }).then(commit(setCursorAccountUsage)),

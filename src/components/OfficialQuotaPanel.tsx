@@ -1,7 +1,10 @@
-import { memo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { memo, useState } from "react";
+import { Icon } from "../icons";
 import { formatClock } from "../lib/format";
 import type { OfficialQuotaDto, OfficialQuotaFreshness, OfficialQuotaRow } from "../types";
 import { EmptyState } from "./EmptyState";
+import { Button } from "./ui/Button";
 
 const FRESHNESS_LABEL: Record<OfficialQuotaFreshness, string> = {
   official: "官方",
@@ -11,10 +14,27 @@ const FRESHNESS_LABEL: Record<OfficialQuotaFreshness, string> = {
 
 export const OfficialQuotaPanel = memo(function OfficialQuotaPanel({
   data,
+  onQuota,
+  onError,
 }: {
   data: OfficialQuotaDto | null;
+  onQuota: (value: OfficialQuotaDto) => void;
+  onError: (error: unknown) => void;
 }) {
   const rows = data?.rows ?? [];
+  const [busyProvider, setBusyProvider] = useState<string | null>(null);
+
+  async function refreshProvider(provider: string) {
+    setBusyProvider(provider);
+    try {
+      onQuota(await invoke<OfficialQuotaDto>("refresh_official_quota_provider", { provider }));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setBusyProvider(null);
+    }
+  }
+
   return (
     <article className="panel official-quota-panel">
       <div className="panel-head">
@@ -28,13 +48,21 @@ export const OfficialQuotaPanel = memo(function OfficialQuotaPanel({
         <EmptyState
           compact
           icon="clock"
-          title={data ? "所选账号均已隐藏" : "还没有官方额度"}
-          hint={data ? "在「配置显示」里打开 Codex / Claude Code / Cursor / Grok" : undefined}
+          title={data ? "所选账号均已隐藏" : "正在读取官方额度…"}
+          hint={
+            data ? "在「配置显示」里打开 Codex / Claude Code / Cursor / Grok" : "先显示上次缓存，再后台刷新"
+          }
         />
       ) : (
         <ul className="official-quota-list">
           {rows.map((row) => (
-            <QuotaRow key={row.provider} row={row} />
+            <QuotaRow
+              key={row.provider}
+              row={row}
+              busy={busyProvider === row.provider}
+              disabled={busyProvider !== null}
+              onRefresh={() => void refreshProvider(row.provider)}
+            />
           ))}
         </ul>
       )}
@@ -42,13 +70,35 @@ export const OfficialQuotaPanel = memo(function OfficialQuotaPanel({
   );
 });
 
-function QuotaRow({ row }: { row: OfficialQuotaRow }) {
+function QuotaRow({
+  row,
+  busy,
+  disabled,
+  onRefresh,
+}: {
+  row: OfficialQuotaRow;
+  busy: boolean;
+  disabled: boolean;
+  onRefresh: () => void;
+}) {
   const tone =
     row.freshness === "official" ? "ok" : row.freshness === "stale" ? "warn" : "idle";
   return (
     <li className={`official-quota-row tone-${tone}`}>
       <div className="official-quota-head">
-        <strong>{row.application}</strong>
+        <div className="official-quota-title">
+          <strong>{row.application}</strong>
+          <Button
+            variant="icon"
+            className={busy ? "official-quota-refresh is-busy" : "official-quota-refresh"}
+            disabled={disabled}
+            onClick={onRefresh}
+            title={busy ? `${row.application} 刷新中` : `刷新 ${row.application} 额度`}
+            aria-label={busy ? `${row.application} 刷新中` : `刷新 ${row.application} 额度`}
+          >
+            <Icon name="refresh" size={13} />
+          </Button>
+        </div>
         <em>{FRESHNESS_LABEL[row.freshness]}</em>
       </div>
       {row.windows.length === 0 ? (

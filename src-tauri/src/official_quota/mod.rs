@@ -134,6 +134,29 @@ pub fn apply_failure(
     store::set_official_quota_error(conn, provider.as_str(), error)
 }
 
+pub fn parse_provider(value: &str) -> Result<OfficialQuotaProvider, String> {
+    OfficialQuotaProvider::parse(value).ok_or_else(|| format!("未知的官方额度账号：{value}"))
+}
+
+pub type ProviderFetch = Result<(Vec<OfficialQuotaWindow>, String), String>;
+
+pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
+    match provider {
+        OfficialQuotaProvider::Claude => claude::refresh_from_capture(&capture_path()),
+        OfficialQuotaProvider::Codex => codex::fetch_rate_limits(),
+        OfficialQuotaProvider::Cursor => cursor::fetch_usage_summary(),
+        OfficialQuotaProvider::Grok => grok::fetch_rate_limits(),
+    }
+}
+
+/// 先取数再交给调用方加锁写入，避免在持锁期间打网络。
+pub fn fetch_all_providers() -> Vec<(OfficialQuotaProvider, ProviderFetch)> {
+    OfficialQuotaProvider::ALL
+        .into_iter()
+        .map(|provider| (provider, fetch_provider(provider)))
+        .collect()
+}
+
 /// 打开总览或手动刷新时尝试更新各路；取数在调用方锁外完成，写入彼此隔离。
 pub fn apply_fetch_results(
     conn: &Connection,

@@ -471,6 +471,8 @@ button {
   min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  container-type: inline-size;
+  container-name: workspace;
 }
 
 .topbar {
@@ -3112,6 +3114,41 @@ td.row-actions {
   gap: 8px;
 }
 
+.official-quota-title {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.official-quota-refresh {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint-2);
+}
+
+.official-quota-refresh:hover:not(:disabled) {
+  color: var(--purple-fg);
+  background: var(--overlay-2);
+}
+
+.official-quota-refresh.is-busy {
+  color: var(--purple-fg);
+}
+
+.official-quota-refresh.is-busy svg {
+  animation: spinner-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .official-quota-refresh.is-busy svg {
+    animation: none;
+  }
+}
+
 .official-quota-head em {
   font-style: normal;
   font-size: 11px;
@@ -3140,8 +3177,17 @@ td.row-actions {
 }
 
 .official-quota-window > span:first-child {
-  flex: 0 0 2.75em;
-  min-width: 2.75em;
+  flex: 0 0 auto;
+  min-width: 3.5em;
+  white-space: nowrap;
+}
+
+.official-quota-window > .muted {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .official-quota-window strong {
@@ -3423,6 +3469,88 @@ td.row-actions {
   color: var(--muted);
 }
 
+/* 侧栏约占 228px，内容区比窗口窄。按 workspace 实际宽度收栅格，
+   避免 1080 窗口仍走四列 KPI / 七列价目行。 */
+@container workspace (max-width: 960px) {
+  .kpi-row,
+  .dash-bottom,
+  .status-bar,
+  .efficiency-cards,
+  .cursor-overview-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dash-mid,
+  .dash-bottom {
+    flex: 1 0 auto;
+    min-height: 180px;
+  }
+
+  .dash-mid {
+    grid-template-columns: 1fr;
+  }
+
+  .price-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .price-row-delete {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .preset-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .preset-price,
+  .preset-detected,
+  .preset-missing {
+    grid-column: 2;
+  }
+
+  .topbar-main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
+  .donut-wrap {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+}
+
+@container workspace (max-width: 720px) {
+  .theme-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .efficiency-cards,
+  .cursor-overview-metrics,
+  .split-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .donut-wrap,
+  .dash-side .donut-wrap,
+  .dash-bottom .donut-wrap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ingest-issues li {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 960px) {
   .kpi-row,
   .dash-bottom,
@@ -3473,6 +3601,31 @@ td.row-actions {
 
   .sidebar {
     display: none;
+  }
+}
+
+@media (max-height: 740px) {
+  .topbar {
+    padding: 6px 16px;
+    gap: 6px;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .main {
+    padding: 2px 12px 6px;
+  }
+
+  .kpi {
+    min-height: 80px;
+    padding: 8px 12px 6px;
+  }
+
+  .dash-mid,
+  .dash-bottom {
+    min-height: 160px;
   }
 }
 
