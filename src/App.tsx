@@ -5,6 +5,7 @@ import { LoadingOverlay } from "./components/LoadingOverlay";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useOverviewLayout } from "./hooks/useOverviewLayout";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
 import { clearDimensionFilters, withModelFilter } from "./lib/filterChips";
@@ -25,6 +26,7 @@ import { ViewFallback } from "./views/ViewFallback";
 export default function App() {
   const data = useUsageData();
   const { theme, mode: themeMode, setMode: setThemeMode } = useTheme();
+  const { layout: overviewLayout, setLayout: setOverviewLayout } = useOverviewLayout();
   const { view } = data;
 
   useKeyboardShortcuts({
@@ -103,6 +105,12 @@ export default function App() {
                     onSessionClick={(session) => {
                       data.openSessions();
                       data.setSelectedSession(session);
+                    }}
+                    layout={overviewLayout}
+                    onLayoutChange={setOverviewLayout}
+                    onOpenLayoutSettings={() => {
+                      data.navigate("settings");
+                      window.history.replaceState(null, "", "#settings-overview");
                     }}
                   />
                 ) : null}
@@ -186,6 +194,8 @@ export default function App() {
                     officialQuota={data.officialQuota}
                     onOfficialQuota={data.setOfficialQuota}
                     onQuotaError={data.reportError}
+                    overviewLayout={overviewLayout}
+                    onOverviewLayoutChange={setOverviewLayout}
                   />
                 ) : null}
               </Suspense>
