@@ -832,8 +832,8 @@ input[type="checkbox"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1 1 auto;
-  min-height: 0;
+  /* 可长高填满视口，但不能被压矮。压矮后子块会溢出，盖住状态栏等后续模块。 */
+  flex: 1 0 auto;
   width: 100%;
 }
 
@@ -972,7 +972,7 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(250px, 0.9fr);
   gap: 8px;
-  flex: 1.35 1 0;
+  flex: 1 0 auto;
   min-height: 220px;
 }
 
@@ -1342,30 +1342,27 @@ button.heat-cell {
 }
 
 .collapsible-trend {
-  flex: 1.35 1 0;
-  min-height: 0;
+  flex: 1.35 0 auto;
   display: flex;
   flex-direction: column;
 }
 
 .collapsible-detail {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
 }
 
 .collapsible-trend.is-open .collapsible-body,
 .collapsible-detail.is-open .collapsible-body {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
 }
 
 .collapsible-trend .dash-mid,
 .collapsible-detail .dash-bottom {
-  flex: 1;
+  flex: 1 0 auto;
 }
 
 .settings-tabs {
@@ -2100,7 +2097,7 @@ button.legend-row:hover {
   display: grid;
   grid-template-columns: 1.05fr 1.15fr 1.1fr;
   gap: 8px;
-  flex: 1 1 0;
+  flex: 1 0 auto;
   min-height: 180px;
 }
 
@@ -3407,8 +3404,8 @@ td.row-actions {
 
   .dash-mid,
   .dash-bottom {
-    flex: 1 1 auto;
-    min-height: 0;
+    flex: 1 0 auto;
+    min-height: 180px;
   }
 
   .dash-mid {
