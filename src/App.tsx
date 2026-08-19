@@ -5,6 +5,7 @@ import { LoadingOverlay } from "./components/LoadingOverlay";
 import { Sidebar } from "./components/Sidebar";
 import { Topbar } from "./components/Topbar";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useOverviewLayout } from "./hooks/useOverviewLayout";
 import { useTheme } from "./hooks/useTheme";
 import { useUsageData } from "./hooks/useUsageData";
 import { clearDimensionFilters, withModelFilter } from "./lib/filterChips";
@@ -25,7 +26,9 @@ import { ViewFallback } from "./views/ViewFallback";
 export default function App() {
   const data = useUsageData();
   const { theme, mode: themeMode, setMode: setThemeMode } = useTheme();
+  const { layout: overviewLayout, setLayout: setOverviewLayout } = useOverviewLayout();
   const { view } = data;
+  const detectedSources = data.diagnostics.filter((row) => row.detected).map((row) => row.source);
 
   useKeyboardShortcuts({
     onNavigate: data.navigate,
@@ -104,6 +107,9 @@ export default function App() {
                       data.openSessions();
                       data.setSelectedSession(session);
                     }}
+                    layout={overviewLayout}
+                    onLayoutChange={setOverviewLayout}
+                    detectedSources={detectedSources}
                   />
                 ) : null}
                 {view === "trend" ? (
@@ -186,6 +192,8 @@ export default function App() {
                     officialQuota={data.officialQuota}
                     onOfficialQuota={data.setOfficialQuota}
                     onQuotaError={data.reportError}
+                    overviewLayout={overviewLayout}
+                    onOverviewLayoutChange={setOverviewLayout}
                   />
                 ) : null}
               </Suspense>

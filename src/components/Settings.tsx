@@ -1,9 +1,11 @@
 import { useEffect } from "react";
+import type { OverviewLayout } from "../lib/overviewLayout";
 import { BackupPanel } from "./BackupPanel";
 import { BudgetPanel } from "./BudgetPanel";
 import { CursorAccountSettingsPanel } from "./CursorAccountSettingsPanel";
 import { OfficialQuotaSettingsPanel } from "./OfficialQuotaSettingsPanel";
 import { LiteLlmSnapshotPanel } from "./LiteLlmSnapshotPanel";
+import { OverviewLayoutPanel } from "./OverviewLayoutPanel";
 import { PriceConfigPanel } from "./PriceConfigPanel";
 import { PricePresetPanel } from "./PricePresetPanel";
 import { SourceDiagnosticsPanel } from "./SourceDiagnosticsPanel";
@@ -17,6 +19,7 @@ import type {
 
 const SETTINGS_ANCHORS = [
   { id: "settings-diagnostics", label: "数据源" },
+  { id: "settings-overview", label: "概览" },
   { id: "settings-budget", label: "预算" },
   { id: "settings-official-quota", label: "官方额度" },
   { id: "settings-backup", label: "备份" },
@@ -45,6 +48,8 @@ export function Settings({
   officialQuota,
   onOfficialQuota,
   onQuotaError,
+  overviewLayout,
+  onOverviewLayoutChange,
 }: {
   prices: PriceTable;
   diagnostics: SourceDiagnostic[];
@@ -64,7 +69,11 @@ export function Settings({
   officialQuota: OfficialQuotaDto | null;
   onOfficialQuota: (value: OfficialQuotaDto) => void;
   onQuotaError: (error: unknown) => void;
+  overviewLayout: OverviewLayout;
+  onOverviewLayoutChange: (layout: OverviewLayout) => void;
 }) {
+  const detectedSources = diagnostics.filter((row) => row.detected).map((row) => row.source);
+
   useEffect(() => {
     const id = window.location.hash.replace(/^#/, "");
     if (!id.startsWith("settings-")) {
@@ -90,6 +99,12 @@ export function Settings({
         operationBusy={operationBusy}
         onRebuild={onRebuild}
         onPurgeArchived={onPurgeArchived}
+      />
+      <OverviewLayoutPanel
+        layout={overviewLayout}
+        detectedSources={detectedSources}
+        presentSources={detectedSources}
+        onChange={onOverviewLayoutChange}
       />
       <BudgetPanel status={budgetStatus} saving={savingBudget} onSave={onSaveBudget} />
       <OfficialQuotaSettingsPanel
