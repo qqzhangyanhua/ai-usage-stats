@@ -1,0 +1,72 @@
+src-tauri/src/cursor_account.rs
+  s_ed2101ef5b0f7b::t_fe014c8c03b8ce 194-221
+src-tauri/src/aggregate.rs
+  s_ed2101ef5b0f7b::t_980fbca7464563 93
+src-tauri/src/domain.rs
+  s_ed2101ef5b0f7b::t_a85004d511266c 413
+src-tauri/src/tests/billing.rs
+  s_ed2101ef5b0f7b::t_3705cc795e1d4b 138-238
+src/components/Overview.tsx
+  s_ed2101ef5b0f7b::t_e2bd84b7bbb289 266-269
+docs/adr/0006-cursor-account-usage-network-ingest.md
+  s_ed2101ef5b0f7b::t_97237f651412ff 25
+src/components/WeeklyWindows.tsx
+  s_ed2101ef5b0f7b::t_7b91fd3a16ac1e 3
+  s_ed2101ef5b0f7b::t_9c165122f6fbf9 52-53
+README.md
+  s_ed2101ef5b0f7b::t_ad8ea4b42439da 9
+src/lib/overviewLayout.ts
+  s_ed2101ef5b0f7b::t_7d5328749b2e13 37
+  s_ed2101ef5b0f7b::t_061bb695cb7ffe 53
+src-tauri/src/cost.rs
+  s_ed2101ef5b0f7b::t_cb8a05d6d58057 97
+  s_ed2101ef5b0f7b::t_8e0646d1b68d8a 5-13,16-25,31-32,40-44,106-115
+  s_ed2101ef5b0f7b::t_5d42fade42114a 98-105,116-121,125-126,130
+  s_ed2101ef5b0f7b::t_a437278a776deb 1-3,26-30,65-66,73,76,83
+  s_ed2101ef5b0f7b::t_7f66da5d73a2d8 4
+src/lib/overviewLayout.test.ts
+  s_ed2101ef5b0f7b::t_f102e94e799f0b 182
+.cursor/rules/rust-backend.mdc
+  s_ed2101ef5b0f7b::t_cf23e9e2545f3f 28
+  s_ed2101ef5b0f7b::t_b3e9529ffc616a 27
+src-tauri/src/query.rs
+  s_ed2101ef5b0f7b::t_fd6a092766dcc9 12
+  s_ed2101ef5b0f7b::t_c645bad8d8d9cb 298-305
+src/lib/format.ts
+  s_ed2101ef5b0f7b::t_579c4868fe8e75 91,96-101
+  s_ed2101ef5b0f7b::t_cce9af6482f5f6 102
+src-tauri/src/tests/cursor_account.rs
+  s_ed2101ef5b0f7b::t_b3e9529ffc616a 516-519,535-538
+  s_ed2101ef5b0f7b::t_608d88c215a016 462-515,520-528,539
+  s_ed2101ef5b0f7b::t_911007ccff34ed 529-534
+src-tauri/src/billing_window.rs
+  s_ed2101ef5b0f7b::t_b3e9529ffc616a 123
+  s_ed2101ef5b0f7b::t_23065e20b5dfdc 7,9-10
+  s_ed2101ef5b0f7b::t_5ae09ee4d3c18a 18-20
+  s_ed2101ef5b0f7b::t_5224f300daa3e9 97-122,124-163
+src/lib/format.test.ts
+  s_ed2101ef5b0f7b::t_3542e6ac27c2dd 5
+  s_ed2101ef5b0f7b::t_a5f8ae6f074ad9 120-125
+CONTEXT.md
+  s_ed2101ef5b0f7b::t_580ed2305f6a13 28-29
+src/icons.tsx
+  s_ed2101ef5b0f7b::t_1e6bbe9118c22e 285
+.cursor/rules/project-overview.mdc
+  s_ed2101ef5b0f7b::t_43a58c1040c61b 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "0f96d3a3976f4779be208ef248f735d9a872b87c",
+  "prompts": {},
+  "sessions": {
+    "s_ed2101ef5b0f7b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b393166f-f6fa-4444-a7e1-ac19eade0266",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
