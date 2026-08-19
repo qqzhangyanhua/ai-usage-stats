@@ -738,10 +738,12 @@ pub fn set_official_quota_error(
     Ok(())
 }
 
+type OfficialQuotaRow = (Vec<OfficialQuotaWindow>, String, Option<String>);
+
 pub fn load_official_quota_row(
     conn: &Connection,
     provider: &str,
-) -> Result<Option<(Vec<OfficialQuotaWindow>, String, Option<String>)>, String> {
+) -> Result<Option<OfficialQuotaRow>, String> {
     let row = conn
         .query_row(
             "SELECT windows_json, captured_at, error FROM official_quota WHERE provider = ?1",

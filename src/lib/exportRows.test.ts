@@ -11,6 +11,7 @@ import {
   cursorSessionPathTable,
   cursorSessionProjectTable,
   cursorSessionToolTable,
+  trendSeriesTable,
 } from "./exportRows";
 import type {
   ApplicationAnalyticsDto,
@@ -56,6 +57,30 @@ const analytics: ApplicationAnalyticsDto = {
     { project: "/Users/dev/app", total_tokens: 30, values: { claude: 20, codex: 10 } },
   ],
 };
+
+describe("trend series table", () => {
+  it("exports chronological rows with share and period delta", () => {
+    const table = trendSeriesTable([
+      {
+        bucket: "2026-08-01",
+        total_tokens: 100,
+        input_tokens: 80,
+        output_tokens: 20,
+        cost: 1.2,
+      },
+      {
+        bucket: "2026-08-02",
+        total_tokens: 200,
+        input_tokens: 150,
+        output_tokens: 50,
+        cost: null,
+      },
+    ]);
+    expect(table.headers).toEqual(["时间", "总量", "输入", "输出", "费用", "占总量%", "环比%"]);
+    expect(table.rows[0]).toEqual(["08-01", 100, 80, 20, 1.2, 33.33, ""]);
+    expect(table.rows[1]).toEqual(["08-02", 200, 150, 50, "", 66.67, 100]);
+  });
+});
 
 describe("application tables", () => {
   it("exports efficiency rows with blank null ratios", () => {

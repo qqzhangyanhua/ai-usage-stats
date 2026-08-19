@@ -7,6 +7,7 @@ import type {
   NamedAmount,
   SeriesPoint,
 } from "../types";
+import { chartClickDataIndex } from "./chartClick";
 import { formatCompact } from "./format";
 import type { ResolvedTheme } from "../hooks/useTheme";
 
@@ -86,12 +87,35 @@ function tooltipBase(theme: ChartTheme) {
   };
 }
 
+function seriesPointTooltip(points: SeriesPoint[]) {
+  return (raw: unknown): string => {
+    const items = Array.isArray(raw) ? raw : [raw];
+    const index = chartClickDataIndex(items[0]);
+    const point = index == null ? undefined : points[index];
+    if (!point) {
+      return "";
+    }
+    const lines = [
+      formatBucket(point.bucket),
+      `总量 ${formatCompact(point.total_tokens)}`,
+      `输入 ${formatCompact(point.input_tokens)}`,
+      `输出 ${formatCompact(point.output_tokens)}`,
+    ];
+    if (point.cost != null) {
+      lines.push(`费用 $${point.cost.toFixed(2)}`);
+    }
+    return lines.join("<br/>");
+  };
+}
+
 export function areaTrendOption(points: SeriesPoint[], theme: ChartTheme = "dark"): EChartsOption {
   const p = paletteFor(theme);
+  const showSymbol = points.length <= 48;
   return {
     tooltip: {
       ...tooltipBase(theme),
       trigger: "axis",
+      formatter: seriesPointTooltip(points),
     },
     legend: {
       data: ["输入 Token", "输出 Token"],
@@ -128,7 +152,8 @@ export function areaTrendOption(points: SeriesPoint[], theme: ChartTheme = "dark
         smooth: 0.35,
         symbol: "circle",
         symbolSize: 7,
-        showSymbol: true,
+        showSymbol,
+        cursor: "pointer",
         data: points.map((point) => point.input_tokens),
         lineStyle: { width: 2.4, color: p.input },
         itemStyle: { color: p.input },
@@ -152,7 +177,8 @@ export function areaTrendOption(points: SeriesPoint[], theme: ChartTheme = "dark
         smooth: 0.35,
         symbol: "circle",
         symbolSize: 7,
-        showSymbol: true,
+        showSymbol,
+        cursor: "pointer",
         data: points.map((point) => point.output_tokens),
         lineStyle: { width: 2.4, color: p.output },
         itemStyle: { color: p.output },

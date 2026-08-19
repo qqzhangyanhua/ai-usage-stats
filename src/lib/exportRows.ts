@@ -1,4 +1,6 @@
 import { projectLabel } from "./format";
+import { formatBucket } from "./chartTheme";
+import { trendTableRows } from "./trendStats";
 import type {
   ApplicationAnalyticsDto,
   CodeVolumeCommit,
@@ -7,6 +9,7 @@ import type {
   CursorAccountUsageDto,
   CursorSessionDetailDto,
   CursorSessionSummaryDto,
+  SeriesPoint,
 } from "../types";
 
 export type ExportTable = {
@@ -20,6 +23,21 @@ function costCell(cost: number | null): string | number {
 
 function ratioCell(value: number | null): string | number {
   return value ?? "";
+}
+
+export function trendSeriesTable(points: SeriesPoint[]): ExportTable {
+  return {
+    headers: ["时间", "总量", "输入", "输出", "费用", "占总量%", "环比%"],
+    rows: trendTableRows(points).map((row) => [
+      formatBucket(row.point.bucket),
+      row.point.total_tokens,
+      row.point.input_tokens,
+      row.point.output_tokens,
+      costCell(row.point.cost),
+      Number(row.shareOfTotal.toFixed(2)),
+      row.periodDelta == null ? "" : Number(row.periodDelta.toFixed(2)),
+    ]),
+  };
 }
 
 export function applicationEfficiencyTable(data: ApplicationAnalyticsDto): ExportTable {
