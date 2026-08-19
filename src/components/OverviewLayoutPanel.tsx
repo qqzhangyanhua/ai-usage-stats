@@ -19,7 +19,7 @@ export function OverviewLayoutPanel({
         <div>
           <h2>概览显示</h2>
           <p className="panel-note">
-            配置首页展示哪些模块，以及额度区块里显示哪些来源。偏好保存在本机，不影响统计缓存。
+            配置首页展示哪些模块、官方额度账号，以及计费窗里显示哪些来源。偏好保存在本机，不影响统计缓存。
           </p>
         </div>
         <Button onClick={() => onChange(defaultOverviewLayout())}>恢复默认</Button>

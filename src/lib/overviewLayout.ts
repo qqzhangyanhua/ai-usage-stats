@@ -1,3 +1,7 @@
+import type { OfficialQuotaProviderId } from "./type";
+
+export type { OfficialQuotaProviderId };
+
 export const OVERVIEW_LAYOUT_STORAGE_KEY = "ai-usage-stats:overview-layout";
 
 export const OVERVIEW_MODULE_IDS = [
@@ -45,14 +49,26 @@ export type QuotaSourceId = (typeof QUOTA_SOURCE_IDS)[number];
 /** 额度区块里最常单独盯的来源，对应「常用」一键。 */
 export const FAVORITE_QUOTA_SOURCES = ["codex", "claude", "cursor_agent"] as const;
 
+/** 官方额度区块可单独开关的账号，顺序与首页展示一致。 */
+export const OFFICIAL_QUOTA_PROVIDER_IDS = ["codex", "claude", "cursor", "grok"] as const;
+
+export const OFFICIAL_QUOTA_PROVIDER_LABELS: Record<OfficialQuotaProviderId, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  grok: "Grok",
+};
+
 export type OverviewLayout = {
   modules: Record<OverviewModuleId, boolean>;
   quotaSources: Record<string, boolean>;
+  officialProviders: Record<OfficialQuotaProviderId, boolean>;
 };
 
 export type OverviewLayoutSummary = {
   hiddenModules: OverviewModuleId[];
   hiddenPresentSources: string[];
+  hiddenOfficialProviders: OfficialQuotaProviderId[];
 };
 
 export function defaultOverviewLayout(): OverviewLayout {
@@ -68,6 +84,12 @@ export function defaultOverviewLayout(): OverviewLayout {
       status: true,
     },
     quotaSources: Object.fromEntries(QUOTA_SOURCE_IDS.map((id) => [id, true])),
+    officialProviders: {
+      claude: true,
+      codex: true,
+      cursor: true,
+      grok: true,
+    },
   };
 }
 
@@ -91,6 +113,7 @@ export function parseOverviewLayout(raw: string | null): OverviewLayout {
     }
     const modulesRaw = isRecord(parsed.modules) ? parsed.modules : {};
     const sourcesRaw = isRecord(parsed.quotaSources) ? parsed.quotaSources : {};
+    const officialRaw = isRecord(parsed.officialProviders) ? parsed.officialProviders : {};
     const modules = { ...defaults.modules };
     for (const id of OVERVIEW_MODULE_IDS) {
       modules[id] = readFlag(modulesRaw[id], defaults.modules[id]);
@@ -101,7 +124,11 @@ export function parseOverviewLayout(raw: string | null): OverviewLayout {
         quotaSources[source] = readFlag(visible, true);
       }
     }
-    return { modules, quotaSources };
+    const officialProviders = { ...defaults.officialProviders };
+    for (const id of OFFICIAL_QUOTA_PROVIDER_IDS) {
+      officialProviders[id] = readFlag(officialRaw[id], defaults.officialProviders[id]);
+    }
+    return { modules, quotaSources, officialProviders };
   } catch {
     return defaults;
   }
@@ -136,6 +163,24 @@ export function filterQuotaItems<T extends { source: string }>(
   layout: OverviewLayout,
 ): T[] {
   return items.filter((item) => isQuotaSourceVisible(layout, item.source));
+}
+
+export function isOfficialProviderVisible(layout: OverviewLayout, provider: string): boolean {
+  if (!isOfficialQuotaProviderId(provider)) {
+    return true;
+  }
+  return layout.officialProviders[provider] !== false;
+}
+
+export function filterOfficialQuotaRows<T extends { provider: string }>(
+  rows: T[],
+  layout: OverviewLayout,
+): T[] {
+  return rows.filter((row) => isOfficialProviderVisible(layout, row.provider));
+}
+
+export function isOfficialQuotaProviderId(value: string): value is OfficialQuotaProviderId {
+  return (OFFICIAL_QUOTA_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
 export function setModuleVisible(
@@ -182,12 +227,38 @@ export function setAllQuotaSourcesVisible(
   return { ...layout, quotaSources };
 }
 
+export function setOfficialProviderVisible(
+  layout: OverviewLayout,
+  provider: OfficialQuotaProviderId,
+  visible: boolean,
+): OverviewLayout {
+  return {
+    ...layout,
+    officialProviders: { ...layout.officialProviders, [provider]: visible },
+  };
+}
+
+export function setAllOfficialProvidersVisible(
+  layout: OverviewLayout,
+  visible: boolean,
+): OverviewLayout {
+  const officialProviders = { ...layout.officialProviders };
+  for (const id of OFFICIAL_QUOTA_PROVIDER_IDS) {
+    officialProviders[id] = visible;
+  }
+  return { ...layout, officialProviders };
+}
+
 export function visibleModuleCount(layout: OverviewLayout): number {
   return OVERVIEW_MODULE_IDS.filter((id) => isModuleVisible(layout, id)).length;
 }
 
 export function visibleQuotaSourceCount(layout: OverviewLayout): number {
   return QUOTA_SOURCE_IDS.filter((id) => isQuotaSourceVisible(layout, id)).length;
+}
+
+export function visibleOfficialProviderCount(layout: OverviewLayout): number {
+  return OFFICIAL_QUOTA_PROVIDER_IDS.filter((id) => isOfficialProviderVisible(layout, id)).length;
 }
 
 export function applyQuotaSourceSet(
@@ -255,5 +326,8 @@ export function summarizeOverviewLayout(
   const hiddenModules = OVERVIEW_MODULE_IDS.filter((id) => !isModuleVisible(layout, id));
   const sourcePool = presentSources.length > 0 ? presentSources : QUOTA_SOURCE_IDS;
   const hiddenPresentSources = sourcePool.filter((source) => !isQuotaSourceVisible(layout, source));
-  return { hiddenModules, hiddenPresentSources };
+  const hiddenOfficialProviders = OFFICIAL_QUOTA_PROVIDER_IDS.filter(
+    (id) => !isOfficialProviderVisible(layout, id),
+  );
+  return { hiddenModules, hiddenPresentSources, hiddenOfficialProviders };
 }

@@ -4,13 +4,18 @@ import {
   applyDetectedQuotaSources,
   applyFavoriteQuotaSources,
   isModuleVisible,
+  isOfficialProviderVisible,
   isQuotaSourceVisible,
+  OFFICIAL_QUOTA_PROVIDER_IDS,
+  OFFICIAL_QUOTA_PROVIDER_LABELS,
   OVERVIEW_MODULE_IDS,
   OVERVIEW_MODULE_LABELS,
   quotaSourceChipIds,
   setAllModulesVisible,
+  setAllOfficialProvidersVisible,
   setAllQuotaSourcesVisible,
   setModuleVisible,
+  setOfficialProviderVisible,
   setQuotaSourceVisible,
   type OverviewLayout,
 } from "../lib/overviewLayout";
@@ -53,6 +58,37 @@ export function OverviewLayoutControls({
             label={OVERVIEW_MODULE_LABELS[id]}
             pressed={isModuleVisible(layout, id)}
             onToggle={() => onChange(setModuleVisible(layout, id, !isModuleVisible(layout, id)))}
+          />
+        ))}
+      </ToggleGroup>
+      <ToggleGroup
+        title="官方额度中的账号"
+        note="只影响首页官方额度区块。关掉后仍会采集，只是不展示。"
+        actions={
+          <>
+            <Button
+              size="sm"
+              onClick={() => onChange(setAllOfficialProvidersVisible(layout, true))}
+            >
+              全部显示
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => onChange(setAllOfficialProvidersVisible(layout, false))}
+            >
+              全部隐藏
+            </Button>
+          </>
+        }
+      >
+        {OFFICIAL_QUOTA_PROVIDER_IDS.map((id) => (
+          <ToggleChip
+            key={id}
+            label={OFFICIAL_QUOTA_PROVIDER_LABELS[id]}
+            pressed={isOfficialProviderVisible(layout, id)}
+            onToggle={() =>
+              onChange(setOfficialProviderVisible(layout, id, !isOfficialProviderVisible(layout, id)))
+            }
           />
         ))}
       </ToggleGroup>

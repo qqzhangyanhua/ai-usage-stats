@@ -4,9 +4,12 @@ import {
   applyFavoriteQuotaSources,
   collectPresentSources,
   defaultOverviewLayout,
+  filterOfficialQuotaRows,
   filterQuotaItems,
   isModuleVisible,
+  isOfficialProviderVisible,
   isQuotaSourceVisible,
+  OFFICIAL_QUOTA_PROVIDER_IDS,
   OVERVIEW_LAYOUT_STORAGE_KEY,
   OVERVIEW_MODULE_IDS,
   parseOverviewLayout,
@@ -14,11 +17,14 @@ import {
   quotaSourceChipIds,
   readOverviewLayout,
   setAllModulesVisible,
+  setAllOfficialProvidersVisible,
   setAllQuotaSourcesVisible,
   setModuleVisible,
+  setOfficialProviderVisible,
   setQuotaSourceVisible,
   summarizeOverviewLayout,
   visibleModuleCount,
+  visibleOfficialProviderCount,
   visibleQuotaSourceCount,
   writeOverviewLayout,
 } from "./overviewLayout";
@@ -57,6 +63,7 @@ describe("parseOverviewLayout", () => {
     expect(layout).toEqual(defaultOverviewLayout());
     expect(OVERVIEW_MODULE_IDS.every((id) => layout.modules[id])).toBe(true);
     expect(QUOTA_SOURCE_IDS.every((id) => layout.quotaSources[id])).toBe(true);
+    expect(OFFICIAL_QUOTA_PROVIDER_IDS.every((id) => layout.officialProviders[id])).toBe(true);
   });
 
   it("merges partial stored config and keeps unknown sources", () => {
@@ -73,6 +80,26 @@ describe("parseOverviewLayout", () => {
     expect(layout.quotaSources.claude).toBe(false);
     expect(layout.quotaSources.cursor_agent).toBe(true);
     expect(layout.quotaSources.custom_src).toBe(false);
+    expect(layout.officialProviders).toEqual({
+      claude: true,
+      codex: true,
+      cursor: true,
+      grok: true,
+    });
+  });
+
+  it("reads official provider flags independently of billing sources", () => {
+    const layout = parseOverviewLayout(
+      JSON.stringify({
+        officialProviders: { claude: false, cursor: true },
+        quotaSources: { claude: true },
+      }),
+    );
+    expect(layout.officialProviders.claude).toBe(false);
+    expect(layout.officialProviders.codex).toBe(true);
+    expect(layout.officialProviders.cursor).toBe(true);
+    expect(layout.officialProviders.grok).toBe(true);
+    expect(layout.quotaSources.claude).toBe(true);
   });
 
   it("falls back for invalid JSON or non-object payloads", () => {
@@ -105,6 +132,21 @@ describe("visibility helpers", () => {
     expect(rows.map((row) => row.source)).toEqual(["codex", "cursor_agent"]);
   });
 
+  it("filters official quota rows by selected accounts", () => {
+    const layout = setOfficialProviderVisible(defaultOverviewLayout(), "claude", false);
+    const rows = filterOfficialQuotaRows(
+      [
+        { provider: "codex" },
+        { provider: "claude" },
+        { provider: "cursor" },
+      ],
+      layout,
+    );
+    expect(rows.map((row) => row.provider)).toEqual(["codex", "cursor"]);
+    expect(isOfficialProviderVisible(layout, "claude")).toBe(false);
+    expect(isOfficialProviderVisible(layout, "unknown")).toBe(true);
+  });
+
   it("toggles modules and sources without mutating the original", () => {
     const original = defaultOverviewLayout();
     const hiddenHeatmap = setModuleVisible(original, "heatmap", false);
@@ -121,6 +163,13 @@ describe("visibility helpers", () => {
     expect(visibleModuleCount(hidden)).toBe(0);
     expect(visibleQuotaSourceCount(shown)).toBe(QUOTA_SOURCE_IDS.length);
     expect(shown.modules.kpi).toBe(false);
+    const onlyCodex = setAllOfficialProvidersVisible(
+      setOfficialProviderVisible(defaultOverviewLayout(), "claude", false),
+      false,
+    );
+    expect(visibleOfficialProviderCount(setOfficialProviderVisible(onlyCodex, "codex", true))).toBe(
+      1,
+    );
   });
 
   it("applies favorite and detected source sets", () => {
@@ -152,6 +201,9 @@ describe("visibility helpers", () => {
     const summary = summarizeOverviewLayout(layout, ["codex", "claude", "cursor_agent"]);
     expect(summary.hiddenModules).toEqual(["heatmap"]);
     expect(summary.hiddenPresentSources).toEqual(["claude"]);
+    expect(summary.hiddenOfficialProviders).toEqual([]);
+    const official = setOfficialProviderVisible(layout, "cursor", false);
+    expect(summarizeOverviewLayout(official).hiddenOfficialProviders).toEqual(["cursor"]);
   });
 });
 

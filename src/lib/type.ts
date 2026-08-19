@@ -12,3 +12,6 @@ export type SettingsTab = {
   label: string;
   anchors: readonly string[];
 };
+
+export type OfficialQuotaProviderId = "claude" | "codex" | "cursor" | "grok";
+

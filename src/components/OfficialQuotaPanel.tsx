@@ -25,7 +25,12 @@ export const OfficialQuotaPanel = memo(function OfficialQuotaPanel({
         </span>
       </div>
       {rows.length === 0 ? (
-        <EmptyState compact icon="clock" title="还没有官方额度" />
+        <EmptyState
+          compact
+          icon="clock"
+          title={data ? "所选账号均已隐藏" : "还没有官方额度"}
+          hint={data ? "在「配置显示」里打开 Codex / Claude Code / Cursor / Grok" : undefined}
+        />
       ) : (
         <ul className="official-quota-list">
           {rows.map((row) => (

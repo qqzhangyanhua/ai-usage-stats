@@ -5,6 +5,7 @@ import { chartPalette } from "../lib/chartTheme";
 import type { ResolvedTheme } from "../hooks/useTheme";
 import {
   collectPresentSources,
+  filterOfficialQuotaRows,
   filterQuotaItems,
   isModuleVisible,
   visibleModuleCount,
@@ -130,6 +131,15 @@ export const Overview = memo(function Overview({
       weekly: filterQuotaItems(billingWindows.weekly, layout),
     };
   }, [billingWindows, layout]);
+  const visibleOfficialQuota = useMemo(() => {
+    if (!officialQuota) {
+      return null;
+    }
+    return {
+      ...officialQuota,
+      rows: filterOfficialQuotaRows(officialQuota.rows, layout),
+    };
+  }, [officialQuota, layout]);
   const activeWindows = (visibleBilling?.current ?? []).filter((window) => window.is_active).length;
   const weeklyDays = visibleBilling?.weekly_window_days ?? 7;
   const weeklyCount = visibleBilling?.weekly.length ?? 0;
@@ -212,7 +222,7 @@ export const Overview = memo(function Overview({
         </section>
       ) : null}
 
-      {showOfficial ? <OfficialQuotaPanel data={officialQuota} /> : null}
+      {showOfficial ? <OfficialQuotaPanel data={visibleOfficialQuota} /> : null}
 
       {showBilling ? (
         <CollapsibleSection

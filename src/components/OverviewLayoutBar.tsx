@@ -2,6 +2,7 @@ import { useState } from "react";
 import { applicationLabel } from "../lib/format";
 import {
   defaultOverviewLayout,
+  OFFICIAL_QUOTA_PROVIDER_LABELS,
   OVERVIEW_MODULE_LABELS,
   summarizeOverviewLayout,
   type OverviewLayout,
@@ -56,13 +57,25 @@ export function OverviewLayoutBar({
 }
 
 function formatLayoutSummary(layout: OverviewLayout, presentSources: string[]): string {
-  const { hiddenModules, hiddenPresentSources } = summarizeOverviewLayout(layout, presentSources);
-  if (hiddenModules.length === 0 && hiddenPresentSources.length === 0) {
+  const { hiddenModules, hiddenPresentSources, hiddenOfficialProviders } = summarizeOverviewLayout(
+    layout,
+    presentSources,
+  );
+  if (
+    hiddenModules.length === 0 &&
+    hiddenPresentSources.length === 0 &&
+    hiddenOfficialProviders.length === 0
+  ) {
     return "全部模块与额度来源均显示";
   }
   const parts: string[] = [];
   if (hiddenModules.length > 0) {
     parts.push(`已隐藏 ${hiddenModules.map((id) => OVERVIEW_MODULE_LABELS[id]).join("、")}`);
+  }
+  if (hiddenOfficialProviders.length > 0) {
+    parts.push(
+      `官方额度未显示 ${hiddenOfficialProviders.map((id) => OFFICIAL_QUOTA_PROVIDER_LABELS[id]).join("、")}`,
+    );
   }
   if (hiddenPresentSources.length > 0) {
     parts.push(`额度未显示 ${hiddenPresentSources.map((id) => applicationLabel(id)).join("、")}`);
