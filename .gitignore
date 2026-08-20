@@ -9,5 +9,6 @@ dist/
 .DS_Store
 src-tauri/gen/
 .scratch/
+.worktrees/
 .playwright-cli/
 docs/probe/.captures/
