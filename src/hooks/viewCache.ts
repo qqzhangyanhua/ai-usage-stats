@@ -11,6 +11,7 @@ export const views: View[] = [
   "sessions",
   "cursor",
   "cursor-sessions",
+  "worktime",
   "instructions",
   "settings",
 ];

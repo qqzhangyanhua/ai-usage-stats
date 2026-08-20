@@ -2753,6 +2753,92 @@ tr.session-detail-row td {
   margin-bottom: 0;
 }
 
+.worktime-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.worktime-day-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.worktime-kpis {
+  flex: 1 0 auto;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 220px));
+}
+
+.worktime-timeline {
+  min-height: 200px;
+}
+
+.worktime-axis-wrap {
+  padding-top: 4px;
+}
+
+.worktime-axis {
+  position: relative;
+  height: 20px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.worktime-axis span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.worktime-axis span:first-child {
+  transform: translateX(0);
+}
+
+.worktime-axis span:last-child {
+  transform: translateX(-100%);
+}
+
+.worktime-lanes {
+  position: relative;
+  min-height: 34px;
+}
+
+.worktime-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+
+.worktime-segment {
+  position: absolute;
+  height: 26px;
+  margin-top: 4px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  background: var(--tone-codex-bg);
+  border: 1px solid rgba(139, 108, 255, 0.35);
+  color: var(--purple-fg);
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.worktime-segment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

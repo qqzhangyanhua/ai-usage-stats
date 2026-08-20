@@ -601,6 +601,40 @@ pub struct SessionPage {
     pub last_ended: Option<String>,
 }
 
+/// 工作时间线里的一根横条：一条会话按当天本地日历日裁剪后的区间。
+/// `total_tokens` 只统计该会话落在这天的记录，不是会话全量。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkSegment {
+    pub session_id: String,
+    pub source: String,
+    pub project: String,
+    pub model: String,
+    pub start: String,
+    pub end: String,
+    pub total_tokens: i64,
+}
+
+/// 单日工作时间线：与当天区间有交集的会话铺开成 `segments`。独立于本机 token KPI 的既有口径，
+/// 不受顶栏范围筛选影响，只看 `day`（本地日历日 `YYYY-MM-DD`）这一天。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkTimelineDto {
+    pub day: String,
+    pub total_tokens: i64,
+    pub segment_count: i64,
+    pub segments: Vec<WorkSegment>,
+}
+
+impl WorkTimelineDto {
+    pub fn empty(day: &str) -> Self {
+        Self {
+            day: day.to_string(),
+            total_tokens: 0,
+            segment_count: 0,
+            segments: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TurnRow {
     pub occurred_at: String,

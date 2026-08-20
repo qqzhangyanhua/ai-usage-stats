@@ -128,4 +128,17 @@ fn sql_queries_match_in_memory_aggregates() {
         assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
         assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
     }
+
+    // work_timeline：SQL 宽口径拉取 + build 与内存路径直接对全量 records 调 build 必须一致。
+    for day in [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-08",
+        "2026-08-09",
+        "2026-08-15",
+    ] {
+        let sql_wt = query::work_timeline(&conn, day).unwrap();
+        let mem_wt = aggregate::work_timeline(&records, day);
+        assert_eq!(sql_wt, mem_wt, "work_timeline day={day}");
+    }
 }

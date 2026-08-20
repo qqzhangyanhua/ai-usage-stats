@@ -113,6 +113,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
         view === "sessions" ||
         view === "cursor" ||
         view === "cursor-sessions" ||
+        view === "worktime" ||
         view === "instructions" ||
         view === "settings";
       if (!localOnly && !hydratedViews.has(view)) {
