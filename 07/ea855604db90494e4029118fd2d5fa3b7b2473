@@ -1,0 +1,75 @@
+src-tauri/src/test_support/helpers.rs
+  s_c3d6112e41b1da::t_6aa6385558ad69 310-315,317-319,321-322
+src-tauri/src/lib.rs
+  s_c3d6112e41b1da::t_74c9ef140a1c01 267-278
+  s_c3d6112e41b1da::t_61ea3b39b052c5 39
+  s_c3d6112e41b1da::t_ef437189ec8e74 912
+  s_c3d6112e41b1da::t_0d534183f723c0 21
+src/lib/workTimeline.test.ts
+  s_c3d6112e41b1da::t_aed6e09c549dad 1-128
+src/hooks/viewCache.ts
+  s_c3d6112e41b1da::t_b4b1ee9c389394 14
+src-tauri/src/work_timeline.rs
+  s_c3d6112e41b1da::t_b21098c0b3da32 110-114
+  s_c3d6112e41b1da::t_490fbeddd25217 1-109,115-138
+src/components/Sidebar.tsx
+  s_c3d6112e41b1da::t_d1f7d17a3a84ae 154-155
+  s_c3d6112e41b1da::t_4835a8d4a6b2e9 26
+src/App.tsx
+  s_c3d6112e41b1da::t_7b929f0eca1bfa 23
+  s_c3d6112e41b1da::t_4a49cf3eee71cc 73-74
+  s_c3d6112e41b1da::t_6622edacc3a61d 167
+src-tauri/src/tests/work_timeline.rs
+  s_c3d6112e41b1da::t_c5a2964c37855b 1-76,81-191
+  s_c3d6112e41b1da::t_b21098c0b3da32 77-80
+src/styles.css
+  s_c3d6112e41b1da::t_8fa1695ab67965 2756-2841
+src/components/WorkTimeline.tsx
+  s_c3d6112e41b1da::t_9de4cad2a09ab5 31
+  s_c3d6112e41b1da::t_d9bcac0ee880b6 1-30,32-142
+src-tauri/src/aggregate.rs
+  s_c3d6112e41b1da::t_1ceea46cdc117a 10
+  s_c3d6112e41b1da::t_1f61199618feaf 432-434
+  s_c3d6112e41b1da::t_c6bcd2f5b9f552 489-493
+src/views/lazyViews.tsx
+  s_c3d6112e41b1da::t_9a0e495b605376 39-42
+src/hooks/usage/useViewRefresh.ts
+  s_c3d6112e41b1da::t_41a18530f6df59 116
+src-tauri/src/query.rs
+  s_c3d6112e41b1da::t_83268ccf859d00 18
+  s_c3d6112e41b1da::t_c0d332b1f9519c 1008-1014,1017-1018,1022,1024-1030
+  s_c3d6112e41b1da::t_eea87c11e8353f 1015-1016,1019-1021,1023
+  s_c3d6112e41b1da::t_5fcf079b65e634 242-243
+  s_c3d6112e41b1da::t_68ed60f8ef3fa6 241,244-274,293,301
+  s_c3d6112e41b1da::t_e1d6c6f1f64632 9
+src-tauri/src/tests/parity.rs
+  s_c3d6112e41b1da::t_156530f796fae3 131-132,140-143
+  s_c3d6112e41b1da::t_b21098c0b3da32 133-139
+src-tauri/src/domain.rs
+  s_c3d6112e41b1da::t_65435d053cdbd9 604-637
+src-tauri/src/tests/mod.rs
+  s_c3d6112e41b1da::t_5c4a7964d36a3b 15
+src/types.ts
+  s_c3d6112e41b1da::t_928be03c2e9b3a 261
+  s_c3d6112e41b1da::t_a7019cffec81d3 601-619
+src/lib/workTimeline.ts
+  s_c3d6112e41b1da::t_78bc82b3ef9aa6 1-70
+src/components/Topbar.tsx
+  s_c3d6112e41b1da::t_4f7b53a4c5c265 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "07ea855604db90494e4029118fd2d5fa3b7b2473",
+  "prompts": {},
+  "sessions": {
+    "s_c3d6112e41b1da": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f38b2bd4-6044-4b2b-9707-df63611c3aee",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
