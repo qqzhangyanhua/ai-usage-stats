@@ -1,0 +1,7 @@
+{"type":"session_meta","timestamp":"2026-08-22T00:00:00Z","payload":{"id":"duplicates-1","cwd":"/workspace/duplicate-project","model_provider":"openai"}}
+{"type":"event_msg","timestamp":"2026-08-22T00:00:01Z","payload":{"type":"user_message","message":"同一条用户消息"}}
+{"type":"response_item","timestamp":"2026-08-22T00:00:01Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"同一条用户消息"}]}}
+{"type":"event_msg","timestamp":"2026-08-22T00:00:02Z","payload":{"type":"agent_message_delta","delta":"同一条助手"}}
+{"type":"event_msg","timestamp":"2026-08-22T00:00:03Z","payload":{"type":"agent_message_delta","delta":"消息"}}
+{"type":"response_item","timestamp":"2026-08-22T00:00:04Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"同一条助手消息"}]}}
+{"type":"response_item","timestamp":"2026-08-22T00:00:05Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"同一条用户消息"}]}}

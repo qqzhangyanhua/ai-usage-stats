@@ -639,10 +639,79 @@ pub struct ConversationMessage {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationEventKind {
+    Message,
+    Plan,
+    ToolCall,
+    ToolResult,
+    ModelChange,
+    Error,
+    SystemStatus,
+    Unadapted,
+}
+
+impl ConversationEventKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Message => "message",
+            Self::Plan => "plan",
+            Self::ToolCall => "tool_call",
+            Self::ToolResult => "tool_result",
+            Self::ModelChange => "model_change",
+            Self::Error => "error",
+            Self::SystemStatus => "system_status",
+            Self::Unadapted => "unadapted",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationEventActor {
+    User,
+    Assistant,
+    Tool,
+}
+
+impl ConversationEventActor {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::Tool => "tool",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationEventCapabilityStatus {
+    Complete,
+    MissingTimestamp,
+    Unadapted,
+    UnadaptedMissingTimestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationEvent {
+    pub sequence: u32,
+    pub kind: ConversationEventKind,
+    pub occurred_at: Option<String>,
+    pub actor: Option<ConversationEventActor>,
+    pub name: Option<String>,
+    pub text: Option<String>,
+    pub details: serde_json::Value,
+    pub capability_status: ConversationEventCapabilityStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationDetailDto {
     pub session: ConversationSessionRow,
     pub messages: Vec<ConversationMessage>,
+    pub events: Vec<ConversationEvent>,
+    pub usage_records: Vec<UsageRecord>,
 }
 
 /// 工作时间线里的一根横条：一条会话按当天本地日历日裁剪后的区间。

@@ -1,0 +1,4 @@
+{"type":"session_meta","timestamp":"2026-08-23T00:00:00Z","payload":{"id":"ordered-1","cwd":"/workspace/ordered-project","model_provider":"openai"}}
+{"type":"event_msg","timestamp":"2026-08-23T00:00:10Z","payload":{"type":"error","message":"较晚错误"}}
+{"type":"event_msg","timestamp":"2026-08-23T00:00:05Z","payload":{"type":"plan_update","explanation":"较早计划","plan":[]}}
+{"type":"future_event","payload":{"phase":"without-time"}}

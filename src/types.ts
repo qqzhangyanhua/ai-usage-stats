@@ -385,9 +385,57 @@ export type ConversationMessage = {
   text: string;
 };
 
+export type ConversationEventKind =
+  | "message"
+  | "plan"
+  | "tool_call"
+  | "tool_result"
+  | "model_change"
+  | "error"
+  | "system_status"
+  | "unadapted";
+
+export type ConversationEventActor = "user" | "assistant" | "tool";
+
+export type ConversationEventCapabilityStatus =
+  | "complete"
+  | "missing_timestamp"
+  | "unadapted"
+  | "unadapted_missing_timestamp";
+
+export type ConversationEvent = {
+  sequence: number;
+  kind: ConversationEventKind;
+  occurred_at: string | null;
+  actor: ConversationEventActor | null;
+  name: string | null;
+  text: string | null;
+  details: unknown;
+  capability_status: ConversationEventCapabilityStatus;
+};
+
+export type ConversationUsageRecord = {
+  occurred_at: string;
+  source: string;
+  model: string;
+  provider: string;
+  project: string;
+  session_id: string;
+  source_file: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  native_cost: number | null;
+};
+
 export type ConversationDetailDto = {
   session: ConversationSessionRow;
   messages: ConversationMessage[];
+  events: ConversationEvent[];
+  usage_records: ConversationUsageRecord[];
 };
 
 export type CostSource = "native" | "user" | "snapshot" | "none";

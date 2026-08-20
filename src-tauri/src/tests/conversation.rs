@@ -1,10 +1,241 @@
 use crate::test_support::*;
 
 fn seed_codex_conversation(home: &std::path::Path) -> std::path::PathBuf {
-    let path = home.join(".codex/sessions/2026/08/rollout-conv-1.jsonl");
+    seed_codex_fixture(home, "rollout-conv-1.jsonl", "codex-conversation.jsonl")
+}
+
+fn seed_codex_fixture(
+    home: &std::path::Path,
+    file_name: &str,
+    fixture_name: &str,
+) -> std::path::PathBuf {
+    let path = home.join(".codex/sessions/2026/08").join(file_name);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(&path, fixture("codex-conversation.jsonl")).unwrap();
+    std::fs::write(&path, fixture(fixture_name)).unwrap();
     path
+}
+
+#[test]
+fn codex_conversation_detail_merges_streamed_text_and_filters_protocol_noise() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_fixture(
+        home,
+        "rollout-semantic-1.jsonl",
+        "codex-semantic-events.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "semantic-1").unwrap();
+
+    let message_events = detail
+        .events
+        .iter()
+        .filter(|event| event.kind == ConversationEventKind::Message)
+        .collect::<Vec<_>>();
+    assert_eq!(message_events.len(), 2);
+    assert_eq!(message_events[0].actor, Some(ConversationEventActor::User));
+    assert_eq!(message_events[0].text.as_deref(), Some("实现语义时间线"));
+    assert_eq!(
+        message_events[1].actor,
+        Some(ConversationEventActor::Assistant)
+    );
+    assert_eq!(
+        message_events[1].text.as_deref(),
+        Some("我先检查现有实现。")
+    );
+    assert_eq!(message_events[1].sequence, 3);
+    assert!(detail
+        .events
+        .iter()
+        .all(|event| { !matches!(event.name.as_deref(), Some("token_count" | "heartbeat")) }));
+}
+
+#[test]
+fn codex_conversation_detail_deduplicates_final_messages_across_protocol_channels() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_fixture(
+        home,
+        "rollout-duplicates-1.jsonl",
+        "codex-duplicate-messages.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "duplicates-1").unwrap();
+    let messages = detail
+        .events
+        .iter()
+        .filter(|event| event.kind == ConversationEventKind::Message)
+        .map(|event| {
+            (
+                event.actor.map(ConversationEventActor::as_str),
+                event.text.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        messages,
+        vec![
+            (Some("user"), Some("同一条用户消息")),
+            (Some("assistant"), Some("同一条助手消息")),
+            (Some("user"), Some("同一条用户消息")),
+        ]
+    );
+    assert_eq!(detail.messages.len(), 3);
+}
+
+#[test]
+fn codex_conversation_detail_orders_by_timestamp_then_source_sequence() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_fixture(
+        home,
+        "rollout-ordered-1.jsonl",
+        "codex-out-of-order-events.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "ordered-1").unwrap();
+    let order = detail
+        .events
+        .iter()
+        .map(|event| (event.kind.as_str(), event.sequence))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        order,
+        vec![
+            ("system_status", 0),
+            ("plan", 2),
+            ("error", 1),
+            ("unadapted", 3),
+        ]
+    );
+    assert_eq!(detail.events[3].occurred_at, None);
+}
+
+#[test]
+fn codex_conversation_detail_projects_semantic_events_and_preserves_unknown_events() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_fixture(
+        home,
+        "rollout-semantic-1.jsonl",
+        "codex-semantic-events.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "semantic-1").unwrap();
+    let kinds = detail
+        .events
+        .iter()
+        .map(|event| event.kind.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        kinds,
+        vec![
+            "system_status",
+            "model_change",
+            "message",
+            "message",
+            "plan",
+            "tool_call",
+            "tool_result",
+            "model_change",
+            "error",
+            "unadapted",
+        ]
+    );
+    assert!(detail
+        .events
+        .windows(2)
+        .all(|pair| pair[0].sequence < pair[1].sequence));
+    let plan = &detail.events[4];
+    assert_eq!(plan.text.as_deref(), Some("按层实现"));
+    assert_eq!(plan.details["plan"][0]["step"], "后端事件投影");
+    let call = &detail.events[5];
+    assert_eq!(call.name.as_deref(), Some("read_file"));
+    assert_eq!(call.details["call_id"], "call-1");
+    assert_eq!(detail.events[6].text.as_deref(), Some("fn main() {}"));
+    assert_eq!(detail.events[7].name.as_deref(), Some("gpt-5.7-codex"));
+    assert_eq!(detail.events[8].text.as_deref(), Some("工具执行失败"));
+    let unknown = &detail.events[9];
+    assert_eq!(unknown.name.as_deref(), Some("future_event"));
+    assert_eq!(unknown.occurred_at, None);
+    assert_eq!(
+        unknown.capability_status,
+        ConversationEventCapabilityStatus::UnadaptedMissingTimestamp
+    );
+    assert_eq!(unknown.details["payload"]["phase"], "next");
+}
+
+#[test]
+fn codex_conversation_detail_links_existing_usage_by_exact_source_and_session_id() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_fixture(
+        home,
+        "rollout-semantic-1.jsonl",
+        "codex-semantic-events.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+    let mut early = rec(
+        "2026-08-21T00:00:05Z",
+        Source::Codex,
+        "gpt-5.6-sol",
+        "openai",
+        "/workspace/semantic-project",
+        "semantic-1",
+        110,
+    );
+    early.output_tokens = 10;
+    let late = rec(
+        "2026-08-21T00:01:00Z",
+        Source::Codex,
+        "gpt-5.7-codex",
+        "openai",
+        "/workspace/semantic-project",
+        "semantic-1",
+        220,
+    );
+    let wrong_source = rec(
+        "2026-08-21T00:02:00Z",
+        Source::Claude,
+        "claude-sonnet-5",
+        "anthropic",
+        "/workspace/semantic-project",
+        "semantic-1",
+        330,
+    );
+    let wrong_session = rec(
+        "2026-08-21T00:03:00Z",
+        Source::Codex,
+        "gpt-5.7-codex",
+        "openai",
+        "/workspace/semantic-project",
+        "semantic-2",
+        440,
+    );
+    store::insert_records(&conn, &[late, wrong_source, early, wrong_session]).unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "semantic-1").unwrap();
+
+    assert_eq!(detail.usage_records.len(), 2);
+    assert_eq!(detail.usage_records[0].occurred_at, "2026-08-21T00:00:05Z");
+    assert_eq!(detail.usage_records[0].output_tokens, 10);
+    assert_eq!(detail.usage_records[1].occurred_at, "2026-08-21T00:01:00Z");
+    assert!(detail
+        .usage_records
+        .iter()
+        .all(|record| record.source == Source::Codex && record.session_id == "semantic-1"));
 }
 
 #[test]
@@ -29,7 +260,7 @@ fn codex_conversation_catalog_indexes_and_loads_messages_without_caching_body() 
     assert_eq!(row.model, "gpt-5.6-sol");
     assert_eq!(row.started_at, "2026-08-20T00:00:00Z");
     assert_eq!(row.ended_at, "2026-08-20T00:03:00Z");
-    assert_eq!(row.capabilities, vec!["messages"]);
+    assert_eq!(row.capabilities, vec!["messages", "events", "usage"]);
     assert_eq!(row.support_status, "experimental");
 
     let detail = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
@@ -161,9 +392,10 @@ fn ingest_all_refreshes_codex_conversation_catalog_without_usage_records() {
     seed_codex_conversation(home);
     let conn = store::open_memory().unwrap();
 
-    let report = ingest::ingest_all(&conn, home).unwrap();
+    let report = ingest::ingest_all_with_overrides(&conn, home, &Default::default()).unwrap();
     assert_eq!(report.files_failed, 0);
-    assert!(store::load_all(&conn).unwrap().is_empty());
+    let records = store::load_all(&conn).unwrap();
+    assert!(records.is_empty(), "unexpected usage records: {records:?}");
 
     let page =
         crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
@@ -181,7 +413,7 @@ fn conversation_index_issues_do_not_change_usage_ingest_failure_counts() {
     std::fs::write(&path, "{}\n").unwrap();
     let conn = store::open_memory().unwrap();
 
-    let report = ingest::ingest_all(&conn, home).unwrap();
+    let report = ingest::ingest_all_with_overrides(&conn, home, &Default::default()).unwrap();
 
     assert_eq!(report.files_failed, 0);
     assert!(report.issues.is_empty());

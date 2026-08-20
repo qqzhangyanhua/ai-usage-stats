@@ -6,8 +6,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::domain::{
-    ConversationDetailDto, ConversationMessage, ConversationPage, ConversationQuery,
-    ConversationSessionRow, Source,
+    ConversationDetailDto, ConversationEvent, ConversationEventActor as EventActor,
+    ConversationEventCapabilityStatus as EventStatus, ConversationEventKind as EventKind,
+    ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow, Source,
+    UsageRecord,
 };
 use crate::ingest;
 
@@ -15,6 +17,8 @@ const DEFAULT_PAGE_SIZE: u32 = 20;
 const MAX_PAGE_SIZE: u32 = 200;
 const TITLE_MAX_CHARS: usize = 80;
 const CAPABILITY_MESSAGES: &str = "messages";
+const CAPABILITY_EVENTS: &str = "events";
+const CAPABILITY_USAGE: &str = "usage";
 const EXPERIMENTAL: &str = "experimental";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +30,14 @@ pub struct ConversationIndexIssue {
 struct ParsedCodexConversation {
     session: ConversationSessionRow,
     messages: Vec<ConversationMessage>,
+    events: Vec<ConversationEvent>,
+}
+
+struct PendingMessageDelta {
+    sequence: u32,
+    occurred_at: String,
+    role: String,
+    text: String,
 }
 
 pub fn refresh_codex(
@@ -133,9 +145,12 @@ pub fn load_detail(
     if parsed.session.session_id != session.session_id {
         return Err("原始文件中的会话 ID 与索引不一致".to_string());
     }
+    let usage_records = load_usage_records(conn, source, session_id)?;
     Ok(ConversationDetailDto {
         session,
         messages: parsed.messages,
+        events: parsed.events,
+        usage_records,
     })
 }
 
@@ -149,6 +164,8 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
     let mut ended_at = String::new();
     let mut response_messages = Vec::new();
     let mut event_messages = Vec::new();
+    let mut events = Vec::new();
+    let mut pending_delta = None;
 
     for (index, raw) in content.lines().enumerate() {
         let raw = raw.trim();
@@ -168,33 +185,82 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
         let payload = value.get("payload").unwrap_or(&Value::Null);
         match kind {
             "session_meta" => {
+                flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
                 session_id = first_text(payload, &["id", "session_id"]);
                 project = first_text(payload, &["cwd"]);
                 title = first_text(payload, &["title", "name"]);
+                events.push(semantic_event(
+                    index,
+                    EventKind::SystemStatus,
+                    &timestamp,
+                    None,
+                    Some("session_started".to_string()),
+                    None,
+                    payload.clone(),
+                ));
             }
             "turn_context" => {
+                flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
                 let next_project = first_text(payload, &["cwd"]);
                 if !next_project.is_empty() {
                     project = next_project;
                 }
                 let next_model = first_text(payload, &["model"]);
-                if !next_model.is_empty() {
+                if !next_model.is_empty() && next_model != model {
+                    events.push(semantic_event(
+                        index,
+                        EventKind::ModelChange,
+                        &timestamp,
+                        None,
+                        Some(next_model.clone()),
+                        None,
+                        payload.clone(),
+                    ));
                     model = next_model;
                 }
             }
             "response_item" => {
+                flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
                 if let Some(message) = response_message(payload, &timestamp) {
+                    events.push(message_event(index, &message, payload.clone()));
                     response_messages.push(message);
+                } else if let Some(event) = response_semantic_event(index, &timestamp, payload) {
+                    events.push(event);
                 }
             }
             "event_msg" => {
-                if let Some(message) = event_message(payload, &timestamp) {
-                    event_messages.push(message);
+                let event_kind = payload.get("type").and_then(Value::as_str).unwrap_or("");
+                match event_kind {
+                    "agent_message_delta" => append_message_delta(
+                        &mut pending_delta,
+                        index,
+                        &timestamp,
+                        "assistant",
+                        payload,
+                    ),
+                    "token_count" | "heartbeat" => {}
+                    _ => {
+                        flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
+                        if let Some(message) = event_message(payload, &timestamp) {
+                            events.push(message_event(index, &message, payload.clone()));
+                            event_messages.push(message);
+                        } else {
+                            events.push(event_msg_semantic_event(
+                                index, &timestamp, event_kind, payload,
+                            ));
+                        }
+                    }
                 }
             }
-            _ => {}
+            _ => {
+                flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
+                events.push(unadapted_event(index, &timestamp, kind, value.clone()));
+            }
         }
     }
+    flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
+    deduplicate_message_channels(&mut events);
+    events.sort_by(compare_event_order);
 
     if session_id.is_empty() {
         return Err("缺少 Codex 会话 ID".to_string());
@@ -211,11 +277,14 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
             .map(|message| truncate_title(&message.text))
             .unwrap_or_else(|| session_id.clone());
     }
-    let capabilities = if messages.is_empty() {
-        Vec::new()
-    } else {
-        vec![CAPABILITY_MESSAGES.to_string()]
-    };
+    let mut capabilities = Vec::new();
+    if !messages.is_empty() {
+        capabilities.push(CAPABILITY_MESSAGES.to_string());
+    }
+    if !events.is_empty() {
+        capabilities.push(CAPABILITY_EVENTS.to_string());
+    }
+    capabilities.push(CAPABILITY_USAGE.to_string());
     let session = ConversationSessionRow {
         source: Source::Codex.as_str().to_string(),
         session_id,
@@ -228,7 +297,280 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
         capabilities,
         support_status: EXPERIMENTAL.to_string(),
     };
-    Ok(ParsedCodexConversation { session, messages })
+    Ok(ParsedCodexConversation {
+        session,
+        messages,
+        events,
+    })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MessageChannel {
+    Response,
+    Event,
+    Delta,
+}
+
+fn deduplicate_message_channels(events: &mut Vec<ConversationEvent>) {
+    let mut current_actor = None;
+    let mut seen: Vec<(String, MessageChannel)> = Vec::new();
+    events.retain(|event| {
+        if event.kind != EventKind::Message {
+            return true;
+        }
+        let Some(actor) = event.actor.as_ref() else {
+            return true;
+        };
+        let Some(text) = event.text.as_ref() else {
+            return true;
+        };
+        if current_actor.as_ref() != Some(actor) {
+            current_actor = Some(*actor);
+            seen.clear();
+        }
+        let channel = match event.details.get("type").and_then(Value::as_str) {
+            Some("message") => MessageChannel::Response,
+            Some("user_message" | "agent_message") => MessageChannel::Event,
+            _ => MessageChannel::Delta,
+        };
+        if seen
+            .iter()
+            .any(|(seen_text, seen_channel)| seen_text == text && *seen_channel != channel)
+        {
+            return false;
+        }
+        seen.push((text.clone(), channel));
+        true
+    });
+}
+
+fn compare_event_order(left: &ConversationEvent, right: &ConversationEvent) -> std::cmp::Ordering {
+    match (&left.occurred_at, &right.occurred_at) {
+        (Some(left_time), Some(right_time)) => compare_timestamps(left_time, right_time)
+            .then_with(|| left.sequence.cmp(&right.sequence)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => left.sequence.cmp(&right.sequence),
+    }
+}
+
+fn compare_timestamps(left: &str, right: &str) -> std::cmp::Ordering {
+    match (
+        chrono::DateTime::parse_from_rfc3339(left),
+        chrono::DateTime::parse_from_rfc3339(right),
+    ) {
+        (Ok(left), Ok(right)) => left.cmp(&right),
+        _ => left.cmp(right),
+    }
+}
+
+fn append_message_delta(
+    pending: &mut Option<PendingMessageDelta>,
+    sequence: usize,
+    occurred_at: &str,
+    role: &str,
+    payload: &Value,
+) {
+    let delta = first_text(payload, &["delta", "message", "text"]);
+    if delta.is_empty() {
+        return;
+    }
+    match pending {
+        Some(current) if current.role == role => current.text.push_str(&delta),
+        Some(_) => {}
+        None => {
+            *pending = Some(PendingMessageDelta {
+                sequence: sequence as u32,
+                occurred_at: occurred_at.to_string(),
+                role: role.to_string(),
+                text: delta,
+            });
+        }
+    }
+}
+
+fn flush_message_delta(
+    pending: &mut Option<PendingMessageDelta>,
+    messages: &mut Vec<ConversationMessage>,
+    events: &mut Vec<ConversationEvent>,
+) {
+    let Some(delta) = pending.take() else {
+        return;
+    };
+    let Some(message) = message(&delta.role, &delta.occurred_at, &Value::String(delta.text)) else {
+        return;
+    };
+    events.push(message_event(
+        delta.sequence as usize,
+        &message,
+        Value::Null,
+    ));
+    messages.push(message);
+}
+
+fn message_event(
+    sequence: usize,
+    message: &ConversationMessage,
+    details: Value,
+) -> ConversationEvent {
+    let actor = match message.role.as_str() {
+        "user" => EventActor::User,
+        "assistant" => EventActor::Assistant,
+        _ => unreachable!("conversation messages only contain user or assistant roles"),
+    };
+    semantic_event(
+        sequence,
+        EventKind::Message,
+        &message.occurred_at,
+        Some(actor),
+        None,
+        Some(message.text.clone()),
+        details,
+    )
+}
+
+fn semantic_event(
+    sequence: usize,
+    kind: EventKind,
+    occurred_at: &str,
+    actor: Option<EventActor>,
+    name: Option<String>,
+    text: Option<String>,
+    details: Value,
+) -> ConversationEvent {
+    ConversationEvent {
+        sequence: sequence as u32,
+        kind,
+        occurred_at: (!occurred_at.is_empty()).then(|| occurred_at.to_string()),
+        actor,
+        name,
+        text,
+        details,
+        capability_status: if occurred_at.is_empty() {
+            EventStatus::MissingTimestamp
+        } else {
+            EventStatus::Complete
+        },
+    }
+}
+
+fn response_semantic_event(
+    sequence: usize,
+    occurred_at: &str,
+    payload: &Value,
+) -> Option<ConversationEvent> {
+    let kind = payload.get("type").and_then(Value::as_str).unwrap_or("");
+    match kind {
+        "message" => None,
+        "function_call" | "custom_tool_call" | "web_search_call" | "local_shell_call" => {
+            Some(semantic_event(
+                sequence,
+                EventKind::ToolCall,
+                occurred_at,
+                Some(EventActor::Assistant),
+                optional_text(payload, &["name", "tool", "type"]),
+                optional_text(payload, &["arguments", "input", "query", "command"]),
+                payload.clone(),
+            ))
+        }
+        "function_call_output" | "custom_tool_call_output" => Some(semantic_event(
+            sequence,
+            EventKind::ToolResult,
+            occurred_at,
+            Some(EventActor::Tool),
+            optional_text(payload, &["name"]),
+            optional_text(payload, &["output", "result"]),
+            payload.clone(),
+        )),
+        "reasoning" => Some(semantic_event(
+            sequence,
+            EventKind::Plan,
+            occurred_at,
+            Some(EventActor::Assistant),
+            None,
+            optional_text(payload, &["summary", "text", "content"]),
+            payload.clone(),
+        )),
+        "developer" | "system" => None,
+        _ => Some(unadapted_event(
+            sequence,
+            occurred_at,
+            kind,
+            payload.clone(),
+        )),
+    }
+}
+
+fn event_msg_semantic_event(
+    sequence: usize,
+    occurred_at: &str,
+    kind: &str,
+    payload: &Value,
+) -> ConversationEvent {
+    match kind {
+        "plan_update" | "agent_reasoning" => semantic_event(
+            sequence,
+            EventKind::Plan,
+            occurred_at,
+            Some(EventActor::Assistant),
+            None,
+            optional_text(payload, &["explanation", "message", "text"]),
+            payload.clone(),
+        ),
+        "error" | "stream_error" => semantic_event(
+            sequence,
+            EventKind::Error,
+            occurred_at,
+            None,
+            optional_text(payload, &["code", "type"]),
+            optional_text(payload, &["message", "error"]),
+            payload.clone(),
+        ),
+        "task_started" | "task_complete" | "turn_aborted" | "context_compacted" | "warning" => {
+            semantic_event(
+                sequence,
+                EventKind::SystemStatus,
+                occurred_at,
+                None,
+                Some(kind.to_string()),
+                optional_text(payload, &["message", "reason", "text"]),
+                payload.clone(),
+            )
+        }
+        _ => unadapted_event(sequence, occurred_at, kind, payload.clone()),
+    }
+}
+
+fn unadapted_event(
+    sequence: usize,
+    occurred_at: &str,
+    raw_kind: &str,
+    details: Value,
+) -> ConversationEvent {
+    let mut event = semantic_event(
+        sequence,
+        EventKind::Unadapted,
+        occurred_at,
+        None,
+        Some(if raw_kind.is_empty() {
+            "unknown".to_string()
+        } else {
+            raw_kind.to_string()
+        }),
+        None,
+        details,
+    );
+    event.capability_status = if occurred_at.is_empty() {
+        EventStatus::UnadaptedMissingTimestamp
+    } else {
+        EventStatus::Unadapted
+    };
+    event
+}
+
+fn optional_text(value: &Value, keys: &[&str]) -> Option<String> {
+    let text = first_text(value, keys);
+    (!text.is_empty()).then_some(text)
 }
 
 fn response_message(payload: &Value, occurred_at: &str) -> Option<ConversationMessage> {
@@ -340,6 +682,47 @@ fn upsert_session(conn: &Connection, session: &ConversationSessionRow) -> Result
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn load_usage_records(
+    conn: &Connection,
+    source: Source,
+    session_id: &str,
+) -> Result<Vec<UsageRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT occurred_at, model, provider, project, session_id, source_file,
+                   input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                   reasoning_tokens, total_tokens, native_cost
+            FROM usage_records
+            WHERE source = ?1 AND session_id = ?2
+            ORDER BY occurred_at ASC, rowid ASC
+            "#,
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(params![source.as_str(), session_id], |row| {
+            Ok(UsageRecord {
+                occurred_at: row.get(0)?,
+                source,
+                model: row.get(1)?,
+                provider: row.get(2)?,
+                project: row.get(3)?,
+                session_id: row.get(4)?,
+                source_file: row.get(5)?,
+                input_tokens: row.get(6)?,
+                output_tokens: row.get(7)?,
+                cache_read_tokens: row.get(8)?,
+                cache_creation_tokens: row.get(9)?,
+                reasoning_tokens: row.get(10)?,
+                total_tokens: row.get(11)?,
+                native_cost: row.get(12)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 fn load_session(

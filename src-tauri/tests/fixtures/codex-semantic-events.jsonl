@@ -1,0 +1,13 @@
+{"type":"session_meta","timestamp":"2026-08-21T00:00:00Z","payload":{"id":"semantic-1","cwd":"/workspace/semantic-project","model_provider":"openai"}}
+{"type":"turn_context","timestamp":"2026-08-21T00:00:01Z","payload":{"cwd":"/workspace/semantic-project","model":"gpt-5.6-sol"}}
+{"type":"response_item","timestamp":"2026-08-21T00:00:02Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"实现语义时间线"}]}}
+{"type":"event_msg","timestamp":"2026-08-21T00:00:03Z","payload":{"type":"agent_message_delta","delta":"我先检查"}}
+{"type":"event_msg","timestamp":"2026-08-21T00:00:04Z","payload":{"type":"agent_message_delta","delta":"现有实现。"}}
+{"type":"event_msg","timestamp":"2026-08-21T00:00:05Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"output_tokens":10,"total_tokens":110}}}}
+{"type":"event_msg","timestamp":"2026-08-21T00:00:06Z","payload":{"type":"heartbeat"}}
+{"type":"event_msg","timestamp":"2026-08-21T00:00:07Z","payload":{"type":"plan_update","explanation":"按层实现","plan":[{"step":"后端事件投影","status":"in_progress"},{"step":"前端时间线","status":"pending"}]}}
+{"type":"response_item","timestamp":"2026-08-21T00:00:08Z","payload":{"type":"function_call","name":"read_file","arguments":"{\"path\":\"src/main.rs\"}","call_id":"call-1"}}
+{"type":"response_item","timestamp":"2026-08-21T00:00:09Z","payload":{"type":"function_call_output","call_id":"call-1","output":"fn main() {}"}}
+{"type":"turn_context","timestamp":"2026-08-21T00:00:10Z","payload":{"cwd":"/workspace/semantic-project","model":"gpt-5.7-codex"}}
+{"type":"event_msg","timestamp":"2026-08-21T00:00:11Z","payload":{"type":"error","message":"工具执行失败","code":"tool_error"}}
+{"type":"future_event","payload":{"phase":"next","enabled":true}}

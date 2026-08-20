@@ -4,26 +4,80 @@ import { Icon } from "../icons";
 import {
   applicationLabel,
   formatClock,
+  formatTokens,
   humanStatus,
   projectLabel,
   relativeTime,
 } from "../lib/format";
 import type {
   ConversationDetailDto,
+  ConversationEvent,
+  ConversationEventActor,
+  ConversationEventCapabilityStatus,
+  ConversationEventKind,
   ConversationPage,
   ConversationSessionRow,
+  ConversationUsageRecord,
 } from "../types";
 import { EmptyState } from "./EmptyState";
 import { LoadingOverlay } from "./LoadingOverlay";
 import { Pagination } from "./Pagination";
+import { SessionResumeCommand } from "./SessionResumeCommand";
 import { Spinner } from "./Spinner";
 import { Button } from "./ui/Button";
 import { SearchField } from "./ui/Field";
+import { Segmented } from "./ui/Segmented";
+import { ModelLabel } from "./VendorIcon";
 
 const PAGE_SIZE = 20;
 
+type DetailTab = "events" | "usage";
+
+const DETAIL_TABS = [
+  { value: "events", label: "完整事件" },
+  { value: "usage", label: "用量明细" },
+] as const;
+
+const EVENT_LABELS: Record<ConversationEventKind, string> = {
+  message: "消息",
+  plan: "计划",
+  tool_call: "工具调用",
+  tool_result: "工具结果",
+  model_change: "模型切换",
+  error: "错误",
+  system_status: "系统状态",
+  unadapted: "尚未适配",
+};
+
+const CAPABILITY_LABELS: Record<string, string> = {
+  messages: "基础正文",
+  events: "完整事件",
+  usage: "用量明细",
+};
+
+const ACTOR_LABELS: Record<ConversationEventActor, string> = {
+  user: "用户",
+  assistant: "助手",
+  tool: "工具",
+};
+
+const CAPABILITY_STATUS_LABELS: Record<ConversationEventCapabilityStatus, string> = {
+  complete: "完整",
+  missing_timestamp: "时间缺失",
+  unadapted: "尚未适配",
+  unadapted_missing_timestamp: "尚未适配、时间缺失",
+};
+
 function capabilityLabel(capability: string): string {
-  return capability === "messages" ? "基础正文" : capability;
+  return CAPABILITY_LABELS[capability] ?? capability;
+}
+
+function actorLabel(actor: ConversationEventActor): string {
+  return ACTOR_LABELS[actor];
+}
+
+function capabilityStatusLabel(status: ConversationEventCapabilityStatus): string {
+  return CAPABILITY_STATUS_LABELS[status];
 }
 
 function statusLabel(status: string): string {
@@ -32,6 +86,145 @@ function statusLabel(status: string): string {
 
 function sessionTime(session: ConversationSessionRow): string {
   return session.ended_at || session.started_at;
+}
+
+function hasEventDetails(details: unknown): boolean {
+  if (details == null) {
+    return false;
+  }
+  if (Array.isArray(details)) {
+    return details.length > 0;
+  }
+  if (typeof details === "object") {
+    return Object.keys(details).length > 0;
+  }
+  return true;
+}
+
+function prettyDetails(details: unknown): string {
+  try {
+    return JSON.stringify(details, null, 2) ?? String(details);
+  } catch {
+    return String(details);
+  }
+}
+
+function EventTimeline({ events }: { events: ConversationEvent[] }) {
+  if (events.length === 0) {
+    return (
+      <EmptyState
+        icon="chat"
+        title="这条会话暂无事件"
+        hint="当前会话没有可展示的语义事件。"
+      />
+    );
+  }
+
+  return (
+    <div className="conversation-timeline" aria-label="完整事件列表">
+      {events.map((event) => {
+        const label = EVENT_LABELS[event.kind];
+        const showDetails =
+          event.kind === "unadapted" ||
+          ((event.kind === "plan" ||
+            event.kind === "tool_call" ||
+            event.kind === "tool_result") &&
+            hasEventDetails(event.details));
+        const showCapabilityStatus =
+          event.capability_status !== "complete" &&
+          event.kind !== "unadapted" &&
+          event.occurred_at !== null;
+        return (
+          <article
+            className={`conversation-event event-${event.kind.replaceAll("_", "-")}`}
+            key={event.sequence}
+          >
+            <header className="conversation-event-meta">
+              <strong>{label}</strong>
+              {event.occurred_at ? (
+                <time dateTime={event.occurred_at}>{formatClock(event.occurred_at)}</time>
+              ) : (
+                <span className="conversation-event-missing-time">时间缺失</span>
+              )}
+            </header>
+            <div className="conversation-event-content">
+              {event.kind === "unadapted" ? (
+                <span className="conversation-unadapted-state">尚未适配</span>
+              ) : showCapabilityStatus ? (
+                <span className="conversation-capability-status">
+                  {capabilityStatusLabel(event.capability_status)}
+                </span>
+              ) : null}
+              {event.actor || event.name ? (
+                <div className="conversation-event-identity">
+                  {event.actor ? <span>{actorLabel(event.actor)}</span> : null}
+                  {event.name ? <code>{event.name}</code> : null}
+                </div>
+              ) : null}
+              {event.text ? <div className="conversation-event-text">{event.text}</div> : null}
+              {showDetails ? (
+                <details className="conversation-event-details">
+                  <summary>{event.kind === "unadapted" ? "查看原始事件" : "查看详细数据"}</summary>
+                  <pre>{prettyDetails(event.details)}</pre>
+                </details>
+              ) : null}
+              {!event.text && !showDetails && !event.actor && !event.name ? (
+                <span className="muted">无附加内容</span>
+              ) : null}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function UsageRecordsTable({ records }: { records: ConversationUsageRecord[] }) {
+  return (
+    <div className="table-scroll conversation-usage-scroll">
+      <table className="conversation-usage-table">
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>模型</th>
+            <th>Provider</th>
+            <th>输入</th>
+            <th>输出</th>
+            <th>缓存读</th>
+            <th>缓存写</th>
+            <th>推理</th>
+            <th>总量</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record, index) => (
+            <tr key={`${record.occurred_at}-${record.source_file}-${index}`}>
+              <td>{formatClock(record.occurred_at)}</td>
+              <td>
+                <ModelLabel name={record.model} provider={record.provider} />
+              </td>
+              <td>{record.provider || "未标注"}</td>
+              <td>{formatTokens(record.input_tokens)}</td>
+              <td>{formatTokens(record.output_tokens)}</td>
+              <td>{formatTokens(record.cache_read_tokens)}</td>
+              <td>{formatTokens(record.cache_creation_tokens)}</td>
+              <td>{formatTokens(record.reasoning_tokens)}</td>
+              <td>
+                <strong>{formatTokens(record.total_tokens)}</strong>
+              </td>
+            </tr>
+          ))}
+          {records.length === 0 ? (
+            <tr>
+              <td colSpan={9} className="analytics-empty">
+                <EmptyState icon="chat" title="这条会话暂无用量明细" />
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export function Conversations({
@@ -49,6 +242,7 @@ export function Conversations({
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ConversationSessionRow | null>(null);
   const [detail, setDetail] = useState<ConversationDetailDto | null>(null);
+  const [detailTab, setDetailTab] = useState<DetailTab>("events");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const catalogGeneration = useRef(0);
@@ -98,6 +292,7 @@ export function Conversations({
     (session: ConversationSessionRow) => {
       const generation = ++detailGeneration.current;
       setSelected(session);
+      setDetailTab("events");
       setDetail(null);
       setDetailError(null);
       setDetailLoading(true);
@@ -128,6 +323,7 @@ export function Conversations({
   function closeDetail() {
     detailGeneration.current += 1;
     setSelected(null);
+    setDetailTab("events");
     setDetail(null);
     setDetailError(null);
     setDetailLoading(false);
@@ -187,9 +383,26 @@ export function Conversations({
               <dd className="mono">{session.source_file}</dd>
             </div>
           </dl>
+          <SessionResumeCommand source={session.source} sessionId={session.session_id} />
         </section>
 
-        <section className="conversation-thread" aria-label="对话正文" aria-busy={detailLoading}>
+        <section className="conversation-detail-body" aria-busy={detailLoading}>
+          <div className="conversation-detail-tabs">
+            <Segmented
+              value={detailTab}
+              options={DETAIL_TABS}
+              disabled={detailLoading || Boolean(detailError)}
+              ariaLabel="对话详情视图"
+              onChange={setDetailTab}
+            />
+            {detail ? (
+              <span className="muted">
+                {detailTab === "events"
+                  ? `${detail.events.length} 条事件`
+                  : `${detail.usage_records.length} 条记录`}
+              </span>
+            ) : null}
+          </div>
           {detailLoading ? (
             <EmptyState icon="chat" title="正在读取原始会话…" />
           ) : detailError ? (
@@ -202,26 +415,13 @@ export function Conversations({
               />
               <Button onClick={() => loadDetail(selected)}>重新读取</Button>
             </div>
-          ) : detail && detail.messages.length > 0 ? (
-            detail.messages.map((message, index) => (
-              <article
-                className={`conversation-message role-${message.role}`}
-                key={`${message.occurred_at}-${message.role}-${index}`}
-              >
-                <header>
-                  <strong>{message.role === "user" ? "用户" : "助手"}</strong>
-                  <time dateTime={message.occurred_at}>{formatClock(message.occurred_at)}</time>
-                </header>
-                <div className="conversation-message-text">{message.text}</div>
-              </article>
-            ))
-          ) : (
-            <EmptyState
-              icon="chat"
-              title="这条会话暂无可读正文"
-              hint="当前版本只展示 Codex 的用户与助手基础文本消息。"
-            />
-          )}
+          ) : detail ? (
+            detailTab === "events" ? (
+              <EventTimeline events={detail.events} />
+            ) : (
+              <UsageRecordsTable records={detail.usage_records} />
+            )
+          ) : null}
         </section>
       </div>
     );
