@@ -73,6 +73,7 @@ export function Topbar({
   const hideFilters =
     view === "cursor" ||
     view === "cursor-sessions" ||
+    view === "conversations" ||
     view === "worktime" ||
     view === "instructions" ||
     view === "settings";

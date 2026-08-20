@@ -601,6 +601,50 @@ pub struct SessionPage {
     pub last_ended: Option<String>,
 }
 
+/// 独立“对话记录”目录的分页参数，不参与消耗记录筛选。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ConversationQuery {
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationSessionRow {
+    pub source: String,
+    pub session_id: String,
+    pub title: String,
+    pub project: String,
+    pub model: String,
+    pub started_at: String,
+    pub ended_at: String,
+    pub source_file: String,
+    pub capabilities: Vec<String>,
+    pub support_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationPage {
+    pub rows: Vec<ConversationSessionRow>,
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub occurred_at: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationDetailDto {
+    pub session: ConversationSessionRow,
+    pub messages: Vec<ConversationMessage>,
+}
+
 /// 工作时间线里的一根横条：一条会话按当天本地日历日裁剪后的区间。
 /// `total_tokens` 只统计该会话落在这天的记录，不是会话全量。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1181,6 +1225,8 @@ pub struct IngestReport {
     pub records_archived: u64,
     pub partial_success: bool,
     pub issues: Vec<IngestIssue>,
+    #[serde(default)]
+    pub conversation_issues: Vec<IngestIssue>,
     pub sources: Vec<SourceIngestReport>,
 }
 
@@ -1196,6 +1242,7 @@ impl Default for IngestReport {
             records_archived: 0,
             partial_success: false,
             issues: Vec::new(),
+            conversation_issues: Vec::new(),
             sources: Source::ALL
                 .iter()
                 .map(|source| SourceIngestReport {

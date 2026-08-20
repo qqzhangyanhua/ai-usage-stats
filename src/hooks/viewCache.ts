@@ -9,6 +9,7 @@ export const views: View[] = [
   "provider",
   "project",
   "sessions",
+  "conversations",
   "cursor",
   "cursor-sessions",
   "worktime",

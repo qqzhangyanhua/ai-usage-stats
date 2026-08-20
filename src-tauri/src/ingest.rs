@@ -50,6 +50,10 @@ fn env_overrides() -> PathOverrides {
         .collect()
 }
 
+pub(crate) fn source_scan_dirs(home: &Path, source: Source) -> Vec<PathBuf> {
+    source_scan_dirs_with(&env_overrides(), home, source)
+}
+
 fn env_override(var: &str) -> Option<Vec<PathBuf>> {
     let raw = std::env::var(var).ok()?;
     let paths: Vec<PathBuf> = raw
@@ -354,7 +358,7 @@ pub(crate) fn ingest_all_with_overrides(
     let removed_unknown = store::remove_unknown_sources(&transaction)?;
     let mut report = ingest_all_inner(&transaction, home, overrides)?;
     report.records_removed += removed_unknown;
-    report.partial_success = report.files_failed > 0;
+    report.partial_success = report.files_failed > 0 || !report.conversation_issues.is_empty();
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(report)
 }
@@ -440,7 +444,27 @@ fn ingest_all_inner(
 ) -> Result<IngestReport, String> {
     let mut report = IngestReport::default();
     ingest_all_sources(conn, home, overrides, &mut report)?;
+    let codex_dirs = source_scan_dirs_with(overrides, home, Source::Codex);
+    match crate::conversation::refresh_codex_in_roots(conn, &codex_dirs) {
+        Ok(issues) => report
+            .conversation_issues
+            .extend(issues.into_iter().map(|issue| IngestIssue {
+                source: Source::Codex.as_str().to_string(),
+                path: issue.path,
+                message: issue.message,
+            })),
+        Err(message) => report.conversation_issues.push(IngestIssue {
+            source: Source::Codex.as_str().to_string(),
+            path: codex_dirs
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            message,
+        }),
+    }
     cursor_session::ingest(conn, home, &mut report);
+    report.partial_success = report.partial_success || !report.conversation_issues.is_empty();
     Ok(report)
 }
 
@@ -1075,7 +1099,7 @@ fn open_readonly(path: &Path) -> Result<rusqlite::Connection, String> {
     .map_err(|e| e.to_string())
 }
 
-fn walk_files(root: &Path, extension: &str) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn walk_files(root: &Path, extension: &str) -> Result<Vec<PathBuf>, String> {
     walk_matching(root, |path| {
         path.extension()
             .and_then(|value| value.to_str())

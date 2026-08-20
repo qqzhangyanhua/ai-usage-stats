@@ -22,6 +22,10 @@ export const LazyApplicationAnalytics = namedLazy(
 );
 export const LazyBreakdown = namedLazy(() => import("../components/Breakdown"), "Breakdown");
 export const LazySessions = namedLazy(() => import("../components/Sessions"), "Sessions");
+export const LazyConversations = namedLazy(
+  () => import("../components/Conversations"),
+  "Conversations",
+);
 export const LazySettings = namedLazy(() => import("../components/Settings"), "Settings");
 export const LazyCursorAccountUsagePanel = namedLazy(
   () => import("../components/CursorAccountUsagePanel"),

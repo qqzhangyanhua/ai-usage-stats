@@ -1,6 +1,26 @@
 import { applicationLabel, formatTokens } from "../lib/format";
-import type { IngestReport, SourceDiagnostic } from "../types";
+import type { IngestIssue, IngestReport, SourceDiagnostic } from "../types";
 import { Button } from "./ui/Button";
+
+function IngestIssueList({ title, issues }: { title: string; issues: IngestIssue[] }) {
+  if (issues.length === 0) {
+    return null;
+  }
+  return (
+    <div className="ingest-issues" role="status">
+      <strong>{title}</strong>
+      <ul>
+        {issues.slice(0, 8).map((issue, index) => (
+          <li key={`${issue.source}-${issue.path}-${index}`}>
+            <span>{applicationLabel(issue.source)}</span>
+            <code title={issue.path}>{issue.path}</code>
+            <em>{issue.message}</em>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function SourceDiagnosticsPanel({
   diagnostics,
@@ -125,19 +145,17 @@ export function SourceDiagnosticsPanel({
           </tbody>
         </table>
       </div>
-      {ingestReport && ingestReport.issues.length > 0 ? (
-        <div className="ingest-issues" role="status">
-          <strong>本次摄取有 {ingestReport.issues.length} 个文件保留了上次正确缓存</strong>
-          <ul>
-            {ingestReport.issues.slice(0, 8).map((issue, index) => (
-              <li key={`${issue.source}-${issue.path}-${index}`}>
-                <span>{applicationLabel(issue.source)}</span>
-                <code title={issue.path}>{issue.path}</code>
-                <em>{issue.message}</em>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {ingestReport ? (
+        <>
+          <IngestIssueList
+            title={`本次摄取有 ${ingestReport.issues.length} 个文件保留了上次正确缓存`}
+            issues={ingestReport.issues}
+          />
+          <IngestIssueList
+            title={`对话索引有 ${ingestReport.conversation_issues.length} 个文件保留了上次正确元数据`}
+            issues={ingestReport.conversation_issues}
+          />
+        </>
       ) : null}
     </section>
   );

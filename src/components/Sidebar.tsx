@@ -27,6 +27,10 @@ const navGroups: { label: string; items: { id: View; label: string; icon: IconNa
     ],
   },
   {
+    label: "对话",
+    items: [{ id: "conversations", label: "对话记录", icon: "chat" }],
+  },
+  {
     label: "Cursor",
     items: [
       { id: "cursor", label: "代码量", icon: "cursor" },
@@ -143,6 +147,8 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
       return { title: "使用统计", subtitle: "按时间查看 Token 消耗" };
     case "sessions":
       return { title: "会话管理", subtitle: "按会话下钻每轮明细" };
+    case "conversations":
+      return { title: "对话记录", subtitle: "本地会话正文，按需读取原始文件" };
     case "model":
       return { title: "模型统计", subtitle: "按模型拆分 Token 与费用" };
     case "project":

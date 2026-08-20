@@ -12,6 +12,7 @@ import { clearDimensionFilters, withModelFilter } from "./lib/filterChips";
 import {
   LazyApplicationAnalytics,
   LazyBreakdown,
+  LazyConversations,
   LazyCursorAccountUsagePanel,
   LazyCursorPanel,
   LazyCursorSessionPanel,
@@ -68,6 +69,7 @@ export default function App() {
               data.loading &&
               !data.viewHasData &&
               view !== "sessions" &&
+              view !== "conversations" &&
               view !== "cursor" &&
               view !== "cursor-sessions" &&
               view !== "instructions" &&
@@ -163,6 +165,9 @@ export default function App() {
                     revision={data.sessionsRevision}
                     onError={data.reportError}
                   />
+                ) : null}
+                {view === "conversations" ? (
+                  <LazyConversations revision={data.sessionsRevision} onError={data.reportError} />
                 ) : null}
                 {view === "worktime" ? (
                   <LazyWorkTimeline

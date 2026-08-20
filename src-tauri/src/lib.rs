@@ -3,6 +3,7 @@ pub mod aggregate;
 pub mod backup;
 pub mod billing_window;
 pub mod budget;
+pub mod conversation;
 pub mod cost;
 pub mod cursor_account;
 pub mod cursor_session;
@@ -31,12 +32,13 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
-    CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
-    CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
-    GlobalInstructionDto, IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto,
-    OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
-    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow, WorkTimelineDto, WriteUserFileRequest, WriteUserFileResult,
+    ConversationDetailDto, ConversationPage, ConversationQuery, CursorAccountEventPage,
+    CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto, CursorSessionPage,
+    CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions, GlobalInstructionDto,
+    IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto, OfficialQuotaHookDto,
+    OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint,
+    SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow, WorkTimelineDto,
+    WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -482,6 +484,35 @@ async fn get_cursor_session_detail(
         let state = app.state::<AppState>();
         let conn = state.lock_read()?;
         cursor_session_detail::load_detail(&conn, &ingest::default_home(), &source_file)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_conversation_sessions_page(
+    app: tauri::AppHandle,
+    query: ConversationQuery,
+) -> Result<ConversationPage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        conversation::sessions_page(&conn, &query)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_conversation_detail(
+    app: tauri::AppHandle,
+    source: String,
+    session_id: String,
+) -> Result<ConversationDetailDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        conversation::load_detail(&conn, &ingest::default_home(), &source, &session_id)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -936,6 +967,8 @@ pub fn run() {
             get_cursor_session_summary,
             get_cursor_sessions_page,
             get_cursor_session_detail,
+            get_conversation_sessions_page,
+            get_conversation_detail,
             refresh_cursor_account_usage,
             get_cursor_account_usage,
             get_cursor_account_events_page,

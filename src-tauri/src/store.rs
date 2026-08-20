@@ -133,6 +133,22 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS conversation_sessions (
+            source TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            project TEXT NOT NULL,
+            model TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            capabilities_json TEXT NOT NULL DEFAULT '[]',
+            support_status TEXT NOT NULL DEFAULT 'experimental',
+            PRIMARY KEY(source, session_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_sessions_ended
+            ON conversation_sessions(ended_at DESC);
+
         CREATE TABLE IF NOT EXISTS official_quota (
             provider TEXT PRIMARY KEY,
             windows_json TEXT NOT NULL,

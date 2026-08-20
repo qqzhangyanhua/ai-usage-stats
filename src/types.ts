@@ -256,6 +256,7 @@ export type View =
   | "provider"
   | "project"
   | "sessions"
+  | "conversations"
   | "cursor"
   | "cursor-sessions"
   | "worktime"
@@ -352,6 +353,41 @@ export type SessionPage = {
   total: number;
   totalTokens: number;
   lastEnded: string | null;
+};
+
+export type ConversationQuery = {
+  search?: string | null;
+  page?: number;
+  page_size?: number;
+};
+
+export type ConversationSessionRow = {
+  source: string;
+  session_id: string;
+  title: string;
+  project: string;
+  model: string;
+  started_at: string;
+  ended_at: string;
+  source_file: string;
+  capabilities: string[];
+  support_status: string;
+};
+
+export type ConversationPage = {
+  rows: ConversationSessionRow[];
+  total: number;
+};
+
+export type ConversationMessage = {
+  role: string;
+  occurred_at: string;
+  text: string;
+};
+
+export type ConversationDetailDto = {
+  session: ConversationSessionRow;
+  messages: ConversationMessage[];
 };
 
 export type CostSource = "native" | "user" | "snapshot" | "none";
@@ -656,6 +692,7 @@ export type IngestReport = {
   records_archived: number;
   partial_success: boolean;
   issues: IngestIssue[];
+  conversation_issues: IngestIssue[];
   sources: SourceIngestReport[];
 };
 

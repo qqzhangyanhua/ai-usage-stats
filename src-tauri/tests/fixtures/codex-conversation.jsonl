@@ -1,0 +1,7 @@
+{"type":"session_meta","timestamp":"2026-08-20T00:00:00Z","payload":{"id":"conv-1","cwd":"/workspace/example-project","model_provider":"openai"}}
+{"type":"response_item","timestamp":"2026-08-20T00:00:01Z","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"internal instructions"}]}}
+{"type":"turn_context","timestamp":"2026-08-20T00:00:02Z","payload":{"cwd":"/workspace/example-project","model":"gpt-5.6-sol"}}
+{"type":"response_item","timestamp":"2026-08-20T00:00:03Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"发布 Tray 客户端版本支持图片编辑透传"}]}}
+{"type":"response_item","timestamp":"2026-08-20T00:00:10Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"我先检查现有实现。"}]}}
+{"type":"turn_context","timestamp":"2026-08-20T00:01:00Z","payload":{"cwd":"/workspace/example-project","model":"gpt-5.6-sol"}}
+{"type":"response_item","timestamp":"2026-08-20T00:03:00Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"已完成提交。"}]}}

@@ -2,6 +2,7 @@
 
 mod adapters;
 mod billing;
+mod conversation;
 mod cursor_account;
 mod cursor_session;
 mod ingest;

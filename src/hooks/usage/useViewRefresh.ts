@@ -111,6 +111,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
       const generation = ++requestGenerationRef.current;
       const localOnly =
         view === "sessions" ||
+        view === "conversations" ||
         view === "cursor" ||
         view === "cursor-sessions" ||
         view === "worktime" ||
@@ -146,7 +147,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
           }),
         );
       }
-      if (view !== "sessions" && !overviewFresh) {
+      if (view !== "sessions" && view !== "conversations" && !overviewFresh) {
         paint.push(
           invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
         );

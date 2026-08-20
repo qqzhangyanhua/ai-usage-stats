@@ -26,6 +26,7 @@ const ranged: Filter = { ...filter, from: "2026-08-01", to: "2026-08-07" };
 describe("parseViewHash", () => {
   it("maps known view hashes", () => {
     expect(parseViewHash("#sessions")).toBe("sessions");
+    expect(parseViewHash("#conversations")).toBe("conversations");
     expect(parseViewHash("source")).toBe("application");
     expect(parseViewHash("#instructions")).toBe("instructions");
   });
@@ -79,6 +80,7 @@ describe("viewsInvalidatedBy", () => {
   it("invalidates shared datasets written by the current view", () => {
     expect(viewsInvalidatedBy("overview")).toEqual(["trend", "model", "project"]);
     expect(viewsInvalidatedBy("sessions")).toEqual([]);
+    expect(viewsInvalidatedBy("conversations")).toEqual([]);
     expect(viewsInvalidatedBy("trend")).toEqual(["overview"]);
   });
 });
