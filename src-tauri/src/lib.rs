@@ -18,6 +18,7 @@ pub mod query;
 pub mod store;
 pub mod tray;
 pub mod user_files;
+pub mod work_timeline;
 
 use std::fs;
 use std::path::PathBuf;
@@ -35,7 +36,7 @@ use crate::domain::{
     GlobalInstructionDto, IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto,
     OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
     PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow, WriteUserFileRequest, WriteUserFileResult,
+    TurnRow, WorkTimelineDto, WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -258,6 +259,18 @@ async fn get_session_turns(
         let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::session_turns(&conn, &session_id, source.as_deref(), &filter, &prices)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 单日工作时间线：只看 `day`（本地日历日 `YYYY-MM-DD`），独立于顶栏范围筛选。
+#[tauri::command]
+async fn get_work_timeline(app: tauri::AppHandle, day: String) -> Result<WorkTimelineDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        query::work_timeline(&conn, &day)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -896,6 +909,7 @@ pub fn run() {
             get_top_sessions,
             get_sessions_page,
             get_session_turns,
+            get_work_timeline,
             get_filter_options,
             get_prices,
             save_price_table,

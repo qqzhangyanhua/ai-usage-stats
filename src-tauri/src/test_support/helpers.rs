@@ -307,12 +307,19 @@ pub fn diverse_records() -> Vec<crate::domain::UsageRecord> {
 }
 
 pub fn local_noon_iso(date: chrono::NaiveDate) -> String {
+    local_time_iso(date, 12, 0, 0)
+}
+
+/// 本地日历日某一时刻 -> UTC RFC3339，用于构造与运行机器时区无关、但仍落在指定
+/// 本地日期的测试记录（跨午夜场景需要中午以外的时刻）。
+pub fn local_time_iso(date: chrono::NaiveDate, hour: u32, min: u32, sec: u32) -> String {
     use chrono::{Local, Utc};
-    let noon = date.and_hms_opt(12, 0, 0).expect("noon");
-    noon.and_local_timezone(Local)
+    let naive = date.and_hms_opt(hour, min, sec).expect("valid time");
+    naive
+        .and_local_timezone(Local)
         .earliest()
-        .or_else(|| noon.and_local_timezone(Local).latest())
-        .expect("local noon")
+        .or_else(|| naive.and_local_timezone(Local).latest())
+        .expect("local time")
         .with_timezone(&Utc)
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }

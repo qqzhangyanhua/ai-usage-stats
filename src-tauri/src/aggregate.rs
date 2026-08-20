@@ -7,7 +7,7 @@ use crate::cost::{derive_cost, sum_costs};
 use crate::domain::{
     ApplicationAnalyticsDto, ApplicationEfficiency, ApplicationTrendPoint, BillingWindowsDto,
     EfficiencyMetrics, Filter, FilterOptions, NamedAmount, OverviewDto, PriceTable,
-    ProjectApplicationRow, SeriesPoint, SessionRow, TurnRow, UsageRecord,
+    ProjectApplicationRow, SeriesPoint, SessionRow, TurnRow, UsageRecord, WorkTimelineDto,
 };
 
 pub fn matches_filter(record: &UsageRecord, filter: &Filter) -> bool {
@@ -429,7 +429,9 @@ struct SessionAcc {
     unpriced: bool,
 }
 
-fn assign_latest(
+/// 取「occurred_at 最晚」的字段值；时间并列时取字典序更大者。与 SQL 侧
+/// `query.rs::latest_nonempty_expr` 同序，`work_timeline` 也复用它决定 project/model 标签。
+pub(crate) fn assign_latest(
     field: &mut String,
     field_at: &mut Option<String>,
     value: &str,
@@ -482,6 +484,11 @@ pub fn session_turns(
         .collect();
     rows.sort_by(|a, b| a.occurred_at.cmp(&b.occurred_at));
     rows
+}
+
+/// 单日工作时间线：不经 `Filter`，只看 `day`（本地日历日）这一天，独立于顶栏范围筛选。
+pub fn work_timeline(records: &[UsageRecord], day: &str) -> WorkTimelineDto {
+    crate::work_timeline::build(records, day)
 }
 
 pub fn filter_options(records: &[UsageRecord]) -> FilterOptions {

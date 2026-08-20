@@ -36,3 +36,7 @@ export const LazyGlobalInstructionPanel = namedLazy(
   () => import("../components/GlobalInstructionPanel"),
   "GlobalInstructionPanel",
 );
+export const LazyWorkTimeline = namedLazy(
+  () => import("../components/WorkTimeline"),
+  "WorkTimeline",
+);

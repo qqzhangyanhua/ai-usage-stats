@@ -20,6 +20,7 @@ import {
   LazySessions,
   LazySettings,
   LazyTrend,
+  LazyWorkTimeline,
 } from "./views/lazyViews";
 import { ViewFallback } from "./views/ViewFallback";
 
@@ -69,7 +70,8 @@ export default function App() {
               view !== "sessions" &&
               view !== "cursor" &&
               view !== "cursor-sessions" &&
-              view !== "instructions"
+              view !== "instructions" &&
+              view !== "worktime"
             }
           >
             <ErrorBoundary fullscreen={false}>
@@ -160,6 +162,14 @@ export default function App() {
                     theme={theme}
                     revision={data.sessionsRevision}
                     onError={data.reportError}
+                  />
+                ) : null}
+                {view === "worktime" ? (
+                  <LazyWorkTimeline
+                    onSessionClick={(session) => {
+                      data.openSessions();
+                      data.setSelectedSession(session);
+                    }}
                   />
                 ) : null}
                 {view === "instructions" ? <LazyGlobalInstructionPanel /> : null}

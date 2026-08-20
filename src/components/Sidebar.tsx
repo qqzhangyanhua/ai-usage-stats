@@ -23,6 +23,7 @@ const navGroups: { label: string; items: { id: View; label: string; icon: IconNa
       { id: "project", label: "项目统计", icon: "project" },
       { id: "application", label: "应用统计", icon: "source" },
       { id: "provider", label: "Provider", icon: "provider" },
+      { id: "worktime", label: "工作时间线", icon: "clock" },
     ],
   },
   {
@@ -150,6 +151,8 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
       return { title: "应用统计", subtitle: "趋势、项目交叉与效率指标" };
     case "provider":
       return { title: "Provider", subtitle: "按官方 / 中转渠道拆分" };
+    case "worktime":
+      return { title: "工作时间线", subtitle: "所选日期的工作片段分布" };
     case "cursor":
       return { title: "Cursor 代码量", subtitle: "独立口径，不计入 Token" };
     case "cursor-sessions":

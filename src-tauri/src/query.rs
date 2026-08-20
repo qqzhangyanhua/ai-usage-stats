@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, params_from_iter, types::Value, Connection};
+use rusqlite::{params, params_from_iter, types::Value, Connection, Row};
 
 use crate::billing_window;
 use crate::cursor_account;
@@ -15,6 +15,7 @@ use crate::domain::{
     CostSource, EfficiencyMetrics, Filter, FilterOptions, InstructionSourceUsage,
     InstructionUsageSummary, NamedAmount, OverviewDto, PriceTable, ProjectApplicationRow,
     SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, TurnRow, UsageRecord,
+    WorkTimelineDto,
 };
 
 /// 费用表达式（每行）：native_cost 优先，否则加权价格，否则 NULL（未定价）。
@@ -237,6 +238,40 @@ pub fn lifetime_cost(
         .map_err(|e| e.to_string())
 }
 
+/// `billing_windows` 与 `work_timeline` 宽口径拉取共用的列清单，列序与 `usage_record_from_row` 一一对应。
+const USAGE_RECORD_COLUMNS: &str =
+    "r.occurred_at, r.source, r.model, r.provider, r.project, r.session_id, r.source_file,
+    r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_creation_tokens,
+    r.reasoning_tokens, r.total_tokens, r.native_cost";
+
+/// 把 `USAGE_RECORD_COLUMNS` 那 14 列（固定列序）映射回 `UsageRecord`。
+fn usage_record_from_row(row: &Row) -> rusqlite::Result<UsageRecord> {
+    let source_value: String = row.get(1)?;
+    let source = Source::parse(&source_value).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            1,
+            rusqlite::types::Type::Text,
+            format!("未知来源：{source_value}").into(),
+        )
+    })?;
+    Ok(UsageRecord {
+        occurred_at: row.get(0)?,
+        source,
+        model: row.get(2)?,
+        provider: row.get(3)?,
+        project: row.get(4)?,
+        session_id: row.get(5)?,
+        source_file: row.get(6)?,
+        input_tokens: row.get(7)?,
+        output_tokens: row.get(8)?,
+        cache_read_tokens: row.get(9)?,
+        cache_creation_tokens: row.get(10)?,
+        reasoning_tokens: row.get(11)?,
+        total_tokens: row.get(12)?,
+        native_cost: row.get(13)?,
+    })
+}
+
 pub fn billing_windows(
     conn: &Connection,
     filter: &Filter,
@@ -255,9 +290,7 @@ pub fn billing_windows(
     clauses.push("substr(r.occurred_at, 1, 10) >= ?".to_string());
     params.push(Value::Text(billing_window::lookback_date(now)));
     let sql = format!(
-        "SELECT r.occurred_at, r.source, r.model, r.provider, r.project, r.session_id, r.source_file,
-            r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_creation_tokens,
-            r.reasoning_tokens, r.total_tokens, r.native_cost
+        "SELECT {USAGE_RECORD_COLUMNS}
         FROM usage_records r
         {}
         ORDER BY r.occurred_at",
@@ -265,32 +298,7 @@ pub fn billing_windows(
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params_from_iter(params.iter()), |row| {
-            let source_value: String = row.get(1)?;
-            let source = Source::parse(&source_value).ok_or_else(|| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    1,
-                    rusqlite::types::Type::Text,
-                    format!("未知来源：{source_value}").into(),
-                )
-            })?;
-            Ok(UsageRecord {
-                occurred_at: row.get(0)?,
-                source,
-                model: row.get(2)?,
-                provider: row.get(3)?,
-                project: row.get(4)?,
-                session_id: row.get(5)?,
-                source_file: row.get(6)?,
-                input_tokens: row.get(7)?,
-                output_tokens: row.get(8)?,
-                cache_read_tokens: row.get(9)?,
-                cache_creation_tokens: row.get(10)?,
-                reasoning_tokens: row.get(11)?,
-                total_tokens: row.get(12)?,
-                native_cost: row.get(13)?,
-            })
-        })
+        .query_map(params_from_iter(params.iter()), usage_record_from_row)
         .map_err(|e| e.to_string())?;
     let records = rows
         .collect::<Result<Vec<_>, _>>()
@@ -995,6 +1003,29 @@ pub fn session_turns(
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
+}
+
+/// 单日工作时间线：宽口径拉取 `day` 前后各一天的记录（覆盖本地时区可能造成的偏移），
+/// 精确的当天裁剪与聚合交给 `crate::work_timeline::build`——与内存路径 `aggregate::work_timeline`
+/// 共用同一份逻辑，由 `tests/parity.rs` 保证两条路径结果一致。
+pub fn work_timeline(conn: &Connection, day: &str) -> Result<WorkTimelineDto, String> {
+    let Some((from, to)) = crate::work_timeline::broad_date_bounds(day) else {
+        return Ok(WorkTimelineDto::empty(day));
+    };
+    let sql = format!(
+        "SELECT {USAGE_RECORD_COLUMNS}
+        FROM usage_records r
+        WHERE substr(r.occurred_at, 1, 10) >= ?1 AND substr(r.occurred_at, 1, 10) <= ?2
+        ORDER BY r.occurred_at"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![from, to], usage_record_from_row)
+        .map_err(|e| e.to_string())?;
+    let records = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(crate::work_timeline::build(&records, day))
 }
 
 pub fn filter_options(conn: &Connection) -> Result<FilterOptions, String> {

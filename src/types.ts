@@ -258,6 +258,7 @@ export type View =
   | "sessions"
   | "cursor"
   | "cursor-sessions"
+  | "worktime"
   | "instructions"
   | "settings";
 
@@ -595,6 +596,29 @@ export type CursorAccountEventRow = {
 export type CursorAccountEventPage = {
   rows: CursorAccountEventRow[];
   total: number;
+};
+
+/** 工作时间线里的一根横条：一条会话按当天本地日历日裁剪后的区间。
+ * total_tokens 只统计该会话落在这天的记录，不是会话全量。 */
+export type WorkSegment = {
+  session_id: string;
+  source: string;
+  project: string;
+  model: string;
+  start: string;
+  end: string;
+  total_tokens: number;
+};
+
+export type WorkTimelineDto = {
+  day: string;
+  total_tokens: number;
+  segment_count: number;
+  turn_count: number;
+  ai_exec_minutes: number;
+  peak_parallel: number;
+  parallel_intensity: number | null;
+  segments: WorkSegment[];
 };
 
 export type FilterOptions = {

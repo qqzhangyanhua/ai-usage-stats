@@ -128,4 +128,31 @@ fn sql_queries_match_in_memory_aggregates() {
         assert_eq!(sql_ov.unpriced, mem_ov.unpriced);
         assert_opt_f64_eq(sql_ov.cost, mem_ov.cost);
     }
+
+    // work_timeline：SQL 宽口径拉取 + build 与内存路径直接对全量 records 调 build 必须一致。
+    for day in [
+        "2026-08-01",
+        "2026-08-02",
+        "2026-08-08",
+        "2026-08-09",
+        "2026-08-15",
+    ] {
+        let sql_wt = query::work_timeline(&conn, day).unwrap();
+        let mem_wt = aggregate::work_timeline(&records, day);
+        assert_eq!(sql_wt, mem_wt, "work_timeline day={day}");
+        // 逐字段显式对照强度指标，避免 DTO 整体相等遮盖新字段回归。
+        assert_eq!(sql_wt.turn_count, mem_wt.turn_count, "turn_count day={day}");
+        assert_eq!(
+            sql_wt.ai_exec_minutes, mem_wt.ai_exec_minutes,
+            "ai_exec_minutes day={day}"
+        );
+        assert_eq!(
+            sql_wt.peak_parallel, mem_wt.peak_parallel,
+            "peak_parallel day={day}"
+        );
+        assert_eq!(
+            sql_wt.parallel_intensity, mem_wt.parallel_intensity,
+            "parallel_intensity day={day}"
+        );
+    }
 }
