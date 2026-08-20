@@ -144,6 +144,9 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file TEXT NOT NULL,
             capabilities_json TEXT NOT NULL DEFAULT '[]',
             support_status TEXT NOT NULL DEFAULT 'experimental',
+            file_available INTEGER NOT NULL DEFAULT 1,
+            source_file_mtime_ms INTEGER NOT NULL DEFAULT 0,
+            source_file_size INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY(source, session_id)
         );
         CREATE INDEX IF NOT EXISTS idx_conversation_sessions_ended
@@ -173,6 +176,24 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     )?;
     // 源文件被工具自身清理后不再物理删除历史记录，只打时间戳归档（ADR 0004）。
     ensure_column(conn, "usage_records", "archived_at", "TEXT")?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "file_available",
+        "INTEGER NOT NULL DEFAULT 1",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "source_file_mtime_ms",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "source_file_size",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     ensure_column(
         conn,
         "cursor_sessions",

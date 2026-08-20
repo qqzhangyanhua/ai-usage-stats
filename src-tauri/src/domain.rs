@@ -624,6 +624,7 @@ pub struct ConversationSessionRow {
     pub source_file: String,
     pub capabilities: Vec<String>,
     pub support_status: String,
+    pub file_available: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1267,6 +1268,10 @@ pub struct IngestIssue {
     pub source: String,
     pub path: String,
     pub message: String,
+    #[serde(default)]
+    pub event_type: Option<String>,
+    #[serde(default)]
+    pub line: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

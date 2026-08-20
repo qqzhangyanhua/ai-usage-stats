@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
@@ -25,6 +26,15 @@ const EXPERIMENTAL: &str = "experimental";
 pub struct ConversationIndexIssue {
     pub path: String,
     pub message: String,
+    pub event_type: Option<String>,
+    pub line: Option<u64>,
+}
+
+struct CachedConversationFingerprint {
+    session_id: String,
+    source_file_mtime_ms: i64,
+    source_file_size: i64,
+    file_available: bool,
 }
 
 struct ParsedCodexConversation {
@@ -56,20 +66,40 @@ pub(crate) fn refresh_codex_in_roots(
     let mut seen_session_ids = BTreeSet::new();
     for root in roots {
         for path in ingest::walk_files(root, "jsonl")? {
+            let metadata = match fs::metadata(&path) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    issues.push(ConversationIndexIssue {
+                        path: path.to_string_lossy().to_string(),
+                        message: format!("读取文件元数据失败：{error}"),
+                        event_type: None,
+                        line: None,
+                    });
+                    continue;
+                }
+            };
+            let mtime_ms = modified_millis(&metadata);
+            let size = metadata.len() as i64;
+            if let Some(cached) = load_cached_fingerprint(conn, &path)? {
+                if cached.file_available
+                    && cached.source_file_mtime_ms == mtime_ms
+                    && cached.source_file_size == size
+                {
+                    seen_session_ids.insert(cached.session_id);
+                    continue;
+                }
+            }
             match parse_codex_file(&path) {
                 Ok(parsed) => {
                     seen_session_ids.insert(parsed.session.session_id.clone());
-                    upsert_session(conn, &parsed.session)?;
+                    upsert_session(conn, &parsed.session, mtime_ms, size)?;
                 }
-                Err(message) => issues.push(ConversationIndexIssue {
-                    path: path.to_string_lossy().to_string(),
-                    message,
-                }),
+                Err(issue) => issues.push(issue),
             }
         }
     }
     if issues.is_empty() {
-        reconcile_sessions(conn, &seen_session_ids)?;
+        tombstone_missing_sessions(conn, &seen_session_ids)?;
     }
     Ok(issues)
 }
@@ -104,7 +134,7 @@ pub fn sessions_page(
     let sql = format!(
         r#"
         SELECT source, session_id, title, project, model, started_at, ended_at,
-               source_file, capabilities_json, support_status
+               source_file, capabilities_json, support_status, file_available
         FROM conversation_sessions
         WHERE {predicate}
         ORDER BY ended_at DESC, source ASC, session_id ASC
@@ -136,12 +166,15 @@ pub fn load_detail(
     };
     let session = load_session(conn, source.as_str(), session_id)?
         .ok_or_else(|| "未找到该对话记录".to_string())?;
+    if !session.file_available {
+        return Err("原文件已删除，详情不可读取".to_string());
+    }
     let path = PathBuf::from(&session.source_file);
     if !path.exists() {
-        return Err("原始文件已不存在，无法读取对话详情".to_string());
+        return Err("原文件已删除，详情不可读取".to_string());
     }
     ensure_trusted_path(&path, &ingest::source_scan_dirs(home, source))?;
-    let parsed = parse_codex_file(&path)?;
+    let parsed = parse_codex_file(&path).map_err(|issue| issue.message)?;
     if parsed.session.session_id != session.session_id {
         return Err("原始文件中的会话 ID 与索引不一致".to_string());
     }
@@ -154,8 +187,13 @@ pub fn load_detail(
     })
 }
 
-fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
-    let content = fs::read_to_string(path).map_err(|error| format!("读取原始文件失败：{error}"))?;
+fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, ConversationIndexIssue> {
+    let content = fs::read_to_string(path).map_err(|error| ConversationIndexIssue {
+        path: path.to_string_lossy().to_string(),
+        message: format!("读取原始文件失败：{error}"),
+        event_type: None,
+        line: None,
+    })?;
     let mut session_id = String::new();
     let mut title = String::new();
     let mut project = String::new();
@@ -172,8 +210,12 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
         if raw.is_empty() {
             continue;
         }
-        let value: Value = serde_json::from_str(raw)
-            .map_err(|error| format!("第 {} 行 JSON 无效：{error}", index + 1))?;
+        let value: Value = serde_json::from_str(raw).map_err(|error| ConversationIndexIssue {
+            path: path.to_string_lossy().to_string(),
+            message: format!("JSON 无效：{error}"),
+            event_type: Some("json_line".to_string()),
+            line: Some((index + 1) as u64),
+        })?;
         let timestamp = text_field(&value, "timestamp");
         if !timestamp.is_empty() {
             if started_at.is_empty() {
@@ -263,7 +305,12 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
     events.sort_by(compare_event_order);
 
     if session_id.is_empty() {
-        return Err("缺少 Codex 会话 ID".to_string());
+        return Err(ConversationIndexIssue {
+            path: path.to_string_lossy().to_string(),
+            message: "缺少 Codex 会话 ID".to_string(),
+            event_type: Some("session_meta".to_string()),
+            line: None,
+        });
     }
     let messages = if response_messages.is_empty() {
         event_messages
@@ -296,6 +343,7 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, String> {
         source_file: path.to_string_lossy().to_string(),
         capabilities,
         support_status: EXPERIMENTAL.to_string(),
+        file_available: true,
     };
     Ok(ParsedCodexConversation {
         session,
@@ -649,14 +697,20 @@ fn truncate_title(text: &str) -> String {
     }
 }
 
-fn upsert_session(conn: &Connection, session: &ConversationSessionRow) -> Result<(), String> {
+fn upsert_session(
+    conn: &Connection,
+    session: &ConversationSessionRow,
+    source_file_mtime_ms: i64,
+    source_file_size: i64,
+) -> Result<(), String> {
     let capabilities = serde_json::to_string(&session.capabilities).map_err(|e| e.to_string())?;
     conn.execute(
         r#"
         INSERT INTO conversation_sessions(
             source, session_id, title, project, model, started_at, ended_at,
-            source_file, capabilities_json, support_status
-        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+            source_file, capabilities_json, support_status, file_available,
+            source_file_mtime_ms, source_file_size
+        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
         ON CONFLICT(source, session_id) DO UPDATE SET
             title = excluded.title,
             project = excluded.project,
@@ -665,7 +719,10 @@ fn upsert_session(conn: &Connection, session: &ConversationSessionRow) -> Result
             ended_at = excluded.ended_at,
             source_file = excluded.source_file,
             capabilities_json = excluded.capabilities_json,
-            support_status = excluded.support_status
+            support_status = excluded.support_status,
+            file_available = excluded.file_available,
+            source_file_mtime_ms = excluded.source_file_mtime_ms,
+            source_file_size = excluded.source_file_size
         "#,
         params![
             session.source,
@@ -678,6 +735,9 @@ fn upsert_session(conn: &Connection, session: &ConversationSessionRow) -> Result
             session.source_file,
             capabilities,
             session.support_status,
+            session.file_available,
+            source_file_mtime_ms,
+            source_file_size,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -733,7 +793,7 @@ fn load_session(
     conn.query_row(
         r#"
         SELECT source, session_id, title, project, model, started_at, ended_at,
-               source_file, capabilities_json, support_status
+               source_file, capabilities_json, support_status, file_available
         FROM conversation_sessions WHERE source = ?1 AND session_id = ?2
         "#,
         params![source, session_id],
@@ -743,7 +803,7 @@ fn load_session(
     .map_err(|e| e.to_string())
 }
 
-fn reconcile_sessions(
+fn tombstone_missing_sessions(
     conn: &Connection,
     seen_session_ids: &BTreeSet<String>,
 ) -> Result<(), String> {
@@ -761,7 +821,7 @@ fn reconcile_sessions(
             continue;
         }
         conn.execute(
-            "DELETE FROM conversation_sessions WHERE source = ?1 AND session_id = ?2",
+            "UPDATE conversation_sessions SET file_available = 0 WHERE source = ?1 AND session_id = ?2",
             params![Source::Codex.as_str(), session_id],
         )
         .map_err(|e| e.to_string())?;
@@ -782,7 +842,42 @@ fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationSession
         source_file: row.get(7)?,
         capabilities: serde_json::from_str(&capabilities_json).unwrap_or_default(),
         support_status: row.get(9)?,
+        file_available: row.get(10)?,
     })
+}
+
+fn load_cached_fingerprint(
+    conn: &Connection,
+    path: &Path,
+) -> Result<Option<CachedConversationFingerprint>, String> {
+    conn.query_row(
+        r#"
+        SELECT session_id, source_file_mtime_ms, source_file_size, file_available
+        FROM conversation_sessions
+        WHERE source = ?1 AND source_file = ?2
+        LIMIT 1
+        "#,
+        params![Source::Codex.as_str(), path.to_string_lossy().to_string()],
+        |row| {
+            Ok(CachedConversationFingerprint {
+                session_id: row.get(0)?,
+                source_file_mtime_ms: row.get(1)?,
+                source_file_size: row.get(2)?,
+                file_available: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+}
+
+fn modified_millis(metadata: &fs::Metadata) -> i64 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn ensure_trusted_path(path: &Path, roots: &[PathBuf]) -> Result<(), String> {

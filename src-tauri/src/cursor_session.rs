@@ -383,6 +383,8 @@ fn record_issue(report: &mut IngestReport, path: &str, message: &str) {
         source: SOURCE_LABEL.to_string(),
         path: path.to_string(),
         message: message.to_string(),
+        event_type: None,
+        line: None,
     });
 }
 

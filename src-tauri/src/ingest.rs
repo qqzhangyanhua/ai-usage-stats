@@ -452,6 +452,8 @@ fn ingest_all_inner(
                 source: Source::Codex.as_str().to_string(),
                 path: issue.path,
                 message: issue.message,
+                event_type: issue.event_type,
+                line: issue.line,
             })),
         Err(message) => report.conversation_issues.push(IngestIssue {
             source: Source::Codex.as_str().to_string(),
@@ -461,6 +463,8 @@ fn ingest_all_inner(
                 .collect::<Vec<_>>()
                 .join(", "),
             message,
+            event_type: None,
+            line: None,
         }),
     }
     cursor_session::ingest(conn, home, &mut report);
@@ -992,6 +996,8 @@ fn record_failure(report: &mut IngestReport, source: Source, path: &str, message
         source: source.as_str().to_string(),
         path: path.to_string(),
         message: message.to_string(),
+        event_type: None,
+        line: None,
     });
 }
 

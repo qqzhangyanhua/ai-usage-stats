@@ -262,6 +262,7 @@ fn codex_conversation_catalog_indexes_and_loads_messages_without_caching_body() 
     assert_eq!(row.ended_at, "2026-08-20T00:03:00Z");
     assert_eq!(row.capabilities, vec!["messages", "events", "usage"]);
     assert_eq!(row.support_status, "experimental");
+    assert!(row.file_available);
 
     let detail = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
     assert_eq!(detail.session, *row);
@@ -277,7 +278,8 @@ fn codex_conversation_catalog_indexes_and_loads_messages_without_caching_body() 
 
     std::fs::remove_file(source_file).unwrap();
     let error = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap_err();
-    assert!(error.contains("原始文件"), "unexpected error: {error}");
+    assert!(error.contains("原文件已删除"), "unexpected error: {error}");
+    assert!(error.contains("详情不可读取"), "unexpected error: {error}");
 }
 
 #[test]
@@ -320,7 +322,7 @@ fn codex_conversation_catalog_searches_only_indexed_metadata() {
 }
 
 #[test]
-fn codex_conversation_refresh_reconciles_deleted_files_after_a_clean_scan() {
+fn codex_conversation_refresh_tombstones_deleted_files_and_revives_the_same_session() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
     let first = seed_codex_conversation(home);
@@ -340,27 +342,164 @@ fn codex_conversation_refresh_reconciles_deleted_files_after_a_clean_scan() {
         2
     );
 
-    std::fs::write(&first, "{not-json").unwrap();
     std::fs::remove_file(&second).unwrap();
     let issues = crate::conversation::refresh_codex(&conn, home).unwrap();
-    assert_eq!(issues.len(), 1);
-    assert_eq!(
+    assert!(issues.is_empty());
+    let page =
         crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
-            .unwrap()
-            .total,
-        2,
-        "任一文件解析失败时应保留全部最后一次正确索引"
-    );
+            .unwrap();
+    assert_eq!(page.total, 2, "删除源文件后必须保留目录索引");
+    let deleted = page
+        .rows
+        .iter()
+        .find(|row| row.session_id == "conv-2")
+        .unwrap();
+    assert!(!deleted.file_available);
+    let error = crate::conversation::load_detail(&conn, home, "codex", "conv-2").unwrap_err();
+    assert!(error.contains("原文件已删除"), "unexpected error: {error}");
+    assert!(error.contains("详情不可读取"), "unexpected error: {error}");
 
-    std::fs::write(&first, fixture("codex-conversation.jsonl")).unwrap();
+    std::fs::write(
+        &second,
+        fixture("codex-conversation.jsonl").replace("conv-1", "conv-2"),
+    )
+    .unwrap();
+    assert!(crate::conversation::refresh_codex(&conn, home)
+        .unwrap()
+        .is_empty());
+    let revived =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(revived.total, 2, "恢复原路径不得生成重复目录项");
+    let revived_row = revived
+        .rows
+        .iter()
+        .find(|row| row.session_id == "conv-2")
+        .unwrap();
+    assert!(revived_row.file_available);
+    crate::conversation::load_detail(&conn, home, "codex", "conv-2").unwrap();
+
+    assert!(first.exists());
+}
+
+#[test]
+fn codex_conversation_refresh_skips_unchanged_available_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    conn.execute(
+        "UPDATE conversation_sessions SET title = 'cached-title' WHERE source = 'codex' AND session_id = 'conv-1'",
+        [],
+    )
+    .unwrap();
+
     assert!(crate::conversation::refresh_codex(&conn, home)
         .unwrap()
         .is_empty());
     let page =
         crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
             .unwrap();
-    assert_eq!(page.total, 1);
-    assert_eq!(page.rows[0].session_id, "conv-1");
+    assert_eq!(page.rows[0].title, "cached-title");
+}
+
+#[test]
+fn codex_conversation_parse_failure_preserves_metadata_and_reports_safe_location() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let removed = home.join(".codex/sessions/2026/08/rollout-conv-2.jsonl");
+    std::fs::write(
+        &removed,
+        fixture("codex-conversation.jsonl").replace("conv-1", "conv-2"),
+    )
+    .unwrap();
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let before =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap()
+            .rows[0]
+            .clone();
+    let secret = "PRIVATE_PROMPT_MUST_NOT_APPEAR";
+    std::fs::write(
+        &path,
+        format!(
+            "{}\n{{\"secret\":\"{secret}\"",
+            fixture("codex-conversation.jsonl").trim_end()
+        ),
+    )
+    .unwrap();
+    std::fs::remove_file(removed).unwrap();
+
+    let report = ingest::ingest_all_with_overrides(&conn, home, &Default::default()).unwrap();
+
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(page.total, 2, "解析失败时不得执行墓碑对账");
+    let after = page
+        .rows
+        .iter()
+        .find(|row| row.session_id == "conv-1")
+        .unwrap();
+    assert_eq!(after.title, before.title);
+    assert_eq!(after.project, before.project);
+    assert_eq!(after.model, before.model);
+    assert!(
+        page.rows
+            .iter()
+            .find(|row| row.session_id == "conv-2")
+            .unwrap()
+            .file_available
+    );
+    assert_eq!(report.conversation_issues.len(), 1);
+    let issue = serde_json::to_value(&report.conversation_issues[0]).unwrap();
+    assert_eq!(issue["event_type"], "json_line");
+    assert_eq!(issue["line"], 8);
+    assert!(!issue["message"].as_str().unwrap().contains(secret));
+    assert!(!issue.to_string().contains(secret));
+}
+
+#[test]
+fn conversation_schema_migrates_lifecycle_columns_for_old_caches() {
+    let temp = tempfile::tempdir().unwrap();
+    let db_path = temp.path().join("old-cache.sqlite");
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE conversation_sessions (
+                source TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                project TEXT NOT NULL,
+                model TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                capabilities_json TEXT NOT NULL DEFAULT '[]',
+                support_status TEXT NOT NULL DEFAULT 'experimental',
+                PRIMARY KEY(source, session_id)
+            );
+            INSERT INTO conversation_sessions(
+                source, session_id, title, project, model, started_at, ended_at, source_file
+            ) VALUES('codex', 'legacy', '旧索引', '', '', '', '', 'legacy.jsonl');
+            "#,
+        )
+        .unwrap();
+    }
+
+    let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
+    let lifecycle = conn
+        .query_row(
+            "SELECT file_available, source_file_mtime_ms, source_file_size FROM conversation_sessions WHERE session_id = 'legacy'",
+            [],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
+        )
+        .unwrap();
+    assert_eq!(lifecycle, (1, 0, 0));
 }
 
 #[test]
@@ -425,4 +564,8 @@ fn conversation_index_issues_do_not_change_usage_ingest_failure_counts() {
         path
     );
     assert!(report.conversation_issues[0].message.contains("会话 ID"));
+    let issue = serde_json::to_value(&report.conversation_issues[0]).unwrap();
+    assert_eq!(issue["event_type"], "session_meta");
+    assert!(issue["line"].is_null());
+    assert!(!issue.to_string().contains("{}"));
 }

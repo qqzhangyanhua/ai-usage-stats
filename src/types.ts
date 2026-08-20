@@ -372,6 +372,7 @@ export type ConversationSessionRow = {
   source_file: string;
   capabilities: string[];
   support_status: string;
+  file_available: boolean;
 };
 
 export type ConversationPage = {
@@ -716,6 +717,8 @@ export type IngestIssue = {
   source: string;
   path: string;
   message: string;
+  event_type?: string | null;
+  line?: number | null;
 };
 
 export type SourceIngestReport = {
