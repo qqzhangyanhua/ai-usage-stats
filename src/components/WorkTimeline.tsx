@@ -4,15 +4,17 @@ import { Icon } from "../icons";
 import { parseDateValue, toDateValue } from "../lib/calendar";
 import {
   applicationLabel,
+  formatClock,
   formatCompact,
+  formatDuration,
   formatHoursMinutes,
   formatRatio,
   formatTokens,
   humanStatus,
   projectLabel,
 } from "../lib/format";
-import { dayStartIso, laneCount, layoutSegments } from "../lib/workTimeline";
-import type { WorkTimelineDto } from "../types";
+import { dayStartIso, laneCount, layoutSegments, type LaneSegment } from "../lib/workTimeline";
+import type { WorkSegment, WorkTimelineDto } from "../types";
 import { DatePicker } from "./ui/DatePicker";
 import { EmptyState } from "./EmptyState";
 import { KpiCard } from "./Kpi";
@@ -20,6 +22,9 @@ import { LoadingOverlay } from "./LoadingOverlay";
 
 const AXIS_HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 const LANE_HEIGHT = 34;
+const TOOLTIP_WIDTH = 260;
+const TOOLTIP_HEIGHT = 200;
+const TOOLTIP_MARGIN = 14;
 
 function shiftDay(day: string, delta: number): string {
   const date = parseDateValue(day) ?? new Date();
@@ -27,11 +32,21 @@ function shiftDay(day: string, delta: number): string {
   return toDateValue(date);
 }
 
-export function WorkTimeline() {
+function segmentLabel(segment: WorkSegment): string {
+  return `${projectLabel(segment.project)} · ${applicationLabel(segment.source)}/${segment.model}`;
+}
+
+export function WorkTimeline({
+  onSessionClick,
+}: {
+  onSessionClick?: (session: { id: string; source: string }) => void;
+}) {
   const [day, setDay] = useState(() => toDateValue(new Date()));
   const [data, setData] = useState<WorkTimelineDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<WorkSegment | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const generationRef = useRef(0);
 
   useEffect(() => {
@@ -60,6 +75,26 @@ export function WorkTimeline() {
   const segments = data?.segments ?? [];
   const layout = layoutSegments(segments, dayStartIso(day));
   const lanes = Math.max(1, laneCount(layout));
+
+  function handleSegmentEnter(event: React.MouseEvent, item: LaneSegment) {
+    setHovered(item.segment);
+    setTooltipPos({ x: event.clientX, y: event.clientY });
+  }
+
+  function handleSegmentMove(event: React.MouseEvent) {
+    if (hovered) {
+      setTooltipPos({ x: event.clientX, y: event.clientY });
+    }
+  }
+
+  function handleSegmentLeave() {
+    setHovered(null);
+    setTooltipPos(null);
+  }
+
+  function handleSegmentClick(item: LaneSegment) {
+    onSessionClick?.({ id: item.segment.session_id, source: item.segment.source });
+  }
 
   return (
     <div className="stack worktime">
@@ -141,38 +176,90 @@ export function WorkTimeline() {
                 </span>
               ))}
             </div>
-            <div
-              className="worktime-lanes"
-              style={{ height: lanes * LANE_HEIGHT }}
-            >
+            <div className="worktime-lanes" style={{ height: lanes * LANE_HEIGHT }}>
               {AXIS_HOURS.slice(1, -1).map((hour) => (
-                <div key={hour} className="worktime-gridline" style={{ left: `${(hour / 24) * 100}%` }} />
+                <div
+                  key={hour}
+                  className="worktime-gridline"
+                  style={{ left: `${(hour / 24) * 100}%` }}
+                />
               ))}
               {layout.map((item) => {
                 const left = (item.startMinutes / 1440) * 100;
                 const width = Math.max(0, ((item.endMinutes - item.startMinutes) / 1440) * 100);
-                const label = `${projectLabel(item.segment.project)} · ${applicationLabel(
-                  item.segment.source,
-                )}/${item.segment.model}`;
+                const label = segmentLabel(item.segment);
                 return (
-                  <div
+                  <button
                     key={`${item.segment.source}:${item.segment.session_id}`}
+                    type="button"
                     className="worktime-segment"
-                    title={`${label}\n${formatTokens(item.segment.total_tokens)} tokens`}
                     style={{
                       left: `${left}%`,
                       width: `${width}%`,
                       top: item.lane * LANE_HEIGHT,
                     }}
+                    onClick={() => handleSegmentClick(item)}
+                    onMouseEnter={(e) => handleSegmentEnter(e, item)}
+                    onMouseMove={handleSegmentMove}
+                    onMouseLeave={handleSegmentLeave}
+                    aria-label={`${label}，点击查看会话明细`}
                   >
                     <span>{label}</span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           </div>
         )}
       </LoadingOverlay>
+
+      {hovered && tooltipPos ? <SegmentTooltip segment={hovered} pos={tooltipPos} /> : null}
+    </div>
+  );
+}
+
+/// 跟随鼠标的明细气泡。不复用 `useAnchoredPanel`——那个 hook 按触发器元素定位，
+/// 适合点击展开的浮层；这里需要跟随光标移动，且只在 hover 期间存在，不涉及
+/// 点击外部关闭或滚动重定位（鼠标离开横条即消失）。
+function SegmentTooltip({
+  segment,
+  pos,
+}: {
+  segment: WorkSegment;
+  pos: { x: number; y: number };
+}) {
+  const duration = formatDuration(segment.start, segment.end);
+  const label = segmentLabel(segment);
+  // 气泡默认在鼠标右下方，靠近视口边缘时翻到对侧。
+  const flipX = pos.x + TOOLTIP_MARGIN + TOOLTIP_WIDTH > window.innerWidth;
+  const flipY = pos.y + TOOLTIP_MARGIN + TOOLTIP_HEIGHT > window.innerHeight;
+  return (
+    <div
+      className="worktime-tooltip"
+      role="tooltip"
+      style={{
+        position: "fixed",
+        left: flipX ? pos.x - TOOLTIP_MARGIN - TOOLTIP_WIDTH : pos.x + TOOLTIP_MARGIN,
+        top: flipY ? pos.y - TOOLTIP_MARGIN - TOOLTIP_HEIGHT : pos.y + TOOLTIP_MARGIN,
+      }}
+    >
+      <div className="worktime-tooltip-title">{label}</div>
+      <dl className="worktime-tooltip-grid">
+        <dt>项目</dt>
+        <dd>{projectLabel(segment.project)}</dd>
+        <dt>来源</dt>
+        <dd>{applicationLabel(segment.source)}</dd>
+        <dt>模型</dt>
+        <dd>{segment.model || "—"}</dd>
+        <dt>开始</dt>
+        <dd>{formatClock(segment.start)}</dd>
+        <dt>结束</dt>
+        <dd>{formatClock(segment.end)}</dd>
+        <dt>时长</dt>
+        <dd>{duration ?? "—"}</dd>
+        <dt>Token</dt>
+        <dd>{formatTokens(segment.total_tokens)}</dd>
+      </dl>
     </div>
   );
 }

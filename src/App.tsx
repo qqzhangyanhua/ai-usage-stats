@@ -164,7 +164,14 @@ export default function App() {
                     onError={data.reportError}
                   />
                 ) : null}
-                {view === "worktime" ? <LazyWorkTimeline /> : null}
+                {view === "worktime" ? (
+                  <LazyWorkTimeline
+                    onSessionClick={(session) => {
+                      data.openSessions();
+                      data.setSelectedSession(session);
+                    }}
+                  />
+                ) : null}
                 {view === "instructions" ? <LazyGlobalInstructionPanel /> : null}
                 {view === "settings" ? (
                   <LazySettings

@@ -2832,11 +2832,64 @@ tr.session-detail-row td {
   font-size: 11px;
   overflow: hidden;
   white-space: nowrap;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.worktime-segment:hover {
+  border-color: var(--purple-fg);
+  background: rgba(139, 108, 255, 0.28);
 }
 
 .worktime-segment span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.worktime-tooltip {
+  width: 260px;
+  max-height: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--bg-panel-2);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  box-shadow: 0 8px 24px var(--shadow-soft);
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.worktime-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.worktime-tooltip-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+}
+
+.worktime-tooltip-grid dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.worktime-tooltip-grid dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 table {
