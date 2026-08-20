@@ -95,7 +95,7 @@ where
 }
 
 /// 把 Cursor 账号用量挂进 7 天滚动（不进 5 小时窗，也不改本机消耗记录）。
-/// 费用：用户价目优先，否则 LiteLLM 快照按模型兜底。
+/// 费用：用户价目优先，否则 LiteLLM 快照按模型签名兜底（允许词序/后缀差异）。
 pub fn attach_cursor_weekly(
     mut dto: BillingWindowsDto,
     events: &[CursorUsageEvent],
