@@ -7,10 +7,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::domain::{
-    ConversationDetailDto, ConversationEvent, ConversationEventActor as EventActor,
-    ConversationEventCapabilityStatus as EventStatus, ConversationEventKind as EventKind,
-    ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow, Source,
-    UsageRecord,
+    ConversationDetailDto, ConversationDetailStateDto, ConversationEvent,
+    ConversationEventActor as EventActor, ConversationEventCapabilityStatus as EventStatus,
+    ConversationEventKind as EventKind, ConversationMessage, ConversationPage, ConversationQuery,
+    ConversationSessionRow, Source, UsageRecord,
 };
 use crate::ingest;
 
@@ -171,17 +171,69 @@ pub fn load_detail(
         return Err("原文件已删除，详情不可读取".to_string());
     }
     ensure_trusted_path(&path, &ingest::source_scan_dirs(home, source))?;
-    let parsed = parse_codex_file(&path).map_err(|issue| issue.message)?;
+    let (parsed, revision) = parse_codex_file_with_revision(&path)?;
     if parsed.session.session_id != session.session_id {
         return Err("原始文件中的会话 ID 与索引不一致".to_string());
     }
     let usage_records = load_usage_records(conn, source, session_id)?;
     Ok(ConversationDetailDto {
+        revision,
         session,
         messages: parsed.messages,
         events: parsed.events,
         usage_records,
     })
+}
+
+pub fn detail_state(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+    known_revision: &str,
+) -> Result<ConversationDetailStateDto, String> {
+    let source = Source::parse(source).filter(|source| *source == Source::Codex);
+    let Some(source) = source else {
+        return Err("当前仅支持读取 Codex 对话详情".to_string());
+    };
+    let session = load_session(conn, source.as_str(), session_id)?
+        .ok_or_else(|| "未找到该对话记录".to_string())?;
+    let path = PathBuf::from(&session.source_file);
+    if !path.exists() {
+        return Ok(ConversationDetailStateDto {
+            revision: known_revision.to_string(),
+            changed: false,
+            file_available: false,
+        });
+    }
+
+    ensure_trusted_path(&path, &ingest::source_scan_dirs(home, source))?;
+    let metadata =
+        fs::metadata(&path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
+    let revision = metadata_revision(&metadata);
+    Ok(ConversationDetailStateDto {
+        changed: revision != known_revision,
+        revision,
+        file_available: true,
+    })
+}
+
+fn parse_codex_file_with_revision(
+    path: &Path,
+) -> Result<(ParsedCodexConversation, String), String> {
+    for _ in 0..3 {
+        let before =
+            fs::metadata(path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
+        let before_revision = metadata_revision(&before);
+        let parsed = parse_codex_file(path).map_err(|issue| issue.message)?;
+        let after =
+            fs::metadata(path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
+        let revision = metadata_revision(&after);
+        if revision == before_revision {
+            return Ok((parsed, revision));
+        }
+    }
+    Err("原始文件在读取期间持续变化，请重试".to_string())
 }
 
 fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, ConversationIndexIssue> {
@@ -880,6 +932,10 @@ fn modified_millis(metadata: &fs::Metadata) -> i64 {
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
         .map(|duration| duration.as_millis() as i64)
         .unwrap_or(0)
+}
+
+fn metadata_revision(metadata: &fs::Metadata) -> String {
+    format!("{}:{}", modified_millis(metadata), metadata.len())
 }
 
 fn ensure_trusted_path(path: &Path, roots: &[PathBuf]) -> Result<(), String> {

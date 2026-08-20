@@ -433,10 +433,17 @@ export type ConversationUsageRecord = {
 };
 
 export type ConversationDetailDto = {
+  revision: string;
   session: ConversationSessionRow;
   messages: ConversationMessage[];
   events: ConversationEvent[];
   usage_records: ConversationUsageRecord[];
+};
+
+export type ConversationDetailStateDto = {
+  revision: string;
+  changed: boolean;
+  file_available: boolean;
 };
 
 export type CostSource = "native" | "user" | "snapshot" | "none";

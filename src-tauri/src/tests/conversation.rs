@@ -16,6 +16,113 @@ fn seed_codex_fixture(
 }
 
 #[test]
+fn conversation_detail_state_detects_append_delete_and_restore_without_refresh() {
+    use std::io::Write;
+
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let original = std::fs::read(&path).unwrap();
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let initial = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    assert!(!initial.revision.is_empty());
+
+    let unchanged =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &initial.revision)
+            .unwrap();
+    assert_eq!(unchanged.revision, initial.revision);
+    assert!(!unchanged.changed);
+    assert!(unchanged.file_available);
+
+    let initial_message_count = initial.messages.len();
+    let initial_event_count = initial.events.len();
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap(),
+        r#"{{"type":"response_item","timestamp":"2026-08-20T00:04:00Z","payload":{{"type":"message","role":"assistant","content":[{{"type":"output_text","text":"follow-up"}}]}}}}"#
+    )
+    .unwrap();
+
+    let changed =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &initial.revision)
+            .unwrap();
+    assert!(changed.changed);
+    assert!(changed.file_available);
+    assert_ne!(changed.revision, initial.revision);
+
+    let updated = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    assert_eq!(updated.messages.len(), initial_message_count + 1);
+    assert_eq!(updated.events.len(), initial_event_count + 1);
+    assert_eq!(updated.messages.last().unwrap().text, "follow-up");
+    assert_eq!(updated.revision, changed.revision);
+
+    std::fs::remove_file(&path).unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let deleted =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &updated.revision)
+            .unwrap();
+    assert!(!deleted.file_available);
+
+    std::fs::write(&path, original).unwrap();
+    let restored =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &updated.revision)
+            .unwrap();
+    assert!(restored.file_available);
+    assert!(restored.changed);
+}
+
+#[test]
+fn conversation_detail_state_reads_metadata_without_parsing_body() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let initial = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    std::fs::write(&path, b"this is not valid jsonl").unwrap();
+
+    let changed =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &initial.revision)
+            .unwrap();
+    assert!(changed.changed);
+    assert!(changed.file_available);
+
+    let unchanged =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &changed.revision)
+            .unwrap();
+    assert!(!unchanged.changed);
+    assert!(unchanged.file_available);
+}
+
+#[test]
+fn conversation_detail_state_rejects_indexed_path_outside_source_root() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let outside = home.join("outside.jsonl");
+    std::fs::write(&outside, fixture("codex-conversation.jsonl")).unwrap();
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    conn.execute(
+        "UPDATE conversation_sessions SET source_file = ?1 WHERE source = 'codex' AND session_id = 'conv-1'",
+        rusqlite::params![outside.to_string_lossy().to_string()],
+    )
+    .unwrap();
+
+    let error =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", "known").unwrap_err();
+    assert!(
+        error.contains("允许的扫描目录"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn codex_conversation_detail_merges_streamed_text_and_filters_protocol_noise() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();

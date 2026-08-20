@@ -32,13 +32,13 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
-    ConversationDetailDto, ConversationPage, ConversationQuery, CursorAccountEventPage,
-    CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto, CursorSessionPage,
-    CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions, GlobalInstructionDto,
-    IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto, OfficialQuotaHookDto,
-    OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta, PriceTable, SeriesPoint,
-    SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic, TurnRow, WorkTimelineDto,
-    WriteUserFileRequest, WriteUserFileResult,
+    ConversationDetailDto, ConversationDetailStateDto, ConversationPage, ConversationQuery,
+    CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
+    CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
+    GlobalInstructionDto, IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto,
+    OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
+    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
+    TurnRow, WorkTimelineDto, WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -519,6 +519,28 @@ async fn get_conversation_detail(
 }
 
 #[tauri::command]
+async fn get_conversation_detail_state(
+    app: tauri::AppHandle,
+    source: String,
+    session_id: String,
+    known_revision: String,
+) -> Result<ConversationDetailStateDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        conversation::detail_state(
+            &conn,
+            &ingest::default_home(),
+            &source,
+            &session_id,
+            &known_revision,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn get_cursor_account_events_page(
     app: tauri::AppHandle,
     query: CursorAccountEventQuery,
@@ -969,6 +991,7 @@ pub fn run() {
             get_cursor_session_detail,
             get_conversation_sessions_page,
             get_conversation_detail,
+            get_conversation_detail_state,
             refresh_cursor_account_usage,
             get_cursor_account_usage,
             get_cursor_account_events_page,

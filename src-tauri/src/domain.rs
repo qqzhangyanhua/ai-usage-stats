@@ -709,10 +709,18 @@ pub struct ConversationEvent {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationDetailDto {
+    pub revision: String,
     pub session: ConversationSessionRow,
     pub messages: Vec<ConversationMessage>,
     pub events: Vec<ConversationEvent>,
     pub usage_records: Vec<UsageRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationDetailStateDto {
+    pub revision: String,
+    pub changed: bool,
+    pub file_available: bool,
 }
 
 /// 工作时间线里的一根横条：一条会话按当天本地日历日裁剪后的区间。
