@@ -14,6 +14,7 @@ import { Spark } from "./Kpi";
 import { LoadingOverlay } from "./LoadingOverlay";
 import { Pagination } from "./Pagination";
 import { Button } from "./ui/Button";
+import { SessionResumeCommand } from "./SessionResumeCommand";
 import { ModelLabel } from "./VendorIcon";
 
 const PAGE_SIZE = 20;
@@ -102,6 +103,7 @@ export function SessionTurns({
             共 {turns.length} 轮 · {formatTokens(stats.totalTokens)} Token
             {stats.hasCost ? ` · $${stats.totalCost.toFixed(4)}` : ""}
           </p>
+          <SessionResumeCommand source={source} sessionId={sessionId} />
         </div>
         <div className="export-action">
           {turns.length > 1 ? (

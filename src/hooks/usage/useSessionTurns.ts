@@ -32,8 +32,14 @@ export function useSessionTurns(filter: Filter, reportError: (error: unknown) =>
   );
 
   const selectSession = useCallback(
-    (session: SelectedSession) => {
+    (session: SelectedSession | null) => {
       setSelectedSession(session);
+      if (!session) {
+        turnsGeneration.current += 1;
+        setTurns([]);
+        setTurnsLoading(false);
+        return;
+      }
       loadSessionTurns(session).catch(reportError);
     },
     [loadSessionTurns, reportError],
