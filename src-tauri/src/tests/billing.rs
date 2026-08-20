@@ -236,3 +236,68 @@ fn weekly_window_omits_cursor_when_account_events_are_outside_window() {
     );
     assert!(dto.weekly.is_empty());
 }
+
+#[test]
+fn weekly_window_prices_cursor_models_by_litellm_signature() {
+    use crate::domain::CursorUsageEvent;
+
+    let now = Utc.with_ymd_and_hms(2026, 8, 17, 12, 0, 0).unwrap();
+    let events = vec![
+        CursorUsageEvent {
+            occurred_at: "2026-08-16T10:00:00Z".into(),
+            model: "claude-4.6-sonnet".into(),
+            input_tokens: 1_000_000,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        },
+        CursorUsageEvent {
+            occurred_at: "2026-08-16T11:00:00Z".into(),
+            model: "claude-4.5-sonnet-thinking".into(),
+            input_tokens: 1_000_000,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        },
+        CursorUsageEvent {
+            occurred_at: "2026-08-16T12:00:00Z".into(),
+            model: "gpt-5-high".into(),
+            input_tokens: 1_000_000,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: false,
+        },
+        CursorUsageEvent {
+            occurred_at: "2026-08-16T13:00:00Z".into(),
+            model: "composer-2".into(),
+            input_tokens: 200,
+            output_tokens: 80,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            is_headless: true,
+        },
+    ];
+    let prices = crate::litellm::merge(&PriceTable::default(), &crate::litellm::bundled_snapshot());
+
+    let dto = billing_window::attach_cursor_weekly(
+        billing_window::summarize(&[] as &[UsageRecord], &prices, now),
+        &events,
+        &prices,
+        now,
+    );
+    let cursor = dto
+        .weekly
+        .iter()
+        .find(|window| window.source == "cursor")
+        .expect("cursor weekly window");
+    let cost = cursor.cost.expect("Cursor 模型应按 LiteLLM 签名匹配到单价");
+    assert!(cost > 0.0, "匹配到的费用应为正数，实际 {cost}");
+    assert!(
+        cursor.unpriced,
+        "composer-2 仍无公开价目，整行应保留部分未定价"
+    );
+    assert_eq!(cursor.total_tokens, 3_000_280);
+}
