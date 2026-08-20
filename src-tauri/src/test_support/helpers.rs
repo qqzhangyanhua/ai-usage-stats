@@ -330,9 +330,13 @@ pub fn seed_cursor_transcript(
     session_id: &str,
     content: &str,
 ) -> std::path::PathBuf {
-    let path = home.join(format!(
-        ".cursor/projects/{project_slug}/agent-transcripts/{session_id}/{session_id}.jsonl"
-    ));
+    let path = home
+        .join(".cursor")
+        .join("projects")
+        .join(project_slug)
+        .join("agent-transcripts")
+        .join(session_id)
+        .join(format!("{session_id}.jsonl"));
     std::fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
     std::fs::write(&path, content).expect("write transcript");
     path
@@ -409,9 +413,14 @@ pub fn seed_cursor_subagent(
     child_id: &str,
     content: &str,
 ) -> std::path::PathBuf {
-    let path = home.join(format!(
-        ".cursor/projects/{project_slug}/agent-transcripts/{session_id}/subagents/{child_id}.jsonl"
-    ));
+    let path = home
+        .join(".cursor")
+        .join("projects")
+        .join(project_slug)
+        .join("agent-transcripts")
+        .join(session_id)
+        .join("subagents")
+        .join(format!("{child_id}.jsonl"));
     std::fs::create_dir_all(path.parent().expect("parent")).expect("create dirs");
     std::fs::write(&path, content).expect("write subagent");
     path

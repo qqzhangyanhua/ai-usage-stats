@@ -17,7 +17,7 @@ pub const SOURCE_LABEL: &str = "cursor-session";
 pub use crate::cursor_session_query::{load_summary, sessions_page, summarize_cursor_sessions};
 
 pub fn ingest(conn: &Connection, home: &Path, report: &mut IngestReport) {
-    let root = home.join(".cursor/projects");
+    let root = home.join(".cursor").join("projects");
     if !root.exists() {
         return;
     }
@@ -301,7 +301,7 @@ pub(crate) fn scan_is_stale_cached(
     tracking_fingerprint: &str,
     home: &Path,
 ) -> Result<bool, String> {
-    let root = home.join(".cursor/projects");
+    let root = home.join(".cursor").join("projects");
     let transcripts = if root.exists() {
         walk_transcripts(&root)?
     } else {

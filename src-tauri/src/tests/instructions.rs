@@ -59,8 +59,8 @@ fn scan_lists_claude_main_file_and_user_instruction_files() {
 #[test]
 fn scan_lists_claude_rules_directory_when_present() {
     let home = tempfile::tempdir().unwrap();
-    let claude_rules = home.path().join(".claude/rules");
-    let codex_rules = home.path().join(".codex/rules");
+    let claude_rules = home.path().join(".claude").join("rules");
+    let codex_rules = home.path().join(".codex").join("rules");
     std::fs::create_dir_all(&claude_rules).unwrap();
     std::fs::create_dir_all(&codex_rules).unwrap();
     std::fs::write(home.path().join(".claude/CLAUDE.md"), "ok\n").unwrap();
