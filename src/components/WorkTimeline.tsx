@@ -2,7 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../icons";
 import { parseDateValue, toDateValue } from "../lib/calendar";
-import { applicationLabel, formatCompact, formatTokens, humanStatus, projectLabel } from "../lib/format";
+import {
+  applicationLabel,
+  formatCompact,
+  formatHoursMinutes,
+  formatRatio,
+  formatTokens,
+  humanStatus,
+  projectLabel,
+} from "../lib/format";
 import { dayStartIso, laneCount, layoutSegments } from "../lib/workTimeline";
 import type { WorkTimelineDto } from "../types";
 import { DatePicker } from "./ui/DatePicker";
@@ -87,6 +95,34 @@ export function WorkTimeline() {
             tone="cyan"
             label="工作片段数"
             value={formatTokens(data?.segment_count ?? 0)}
+          />
+          <KpiCard
+            icon="chat"
+            tone="orange"
+            label="对话轮次"
+            value={formatTokens(data?.turn_count ?? 0)}
+          />
+          <KpiCard
+            icon="clock"
+            tone="blue"
+            label="累计 AI 执行时长"
+            value={formatHoursMinutes(data?.ai_exec_minutes ?? 0)}
+          />
+          <KpiCard
+            icon="daily"
+            tone="purple"
+            label="峰值并行"
+            value={formatTokens(data?.peak_parallel ?? 0)}
+          />
+          <KpiCard
+            icon="trend"
+            tone="cyan"
+            label="并行强度"
+            value={
+              data?.parallel_intensity != null
+                ? `${formatRatio(data.parallel_intensity)}x`
+                : "—"
+            }
           />
         </div>
       </section>

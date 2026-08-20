@@ -189,3 +189,282 @@ fn invalid_day_string_returns_empty_without_panicking() {
     assert_eq!(dto.segment_count, 0);
     assert!(dto.segments.is_empty());
 }
+
+#[test]
+fn turn_count_aggregates_records_landing_in_day() {
+    let yesterday = day().pred_opt().expect("valid date");
+    let records = vec![
+        rec(
+            &local_time_iso(yesterday, 23, 50, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 9, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            20,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            30,
+        ),
+    ];
+    let dto = work_timeline(&records, day_str());
+    // 两条落在今天，昨天那条不计入。
+    assert_eq!(dto.turn_count, 2);
+}
+
+#[test]
+fn peak_parallel_counts_three_way_overlap() {
+    let records = vec![
+        rec(
+            &local_time_iso(day(), 9, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 11, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 9, 30, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 30, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 0, 0),
+            Source::Pi,
+            "gpt-5.5",
+            "subapi",
+            "/proj/c",
+            "s3",
+            30,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 15, 0),
+            Source::Pi,
+            "gpt-5.5",
+            "subapi",
+            "/proj/c",
+            "s3",
+            30,
+        ),
+    ];
+    let dto = work_timeline(&records, day_str());
+    // s1: 09:00-11:00, s2: 09:30-10:30, s3: 10:00-10:15 → 10:00 时三段同时进行。
+    assert_eq!(dto.peak_parallel, 3);
+}
+
+#[test]
+fn parallel_intensity_is_one_when_no_overlap() {
+    let records = vec![
+        rec(
+            &local_time_iso(day(), 9, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 11, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+        rec(
+            &local_time_iso(day(), 12, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+    ];
+    let dto = work_timeline(&records, day_str());
+    // s1: 09:00-10:00, s2: 11:00-12:00，无重叠 → 1.0x。
+    assert_eq!(dto.parallel_intensity, Some(1.0));
+}
+
+#[test]
+fn parallel_intensity_exceeds_one_when_fully_overlapping() {
+    let records = vec![
+        rec(
+            &local_time_iso(day(), 9, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 9, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+        rec(
+            &local_time_iso(day(), 10, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+    ];
+    let dto = work_timeline(&records, day_str());
+    // 两段完全重叠 09:00-10:00，累计 2h / 并集 1h = 2.0x。
+    assert_eq!(dto.parallel_intensity, Some(2.0));
+    assert_eq!(dto.peak_parallel, 2);
+}
+
+#[test]
+fn ai_exec_minutes_sums_clipped_durations() {
+    let records = vec![
+        rec(
+            &local_time_iso(day(), 9, 0, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+        rec(
+            &local_time_iso(day(), 9, 30, 0),
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            10,
+        ),
+    ];
+    let dto = work_timeline(&records, day_str());
+    // 会话区间 09:00-09:30 = 30 分钟，单段无重叠 → 1.0x。
+    assert_eq!(dto.ai_exec_minutes, 30.0);
+    assert_eq!(dto.parallel_intensity, Some(1.0));
+}
+
+#[test]
+fn zero_width_session_has_zero_ai_exec_minutes() {
+    let records = vec![rec(
+        &local_time_iso(day(), 15, 0, 0),
+        Source::Gemini,
+        "gemini-pro",
+        "google",
+        "/proj/d",
+        "s5",
+        40,
+    )];
+    let dto = work_timeline(&records, day_str());
+    // 单条记录会话区间为 0 宽度，裁剪后仍为 0 分钟，并集时长为 0 → null 强度。
+    assert_eq!(dto.ai_exec_minutes, 0.0);
+    assert_eq!(dto.parallel_intensity, None);
+}
+
+#[test]
+fn empty_day_yields_null_intensity_and_zero_peak() {
+    let dto = work_timeline(&[], day_str());
+    assert_eq!(dto.turn_count, 0);
+    assert_eq!(dto.ai_exec_minutes, 0.0);
+    assert_eq!(dto.peak_parallel, 0);
+    assert_eq!(dto.parallel_intensity, None);
+}
+
+#[test]
+fn cross_midnight_session_clips_interval_for_metrics() {
+    let yesterday = day().pred_opt().expect("valid date");
+    let records = vec![
+        rec(
+            &local_time_iso(yesterday, 23, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            20,
+        ),
+        rec(
+            &local_time_iso(day(), 1, 0, 0),
+            Source::Claude,
+            "claude-sonnet-5",
+            "anthropic",
+            "/proj/b",
+            "s2",
+            30,
+        ),
+    ];
+    let dto = work_timeline(&records, day_str());
+    // 会话区间 23:00(昨天) ~ 01:00(今天)，裁剪到今天后为 00:00 ~ 01:00 = 60 分钟。
+    assert_eq!(dto.segment_count, 1);
+    assert_eq!(dto.ai_exec_minutes, 60.0);
+    assert_eq!(dto.peak_parallel, 1);
+    assert_eq!(dto.parallel_intensity, Some(1.0));
+    // turn_count 只算落在今天的记录（1 条）。
+    assert_eq!(dto.turn_count, 1);
+    assert_eq!(dto.total_tokens, 30);
+}

@@ -614,6 +614,10 @@ export type WorkTimelineDto = {
   day: string;
   total_tokens: number;
   segment_count: number;
+  turn_count: number;
+  ai_exec_minutes: number;
+  peak_parallel: number;
+  parallel_intensity: number | null;
   segments: WorkSegment[];
 };
 
