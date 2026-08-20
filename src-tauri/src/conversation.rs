@@ -34,7 +34,6 @@ struct CachedConversationFingerprint {
     session_id: String,
     source_file_mtime_ms: i64,
     source_file_size: i64,
-    file_available: bool,
 }
 
 struct ParsedCodexConversation {
@@ -81,10 +80,7 @@ pub(crate) fn refresh_codex_in_roots(
             let mtime_ms = modified_millis(&metadata);
             let size = metadata.len() as i64;
             if let Some(cached) = load_cached_fingerprint(conn, &path)? {
-                if cached.file_available
-                    && cached.source_file_mtime_ms == mtime_ms
-                    && cached.source_file_size == size
-                {
+                if cached.source_file_mtime_ms == mtime_ms && cached.source_file_size == size {
                     seen_session_ids.insert(cached.session_id);
                     continue;
                 }
@@ -852,9 +848,10 @@ fn load_cached_fingerprint(
 ) -> Result<Option<CachedConversationFingerprint>, String> {
     conn.query_row(
         r#"
-        SELECT session_id, source_file_mtime_ms, source_file_size, file_available
+        SELECT session_id, source_file_mtime_ms, source_file_size
         FROM conversation_sessions
-        WHERE source = ?1 AND source_file = ?2
+        WHERE source = ?1 AND source_file = ?2 AND file_available = 1
+        ORDER BY ended_at DESC, session_id ASC
         LIMIT 1
         "#,
         params![Source::Codex.as_str(), path.to_string_lossy().to_string()],
@@ -863,7 +860,6 @@ fn load_cached_fingerprint(
                 session_id: row.get(0)?,
                 source_file_mtime_ms: row.get(1)?,
                 source_file_size: row.get(2)?,
-                file_available: row.get(3)?,
             })
         },
     )

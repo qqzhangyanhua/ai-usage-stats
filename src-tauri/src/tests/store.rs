@@ -106,6 +106,31 @@ fn reconcile_source_lookup_uses_an_index() {
 }
 
 #[test]
+fn conversation_source_file_lookup_uses_a_composite_index() {
+    let conn = store::open_memory().unwrap();
+    let plan: Vec<String> = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN \
+             SELECT session_id FROM conversation_sessions \
+             WHERE source = ?1 AND source_file = ?2 AND file_available = 1 \
+             ORDER BY ended_at DESC, session_id ASC LIMIT 1",
+        )
+        .unwrap()
+        .query_map(["codex", "/one.jsonl"], |row| row.get(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        plan.iter().any(|detail| {
+            detail.contains("USING INDEX idx_conversation_sessions_source_file")
+                && detail.contains("source=?")
+                && detail.contains("source_file=?")
+        }),
+        "conversation source_file lookup must use its composite index, query plan: {plan:?}"
+    );
+}
+
+#[test]
 fn source_and_occurred_at_filter_uses_composite_index() {
     let conn = store::open_memory().unwrap();
     let plan: Vec<String> = conn

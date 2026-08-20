@@ -151,6 +151,8 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_conversation_sessions_ended
             ON conversation_sessions(ended_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_conversation_sessions_source_file
+            ON conversation_sessions(source, source_file);
 
         CREATE TABLE IF NOT EXISTS official_quota (
             provider TEXT PRIMARY KEY,

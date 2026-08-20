@@ -405,6 +405,89 @@ fn codex_conversation_refresh_skips_unchanged_available_files() {
 }
 
 #[test]
+fn codex_conversation_refresh_reparses_when_file_size_changes() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let original_size = std::fs::metadata(&path).unwrap().len();
+    let updated_title = "发布 Tray 客户端版本支持图片编辑透传并记录更长标题";
+    let updated = fixture("codex-conversation.jsonl")
+        .replace("发布 Tray 客户端版本支持图片编辑透传", updated_title);
+    std::fs::write(&path, updated).unwrap();
+    let updated_size = std::fs::metadata(&path).unwrap().len();
+    assert_ne!(updated_size, original_size);
+
+    assert!(crate::conversation::refresh_codex(&conn, home)
+        .unwrap()
+        .is_empty());
+
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(page.rows[0].title, updated_title);
+    let cached_size: i64 = conn
+        .query_row(
+            "SELECT source_file_size FROM conversation_sessions WHERE source = 'codex' AND session_id = 'conv-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(cached_size, updated_size as i64);
+}
+
+#[test]
+fn codex_conversation_refresh_selects_the_latest_available_session_for_a_shared_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    conn.execute(
+        "UPDATE conversation_sessions SET title = 'cached-title' WHERE source = 'codex' AND session_id = 'conv-1'",
+        [],
+    )
+    .unwrap();
+    conn.execute_batch(
+        r#"
+        INSERT INTO conversation_sessions(
+            source, session_id, title, project, model, started_at, ended_at,
+            source_file, capabilities_json, support_status, file_available,
+            source_file_mtime_ms, source_file_size
+        )
+        SELECT source, 'aaa-history', 'history', project, model, started_at,
+               '2000-01-01T00:00:00Z', source_file, capabilities_json, support_status, 1,
+               source_file_mtime_ms, source_file_size
+        FROM conversation_sessions
+        WHERE source = 'codex' AND session_id = 'conv-1';
+        "#,
+    )
+    .unwrap();
+
+    assert!(crate::conversation::refresh_codex(&conn, home)
+        .unwrap()
+        .is_empty());
+
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    let current = page
+        .rows
+        .iter()
+        .find(|row| row.session_id == "conv-1")
+        .unwrap();
+    let history = page
+        .rows
+        .iter()
+        .find(|row| row.session_id == "aaa-history")
+        .unwrap();
+    assert!(current.file_available);
+    assert_eq!(current.title, "cached-title");
+    assert!(!history.file_available);
+}
+
+#[test]
 fn codex_conversation_parse_failure_preserves_metadata_and_reports_safe_location() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
@@ -500,6 +583,14 @@ fn conversation_schema_migrates_lifecycle_columns_for_old_caches() {
         )
         .unwrap();
     assert_eq!(lifecycle, (1, 0, 0));
+    let indexes: Vec<String> = conn
+        .prepare("PRAGMA index_list(conversation_sessions)")
+        .unwrap()
+        .query_map([], |row| row.get(1))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(indexes.contains(&"idx_conversation_sessions_source_file".to_string()));
 }
 
 #[test]
