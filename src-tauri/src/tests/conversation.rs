@@ -438,7 +438,7 @@ fn codex_conversation_refresh_reparses_when_file_size_changes() {
 }
 
 #[test]
-fn codex_conversation_refresh_selects_the_latest_available_session_for_a_shared_path() {
+fn codex_conversation_refresh_reparses_an_ambiguous_shared_path() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
     seed_codex_conversation(home);
@@ -457,7 +457,7 @@ fn codex_conversation_refresh_selects_the_latest_available_session_for_a_shared_
             source_file_mtime_ms, source_file_size
         )
         SELECT source, 'aaa-history', 'history', project, model, started_at,
-               '2000-01-01T00:00:00Z', source_file, capabilities_json, support_status, 1,
+               '9999-01-01T00:00:00Z', source_file, capabilities_json, support_status, 1,
                source_file_mtime_ms, source_file_size
         FROM conversation_sessions
         WHERE source = 'codex' AND session_id = 'conv-1';
@@ -483,7 +483,7 @@ fn codex_conversation_refresh_selects_the_latest_available_session_for_a_shared_
         .find(|row| row.session_id == "aaa-history")
         .unwrap();
     assert!(current.file_available);
-    assert_eq!(current.title, "cached-title");
+    assert_eq!(current.title, "发布 Tray 客户端版本支持图片编辑透传");
     assert!(!history.file_available);
 }
 

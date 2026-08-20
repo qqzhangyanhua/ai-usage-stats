@@ -79,9 +79,10 @@ pub(crate) fn refresh_codex_in_roots(
             };
             let mtime_ms = modified_millis(&metadata);
             let size = metadata.len() as i64;
-            if let Some(cached) = load_cached_fingerprint(conn, &path)? {
+            let cached = load_cached_fingerprints(conn, &path)?;
+            if let [cached] = cached.as_slice() {
                 if cached.source_file_mtime_ms == mtime_ms && cached.source_file_size == size {
-                    seen_session_ids.insert(cached.session_id);
+                    seen_session_ids.insert(cached.session_id.clone());
                     continue;
                 }
             }
@@ -842,29 +843,34 @@ fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationSession
     })
 }
 
-fn load_cached_fingerprint(
+fn load_cached_fingerprints(
     conn: &Connection,
     path: &Path,
-) -> Result<Option<CachedConversationFingerprint>, String> {
-    conn.query_row(
-        r#"
+) -> Result<Vec<CachedConversationFingerprint>, String> {
+    let mut stmt = conn
+        .prepare(
+            r#"
         SELECT session_id, source_file_mtime_ms, source_file_size
         FROM conversation_sessions
         WHERE source = ?1 AND source_file = ?2 AND file_available = 1
-        ORDER BY ended_at DESC, session_id ASC
-        LIMIT 1
+        LIMIT 2
         "#,
-        params![Source::Codex.as_str(), path.to_string_lossy().to_string()],
-        |row| {
-            Ok(CachedConversationFingerprint {
-                session_id: row.get(0)?,
-                source_file_mtime_ms: row.get(1)?,
-                source_file_size: row.get(2)?,
-            })
-        },
-    )
-    .optional()
-    .map_err(|error| error.to_string())
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(
+            params![Source::Codex.as_str(), path.to_string_lossy().to_string()],
+            |row| {
+                Ok(CachedConversationFingerprint {
+                    session_id: row.get(0)?,
+                    source_file_mtime_ms: row.get(1)?,
+                    source_file_size: row.get(2)?,
+                })
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 fn modified_millis(metadata: &fs::Metadata) -> i64 {

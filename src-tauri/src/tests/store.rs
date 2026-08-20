@@ -111,9 +111,10 @@ fn conversation_source_file_lookup_uses_a_composite_index() {
     let plan: Vec<String> = conn
         .prepare(
             "EXPLAIN QUERY PLAN \
-             SELECT session_id FROM conversation_sessions \
+             SELECT session_id, source_file_mtime_ms, source_file_size \
+             FROM conversation_sessions \
              WHERE source = ?1 AND source_file = ?2 AND file_available = 1 \
-             ORDER BY ended_at DESC, session_id ASC LIMIT 1",
+             LIMIT 2",
         )
         .unwrap()
         .query_map(["codex", "/one.jsonl"], |row| row.get(3))
