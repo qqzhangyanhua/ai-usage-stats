@@ -1,0 +1,27 @@
+src/components/WorkTimeline.tsx
+  s_c3d6112e41b1da::t_3a783a2e8a6485 25,27,49,179,181-185,233-234,237-242,244-245
+  s_c3d6112e41b1da::t_d24188d93f9b81 26,48,80,95,201,216,221-223,225,228,231-232,235,243,248-249,251,253,255,257,261
+  s_c3d6112e41b1da::t_3ce4f1e2893fdf 7,9,16-17,35-43,79,81-94,96-98,190,192,194,202-205,208,215,217-220,224,226-227,229-230,236,246-247,250,252,254,256,258-260,262
+src/styles.css
+  s_c3d6112e41b1da::t_6e84d2e69b7efd 2835-2843,2851-2863,2865-2893
+  s_c3d6112e41b1da::t_78dcd133767b7d 2864
+  s_c3d6112e41b1da::t_eeae0381c39049 2894
+src/App.tsx
+  s_c3d6112e41b1da::t_2672bd6c61f202 167-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "5f017d31c36198ae953283ff3cf023414e973510",
+  "prompts": {},
+  "sessions": {
+    "s_c3d6112e41b1da": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f38b2bd4-6044-4b2b-9707-df63611c3aee",
+        "model": "glm-5.2"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
