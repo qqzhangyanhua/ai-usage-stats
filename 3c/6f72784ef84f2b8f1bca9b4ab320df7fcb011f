@@ -1,0 +1,40 @@
+src-tauri/src/tests/parity.rs
+  s_c3d6112e41b1da::t_6a8389cac4ae9a 143-145,147-149,151-153,155-156
+  s_c3d6112e41b1da::t_4c247e376f5c48 146,150,154
+src-tauri/src/tests/work_timeline.rs
+  s_c3d6112e41b1da::t_b1af936f45cd63 468
+  s_c3d6112e41b1da::t_401d7568dac9b4 407-424
+  s_c3d6112e41b1da::t_cd560ad98dbddc 192-406,425-436
+  s_c3d6112e41b1da::t_88f62ff6b27174 437-467,469-470
+src/types.ts
+  s_c3d6112e41b1da::t_a40a4f0a12fb45 617-620
+src-tauri/src/work_timeline.rs
+  s_c3d6112e41b1da::t_afb1899419eb72 172-175
+  s_c3d6112e41b1da::t_bade11e397734f 186,193,198-203
+  s_c3d6112e41b1da::t_0a4e6a2e57dabc 129
+  s_c3d6112e41b1da::t_144072db3b81ea 50,55-58,92,97-98,106,123,128,130-136,141-144,149-171,176-185,187-192,194-197
+  s_c3d6112e41b1da::t_891b55b0e5b0eb 204
+src/components/WorkTimeline.tsx
+  s_c3d6112e41b1da::t_f115aa451cef0d 121-125
+  s_c3d6112e41b1da::t_6b761f9ad34dc4 5-13
+  s_c3d6112e41b1da::t_c72b5989c5fb68 99-120,126
+src-tauri/src/domain.rs
+  s_c3d6112e41b1da::t_8a96ced5657ee6 620
+  s_c3d6112e41b1da::t_374238a6f5fdb8 619,621-623,629-632,642-645
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "3c6f72784ef84f2b8f1bca9b4ab320df7fcb011f",
+  "prompts": {},
+  "sessions": {
+    "s_c3d6112e41b1da": {
+      "agent_id": {
+        "tool": "droid",
+        "id": "f38b2bd4-6044-4b2b-9707-df63611c3aee",
+        "model": "glm-5.2"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
