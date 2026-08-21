@@ -26,11 +26,11 @@ export const BillingWindows = memo(function BillingWindows({
   }
 
   return (
-    <>
+    <ul className="billing-list">
       {current.map((window) => (
         <WindowRow key={`${window.source}-${window.start}`} window={window} hours={hours} />
       ))}
-    </>
+    </ul>
   );
 });
 
@@ -41,7 +41,7 @@ function WindowRow({ window, hours }: { window: BillingWindowDto; hours: number 
   const progress = Math.min(100, (elapsed / Math.max(span, 1)) * 100);
 
   return (
-    <div className="billing-row">
+    <li className="billing-row">
       <span className={`src-ico ${sourceTone[window.source] ?? "tone-other"}`}>
         {applicationLabel(window.source).slice(0, 1)}
       </span>
@@ -50,11 +50,13 @@ function WindowRow({ window, hours }: { window: BillingWindowDto; hours: number 
       <div className="billing-bar" aria-hidden="true">
         <i style={{ width: `${progress}%` }} />
       </div>
-      <span className="billing-stat">{formatCompact(window.total_tokens)}</span>
-      <span className="billing-stat">{formatUsd(window.cost, window.unpriced)}</span>
-      <span className="billing-stat">{formatBurn(window)}</span>
-      <span className="billing-stat muted">{formatProjection(window)}</span>
-    </div>
+      <div className="billing-stats">
+        <span className="billing-stat">{formatCompact(window.total_tokens)}</span>
+        <span className="billing-stat">{formatUsd(window.cost, window.unpriced)}</span>
+        <span className="billing-stat">{formatBurn(window)}</span>
+        <span className="billing-stat muted">{formatProjection(window)}</span>
+      </div>
+    </li>
   );
 }
 
