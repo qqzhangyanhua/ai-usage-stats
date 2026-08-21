@@ -38,7 +38,7 @@ export function CollapsibleSection({
         .join(" ")}
     >
       <div className="panel-head collapsible-head">
-        <h2>{title}</h2>
+        <h2 title={title}>{title}</h2>
         <div className="collapsible-actions">
           {open ? extra : <span className="muted collapsible-summary">{collapsedSummary}</span>}
           <Button

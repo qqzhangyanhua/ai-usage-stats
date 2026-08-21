@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   createConversationRequestGate,
+  conversationJumpBehavior,
+  conversationJumpScrollTop,
   conversationTimelineScrollTarget,
   isConversationResponseCurrent,
   isNearConversationBottom,
+  isNearConversationTop,
   nextConversationRevisionPollState,
   nextConversationFollowState,
 } from "./conversationFollow";
@@ -62,6 +65,20 @@ describe("isConversationResponseCurrent", () => {
   });
 });
 
+describe("isNearConversationTop", () => {
+  it("treats a viewport within the threshold as being at the top", () => {
+    expect(isNearConversationTop({ scrollTop: 41, clientHeight: 400, scrollHeight: 1000 })).toBe(
+      false,
+    );
+    expect(isNearConversationTop({ scrollTop: 40, clientHeight: 400, scrollHeight: 1000 })).toBe(
+      true,
+    );
+    expect(isNearConversationTop({ scrollTop: 0, clientHeight: 400, scrollHeight: 1000 })).toBe(
+      true,
+    );
+  });
+});
+
 describe("isNearConversationBottom", () => {
   it("treats a viewport within the threshold as being at the bottom", () => {
     expect(
@@ -79,6 +96,21 @@ describe("isNearConversationBottom", () => {
     expect(isNearConversationBottom({ scrollTop: 0, clientHeight: 500, scrollHeight: 300 })).toBe(
       true,
     );
+  });
+});
+
+describe("conversationJumpScrollTop", () => {
+  it("maps top and bottom edges to scroll offsets", () => {
+    expect(conversationJumpScrollTop("top", 960)).toBe(0);
+    expect(conversationJumpScrollTop("bottom", 960)).toBe(960);
+    expect(conversationJumpScrollTop("bottom", -20)).toBe(0);
+  });
+});
+
+describe("conversationJumpBehavior", () => {
+  it("uses instant scrolling when reduced motion is requested", () => {
+    expect(conversationJumpBehavior(true)).toBe("auto");
+    expect(conversationJumpBehavior(false)).toBe("smooth");
   });
 });
 

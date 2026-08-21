@@ -52,11 +52,31 @@ export function isConversationResponseCurrent({
   return mounted && generation === currentGeneration;
 }
 
+export function isNearConversationTop(
+  { scrollTop }: ConversationScrollMetrics,
+  threshold = 40,
+): boolean {
+  return Math.max(0, scrollTop) <= Math.max(0, threshold);
+}
+
 export function isNearConversationBottom(
   { scrollTop, clientHeight, scrollHeight }: ConversationScrollMetrics,
   threshold = 40,
 ): boolean {
   return scrollHeight - scrollTop - clientHeight <= Math.max(0, threshold);
+}
+
+export type ConversationJumpEdge = "top" | "bottom";
+
+export function conversationJumpScrollTop(
+  edge: ConversationJumpEdge,
+  scrollHeight: number,
+): number {
+  return edge === "top" ? 0 : Math.max(0, scrollHeight);
+}
+
+export function conversationJumpBehavior(reducedMotion: boolean): ScrollBehavior {
+  return reducedMotion ? "auto" : "smooth";
 }
 
 export function conversationTimelineScrollTarget({

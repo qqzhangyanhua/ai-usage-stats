@@ -1,0 +1,78 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationSessionRow } from "../types";
+import {
+  capabilityLabel,
+  conversationApplicationLabel,
+  conversationDetailSummary,
+  conversationFileUnavailableLabel,
+  conversationSessionTime,
+  conversationStatusLabel,
+} from "./conversationDisplay";
+
+function session(overrides: Partial<ConversationSessionRow> = {}): ConversationSessionRow {
+  return {
+    source: "codex",
+    session_id: "conv-1",
+    title: "实现折叠",
+    project: "/workspace/project",
+    model: "gpt-test",
+    started_at: "2026-08-21T00:00:00Z",
+    ended_at: "2026-08-21T00:01:00Z",
+    source_file: "conv-1.jsonl",
+    source_files: ["conv-1.jsonl"],
+    capabilities: ["messages", "events"],
+    support_status: "experimental",
+    file_available: true,
+    ...overrides,
+  };
+}
+
+describe("conversation display labels", () => {
+  it("maps known capabilities and leaves unknown ids unchanged", () => {
+    expect(capabilityLabel("events")).toBe("完整事件");
+    expect(capabilityLabel("custom")).toBe("custom");
+  });
+
+  it("keeps Cursor Agent grouped with Cursor", () => {
+    expect(conversationApplicationLabel("cursor_agent")).toBe("Cursor / Cursor Agent");
+    expect(conversationApplicationLabel("codex")).toBe("Codex");
+  });
+
+  it("translates experimental status and file-missing chips", () => {
+    expect(conversationStatusLabel("experimental")).toBe("实验性");
+    expect(conversationStatusLabel("stable")).toBe("stable");
+    expect(conversationFileUnavailableLabel("cursor_agent")).toBe("缺少 transcript");
+    expect(conversationFileUnavailableLabel("codex")).toBe("原文件已删除");
+  });
+
+  it("prefers ended_at for the session clock", () => {
+    expect(conversationSessionTime(session())).toBe("2026-08-21T00:01:00Z");
+    expect(conversationSessionTime(session({ ended_at: "" }))).toBe("2026-08-21T00:00:00Z");
+  });
+});
+
+describe("conversationDetailSummary", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("joins source, project, model and relative time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-21T10:01:00Z"));
+    expect(conversationDetailSummary(session())).toBe("Codex · project · gpt-test · 10 小时前");
+  });
+
+  it("falls back when model or project is empty and omits missing time", () => {
+    expect(
+      conversationDetailSummary(
+        session({
+          source: "cursor_agent",
+          project: "",
+          model: "",
+          started_at: "",
+          ended_at: "",
+        }),
+      ),
+    ).toBe("Cursor / Cursor Agent · 未标注 · 未标注");
+  });
+});
