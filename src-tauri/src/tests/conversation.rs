@@ -953,6 +953,76 @@ fn codex_conversation_partial_file_loss_preserves_last_good_aggregate_until_rest
 }
 
 #[test]
+fn codex_conversation_partial_file_loss_isolated_from_unrelated_parse_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let meta = serde_json::json!({
+        "type": "session_meta",
+        "timestamp": "2026-08-21T00:00:00Z",
+        "payload": {"id": "isolated-loss-1", "cwd": "/workspace/isolated-loss"}
+    });
+    seed_codex_records(
+        home,
+        "rollout-isolated-loss-a.jsonl",
+        &[
+            meta.clone(),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:01Z",
+                "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "first"}]}
+            }),
+        ],
+    );
+    let missing_path = seed_codex_records(
+        home,
+        "rollout-isolated-loss-b.jsonl",
+        &[
+            meta,
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:02Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "second"}]}
+            }),
+        ],
+    );
+    let failed_path = seed_codex_records(
+        home,
+        "rollout-unrelated-failure.jsonl",
+        &[
+            serde_json::json!({
+                "type": "session_meta",
+                "timestamp": "2026-08-21T00:00:03Z",
+                "payload": {"id": "unrelated-failure-1", "cwd": "/workspace/unrelated"}
+            }),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:04Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "unrelated"}]}
+            }),
+        ],
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    std::fs::remove_file(missing_path).unwrap();
+    std::fs::write(failed_path, "{not-json}\n").unwrap();
+    let issues = crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    assert_eq!(issues.len(), 1);
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    let preserved = page
+        .rows
+        .iter()
+        .find(|row| row.session_id == "isolated-loss-1")
+        .unwrap();
+    assert_eq!(preserved.ended_at, "2026-08-21T00:00:02Z");
+    assert_eq!(preserved.source_files.len(), 2);
+    assert!(!preserved.file_available);
+}
+
+#[test]
 fn codex_conversation_parse_failure_preserves_the_last_good_multi_file_aggregate() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();

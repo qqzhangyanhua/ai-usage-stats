@@ -132,37 +132,46 @@ pub(crate) fn refresh_codex_in_roots(
         }
     }
 
+    let failed_paths_by_session = failed_session_paths(conn, &issues)?;
+    let blocked_session_ids = failed_paths_by_session
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut scanned_paths_by_session: BTreeMap<String, BTreeSet<PathBuf>> = unchanged_paths
+        .iter()
+        .map(|(session_id, paths)| (session_id.clone(), paths.iter().cloned().collect()))
+        .collect();
+    for (session_id, parsed_files) in &grouped {
+        scanned_paths_by_session
+            .entry(session_id.clone())
+            .or_default()
+            .extend(
+                parsed_files
+                    .iter()
+                    .map(|parsed| PathBuf::from(&parsed.session.source_file)),
+            );
+    }
+    for (session_id, failed_paths) in &failed_paths_by_session {
+        scanned_paths_by_session
+            .entry(session_id.clone())
+            .or_default()
+            .extend(failed_paths.iter().cloned());
+    }
     let mut incomplete_session_ids = BTreeSet::new();
-    if issues.is_empty() {
-        let mut scanned_paths_by_session: BTreeMap<String, BTreeSet<PathBuf>> = unchanged_paths
-            .iter()
-            .map(|(session_id, paths)| (session_id.clone(), paths.iter().cloned().collect()))
-            .collect();
-        for (session_id, parsed_files) in &grouped {
-            scanned_paths_by_session
-                .entry(session_id.clone())
-                .or_default()
-                .extend(
-                    parsed_files
-                        .iter()
-                        .map(|parsed| PathBuf::from(&parsed.session.source_file)),
-                );
+    for (session_id, scanned_paths) in &scanned_paths_by_session {
+        let indexed_paths = load_session_files(conn, Source::Codex.as_str(), session_id)?
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        if !indexed_paths.is_empty() && !indexed_paths.is_subset(scanned_paths) {
+            let scanned_paths = scanned_paths.iter().cloned().collect::<Vec<_>>();
+            update_session_files(conn, session_id, &scanned_paths, false)?;
+            mark_session_unavailable(conn, session_id)?;
+            incomplete_session_ids.insert(session_id.clone());
         }
-        for (session_id, scanned_paths) in &scanned_paths_by_session {
-            let indexed_paths = load_session_files(conn, Source::Codex.as_str(), session_id)?
-                .into_iter()
-                .collect::<BTreeSet<_>>();
-            if !indexed_paths.is_empty() && !indexed_paths.is_subset(scanned_paths) {
-                let scanned_paths = scanned_paths.iter().cloned().collect::<Vec<_>>();
-                update_session_files(conn, session_id, &scanned_paths, false)?;
-                mark_session_unavailable(conn, session_id)?;
-                incomplete_session_ids.insert(session_id.clone());
-            }
-        }
-        for session_id in &incomplete_session_ids {
-            grouped.remove(session_id);
-            unchanged_paths.remove(session_id);
-        }
+    }
+    for session_id in &incomplete_session_ids {
+        grouped.remove(session_id);
+        unchanged_paths.remove(session_id);
     }
 
     for (session_id, paths) in std::mem::take(&mut unchanged_paths) {
@@ -187,7 +196,6 @@ pub(crate) fn refresh_codex_in_roots(
         .chain(incomplete_session_ids.iter())
         .cloned()
         .collect::<BTreeSet<_>>();
-    let blocked_session_ids = failed_session_ids(conn, &issues)?;
     for (session_id, parsed_files) in grouped {
         if blocked_session_ids.contains(&session_id) {
             continue;
@@ -1734,11 +1742,11 @@ fn upsert_session(
     Ok(())
 }
 
-fn failed_session_ids(
+fn failed_session_paths(
     conn: &Connection,
     issues: &[ConversationIndexIssue],
-) -> Result<BTreeSet<String>, String> {
-    let mut session_ids = BTreeSet::new();
+) -> Result<BTreeMap<String, BTreeSet<PathBuf>>, String> {
+    let mut paths_by_session = BTreeMap::new();
     let mut statement = conn
         .prepare(
             r#"
@@ -1755,10 +1763,13 @@ fn failed_session_ids(
             .optional()
             .map_err(|error| error.to_string())?
         {
-            session_ids.insert(session_id);
+            paths_by_session
+                .entry(session_id)
+                .or_insert_with(BTreeSet::new)
+                .insert(PathBuf::from(&issue.path));
         }
     }
-    Ok(session_ids)
+    Ok(paths_by_session)
 }
 
 fn update_session_files(
