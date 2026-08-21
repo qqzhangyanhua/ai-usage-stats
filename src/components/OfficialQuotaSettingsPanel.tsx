@@ -17,9 +17,7 @@ export function OfficialQuotaSettingsPanel({
   const alertsEnabled = quota?.alerts_enabled ?? true;
 
   useEffect(() => {
-    void invoke<OfficialQuotaHookDto>("get_official_quota_hook")
-      .then(setHook)
-      .catch(onError);
+    void invoke<OfficialQuotaHookDto>("get_official_quota_hook").then(setHook).catch(onError);
   }, [onError]);
 
   async function refresh() {
@@ -65,8 +63,8 @@ export function OfficialQuotaSettingsPanel({
         <div>
           <h2>官方额度</h2>
           <p className="panel-note">
-            Claude 通过 statusline 捕获本机官方百分比；Codex 问本机 app-server；Cursor
-            使用已有钥匙串打限额接口；Grok 读取本机 <code>~/.grok/auth.json</code> 打 CLI
+            Claude 通过 statusline 捕获本机官方百分比；Codex 问本机 app-server；Cursor 读取本机
+            Cursor 客户端登录态打限额接口；Grok 读取本机 <code>~/.grok/auth.json</code> 打 CLI
             限额接口。已有 Claude statusLine 不会被覆盖。
           </p>
         </div>
@@ -84,8 +82,17 @@ export function OfficialQuotaSettingsPanel({
           {quota.rows.map((row) => (
             <li key={row.provider}>
               <strong>{row.application}</strong>
-              <span>{row.freshness === "official" ? "官方" : row.freshness === "stale" ? "已过期" : "暂无"}</span>
-              <em>{row.error ?? (row.windows.length > 0 ? `${row.windows.length} 个窗口` : "等待捕获")}</em>
+              <span>
+                {row.freshness === "official"
+                  ? "官方"
+                  : row.freshness === "stale"
+                    ? "已过期"
+                    : "暂无"}
+              </span>
+              <em>
+                {row.error ??
+                  (row.windows.length > 0 ? `${row.windows.length} 个窗口` : "等待捕获")}
+              </em>
             </li>
           ))}
         </ul>
@@ -109,7 +116,11 @@ export function OfficialQuotaSettingsPanel({
             disabled={busy !== "idle" || hook.conflict || hook.already_configured}
             onClick={() => void applyHook()}
           >
-            {hook.already_configured ? "已配置" : hook.conflict ? "已有 hook，未写入" : "预览确认后写入"}
+            {hook.already_configured
+              ? "已配置"
+              : hook.conflict
+                ? "已有 hook，未写入"
+                : "预览确认后写入"}
           </Button>
         </div>
       ) : null}
