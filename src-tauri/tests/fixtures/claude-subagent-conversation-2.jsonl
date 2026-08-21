@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"claude-parent-1","agentId":"claude-child-2","isSidechain":true,"timestamp":"2026-09-01T10:00:01.300Z","cwd":"/workspace/claude-app","message":{"role":"user","content":"Audit the tests in parallel"}}
+{"type":"assistant","sessionId":"claude-parent-1","agentId":"claude-child-2","isSidechain":true,"timestamp":"2026-09-01T10:00:01.700Z","message":{"id":"msg-child-2","role":"assistant","model":"claude-haiku-test","content":[{"type":"text","text":"The test audit is complete."}]}}

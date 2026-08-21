@@ -78,6 +78,19 @@ fn claude_adapter_maps_usage_and_project_dir() {
 }
 
 #[test]
+fn claude_adapter_uses_structured_agent_id_for_child_usage() {
+    let records = claude::parse_claude_jsonl(
+        &fixture("claude-subagent-conversation.jsonl"),
+        "/Users/example/.claude/projects/-workspace-app/session/subagents/agent-claude-child-1.jsonl",
+    );
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].session_id, "claude-child-1");
+    assert_eq!(records[0].input_tokens, 3);
+    assert_eq!(records[0].output_tokens, 2);
+}
+
+#[test]
 fn claude_adapter_dedups_message_id_and_skips_zero_usage() {
     let records = claude::parse_claude_jsonl(
         &fixture("claude-dedup.jsonl"),

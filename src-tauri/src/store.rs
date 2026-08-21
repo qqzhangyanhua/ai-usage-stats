@@ -6,7 +6,7 @@ use crate::domain::{
     CursorSessionRecord, CursorUsageEvent, OfficialQuotaWindow, Source, UsageRecord,
 };
 
-pub const ADAPTER_VERSION: i64 = 7;
+pub const ADAPTER_VERSION: i64 = 8;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -148,6 +148,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file_mtime_ms INTEGER NOT NULL DEFAULT 0,
             source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
+            is_top_level INTEGER NOT NULL DEFAULT 1,
             -- Reconstructable relationship IDs only; conversation bodies remain in source files.
             agent_metadata_json TEXT NOT NULL DEFAULT '{}',
             PRIMARY KEY(source, session_id)
@@ -215,6 +216,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "conversation_sessions",
         "source_file_size",
         "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "is_top_level",
+        "INTEGER NOT NULL DEFAULT 1",
     )?;
     ensure_column(
         conn,

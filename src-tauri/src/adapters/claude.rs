@@ -41,13 +41,19 @@ pub fn parse_claude_jsonl(content: &str, source_file: &str) -> Vec<UsageRecord> 
         if usage.is_null() {
             continue;
         }
+        let agent_id = text_field(&value, &["agentId", "agent_id"]);
+        let record_session_id = if agent_id.is_empty() {
+            session_id.clone()
+        } else {
+            agent_id
+        };
         let record = finish(UsageRecord {
             occurred_at: text_field(&value, &["timestamp"]),
             source: Source::Claude,
             model: text_field(&message, &["model"]),
             provider: String::new(),
             project: project.clone(),
-            session_id: session_id.clone(),
+            session_id: record_session_id,
             source_file: source_file.to_string(),
             input_tokens: i64_field(&usage, &["input_tokens"]),
             output_tokens: i64_field(&usage, &["output_tokens"]),

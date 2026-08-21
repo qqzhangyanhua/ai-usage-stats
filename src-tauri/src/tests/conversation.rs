@@ -15,6 +15,17 @@ fn seed_codex_conversation(home: &std::path::Path) -> std::path::PathBuf {
     seed_codex_fixture(home, "rollout-conv-1.jsonl", "codex-conversation.jsonl")
 }
 
+fn seed_conversation_fixture(
+    home: &std::path::Path,
+    relative_path: &str,
+    fixture_name: &str,
+) -> std::path::PathBuf {
+    let path = home.join(relative_path);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, fixture(fixture_name)).unwrap();
+    path
+}
+
 fn seed_codex_fixture(
     home: &std::path::Path,
     file_name: &str,
@@ -1718,6 +1729,213 @@ fn ingest_all_refreshes_codex_conversation_catalog_without_usage_records() {
             .unwrap();
     assert_eq!(page.total, 1);
     assert_eq!(page.rows[0].title, "发布 Tray 客户端版本支持图片编辑透传");
+}
+
+#[test]
+fn configured_claude_pi_and_gemini_roots_feed_the_unified_conversation_services() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let claude_root = home.join(".claude");
+    let pi_root = home.join(".pi/agent/sessions");
+    let gemini_root = home.join(".gemini/tmp");
+    seed_conversation_fixture(
+        home,
+        ".claude/projects/-workspace-claude-app/claude-parent-1.jsonl",
+        "claude-conversation.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".claude/projects/-workspace-claude-app/claude-parent-1/subagents/agent-claude-child-1.jsonl",
+        "claude-subagent-conversation.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".claude/projects/-workspace-claude-app/claude-parent-1/subagents/agent-claude-child-2.jsonl",
+        "claude-subagent-conversation-2.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".claude/projects/-workspace-claude-empty/claude-no-usage.jsonl",
+        "claude-conversation-no-usage.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".pi/agent/sessions/pi-session-1.jsonl",
+        "pi-conversation.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".pi/agent/sessions/pi-no-usage.jsonl",
+        "pi-conversation-no-usage.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".gemini/tmp/gemini-project/chats/session-gemini-session-1.json",
+        "gemini-conversation.json",
+    );
+    seed_conversation_fixture(
+        home,
+        ".gemini/tmp/gemini-empty/chats/session-gemini-no-usage.json",
+        "gemini-conversation-no-usage.json",
+    );
+    let overrides = crate::ingest::PathOverrides::from([
+        ("CLAUDE_CONFIG_DIR", vec![claude_root]),
+        ("PI_AGENT_DIR", vec![pi_root]),
+        ("GEMINI_DATA_DIR", vec![gemini_root]),
+    ]);
+    let conn = store::open_memory().unwrap();
+
+    let report = crate::ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+
+    assert!(report.conversation_issues.is_empty());
+    assert_eq!(page.total, 6);
+    assert!(page
+        .rows
+        .iter()
+        .all(|row| row.support_status == "experimental"));
+    let identities = page
+        .rows
+        .iter()
+        .map(|row| (row.source.as_str(), row.session_id.as_str()))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(identities.contains(&("claude", "claude-parent-1")));
+    assert!(identities.contains(&("claude", "claude-no-usage")));
+    assert!(identities.contains(&("pi", "pi-session-1")));
+    assert!(identities.contains(&("pi", "pi-no-usage")));
+    assert!(identities.contains(&("gemini", "gemini-session-1")));
+    assert!(identities.contains(&("gemini", "gemini-no-usage")));
+    assert!(!identities
+        .iter()
+        .any(|(_, session_id)| { matches!(*session_id, "claude-child-1" | "claude-child-2") }));
+
+    let claude =
+        crate::conversation::load_detail(&conn, home, "claude", "claude-parent-1").unwrap();
+    assert_eq!(claude.usage_records.len(), 1);
+    assert!(claude.events.iter().any(|event| {
+        event.kind == crate::domain::ConversationEventKind::ToolCall
+            && event.name.as_deref() == Some("Agent")
+    }));
+    assert_eq!(claude.agent_relations.children.len(), 2);
+    let child_links = claude
+        .agent_relations
+        .children
+        .iter()
+        .filter_map(|link| {
+            link.session
+                .as_ref()
+                .map(|session| (session.session_id.as_str(), link.launch_event_id.as_deref()))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(child_links.len(), 2);
+    assert!(child_links["claude-child-1"].is_some());
+    assert!(child_links["claude-child-2"].is_none());
+    let child = crate::conversation::load_detail(&conn, home, "claude", "claude-child-1").unwrap();
+    assert_eq!(child.usage_records.len(), 1);
+    assert_eq!(child.usage_records[0].session_id, "claude-child-1");
+    assert!(child
+        .events
+        .iter()
+        .any(|event| event.text.as_deref() == Some("The audit is complete.")));
+    let parallel_child =
+        crate::conversation::load_detail(&conn, home, "claude", "claude-child-2").unwrap();
+    assert!(parallel_child
+        .events
+        .iter()
+        .any(|event| event.text.as_deref() == Some("The test audit is complete.")));
+    assert!(!parallel_child
+        .events
+        .iter()
+        .any(|event| event.text.as_deref() == Some("The audit is complete.")));
+
+    let pi = crate::conversation::load_detail(&conn, home, "pi", "pi-session-1").unwrap();
+    assert_eq!(pi.usage_records.len(), 1);
+    assert!(pi.events.iter().any(|event| {
+        event.kind == crate::domain::ConversationEventKind::ModelChange
+            && event.name.as_deref() == Some("pi-model-test")
+    }));
+    assert!(pi.events.iter().any(|event| {
+        event.kind == crate::domain::ConversationEventKind::ToolCall
+            && event.name.as_deref() == Some("read")
+    }));
+    assert!(pi
+        .events
+        .iter()
+        .any(|event| event.kind == crate::domain::ConversationEventKind::ToolResult));
+    let pi_no_usage = crate::conversation::load_detail(&conn, home, "pi", "pi-no-usage").unwrap();
+    assert!(pi_no_usage.usage_records.is_empty());
+    assert!(pi_no_usage.session.model.is_empty());
+    assert!(pi_no_usage
+        .session
+        .capabilities
+        .contains(&"usage".to_string()));
+    assert_eq!(pi_no_usage.messages.len(), 2);
+    assert_eq!(
+        pi.events
+            .iter()
+            .map(|event| event.event_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        pi.events.len()
+    );
+
+    let gemini =
+        crate::conversation::load_detail(&conn, home, "gemini", "gemini-session-1").unwrap();
+    assert_eq!(gemini.usage_records.len(), 1);
+    assert!(gemini.events.iter().any(|event| {
+        event.kind == crate::domain::ConversationEventKind::ToolCall
+            && event.name.as_deref() == Some("read_file")
+    }));
+    let gemini_result = gemini
+        .events
+        .iter()
+        .find(|event| event.kind == crate::domain::ConversationEventKind::ToolResult)
+        .unwrap();
+    assert!(gemini_result
+        .text
+        .as_deref()
+        .is_some_and(|text| text.contains("dependency result")));
+    assert!(gemini
+        .events
+        .iter()
+        .any(|event| event.kind == crate::domain::ConversationEventKind::Plan));
+    assert_eq!(
+        gemini
+            .events
+            .iter()
+            .map(|event| event.event_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        gemini.events.len()
+    );
+    let event_content = crate::conversation::load_event_content(
+        &conn,
+        home,
+        "gemini",
+        "gemini-session-1",
+        &gemini_result.event_id,
+    )
+    .unwrap();
+    assert!(event_content
+        .text
+        .as_deref()
+        .is_some_and(|text| text.contains("dependency result")));
+    let raw_export = crate::conversation::build_export(
+        &conn,
+        home,
+        "gemini",
+        "gemini-session-1",
+        crate::domain::ConversationExportFormat::Json,
+    )
+    .unwrap();
+    assert!(raw_export.default_name.ends_with(".json"));
+    let gemini_no_usage =
+        crate::conversation::load_detail(&conn, home, "gemini", "gemini-no-usage").unwrap();
+    assert!(gemini_no_usage.usage_records.is_empty());
+    assert!(gemini_no_usage.session.model.is_empty());
+    assert_eq!(gemini_no_usage.messages.len(), 2);
 }
 
 #[test]

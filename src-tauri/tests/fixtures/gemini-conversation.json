@@ -1,0 +1,8 @@
+{
+  "sessionId": "gemini-session-1",
+  "projectHash": "gemini-project",
+  "messages": [
+    {"id":"gemini-user-1","timestamp":"2026-09-03T08:00:00Z","type":"user","content":"Inspect dependencies"},
+    {"id":"gemini-assistant-1","timestamp":"2026-09-03T08:00:01Z","type":"gemini","model":"gemini-test","content":"I will inspect them.","thoughts":[{"subject":"Dependency audit","description":"Inspect the manifest first."}],"toolCalls":[{"id":"gemini-tool-1","name":"read_file","args":{"path":"package.json"},"result":[{"functionResponse":{"name":"read_file","response":{"output":"dependency result"}}}],"status":"success"}],"tokens":{"input":30,"output":10,"cached":5,"thoughts":3,"total":48}}
+  ]
+}
