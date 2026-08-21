@@ -148,6 +148,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file_mtime_ms INTEGER NOT NULL DEFAULT 0,
             source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
+            adapter_version INTEGER NOT NULL DEFAULT 0,
             is_top_level INTEGER NOT NULL DEFAULT 1,
             -- Reconstructable relationship IDs only; conversation bodies remain in source files.
             agent_metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -164,6 +165,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file TEXT NOT NULL,
             source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
+            adapter_version INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY(source, source_file)
         );
         CREATE INDEX IF NOT EXISTS idx_conversation_session_files_session
@@ -220,6 +222,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     ensure_column(
         conn,
         "conversation_sessions",
+        "adapter_version",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
         "is_top_level",
         "INTEGER NOT NULL DEFAULT 1",
     )?;
@@ -239,6 +247,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         conn,
         "conversation_session_files",
         "source_file_size",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_session_files",
+        "adapter_version",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
     ensure_column(
@@ -518,6 +532,16 @@ pub fn purge_archived(conn: &Connection, source: Option<Source>) -> Result<u64, 
 pub fn invalidate_source(conn: &Connection, source: Source) -> Result<(), String> {
     conn.execute(
         "UPDATE ingested_files SET adapter_version = 0 WHERE source = ?1",
+        params![source.as_str()],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE conversation_sessions SET adapter_version = 0 WHERE source = ?1",
+        params![source.as_str()],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE conversation_session_files SET adapter_version = 0 WHERE source = ?1",
         params![source.as_str()],
     )
     .map_err(|e| e.to_string())?;

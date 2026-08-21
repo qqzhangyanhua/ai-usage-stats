@@ -1465,6 +1465,75 @@ fn codex_conversation_refresh_skips_unchanged_available_files() {
 }
 
 #[test]
+fn rebuilding_source_reparses_unchanged_conversation_index() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all(&conn, home).unwrap();
+    conn.execute(
+        "UPDATE conversation_sessions SET title = 'cached-title' WHERE source = 'codex' AND session_id = 'conv-1'",
+        [],
+    )
+    .unwrap();
+
+    let report = ingest::rebuild_cache(&conn, home, Some(Source::Codex)).unwrap();
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+
+    assert!(report.conversation_issues.is_empty());
+    assert_eq!(page.rows[0].title, "发布 Tray 客户端版本支持图片编辑透传");
+}
+
+#[test]
+fn conversation_adapter_version_change_reparses_unchanged_index() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    conn.execute_batch(
+        r#"
+        UPDATE conversation_sessions
+        SET title = 'cached-title', adapter_version = 0
+        WHERE source = 'codex' AND session_id = 'conv-1';
+        UPDATE conversation_session_files
+        SET adapter_version = 0
+        WHERE source = 'codex' AND session_id = 'conv-1';
+        "#,
+    )
+    .unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    let versions = conn
+        .query_row(
+            r#"
+            SELECT sessions.adapter_version, files.adapter_version
+            FROM conversation_sessions AS sessions
+            JOIN conversation_session_files AS files
+              ON files.source = sessions.source AND files.session_id = sessions.session_id
+            WHERE sessions.source = 'codex' AND sessions.session_id = 'conv-1'
+            "#,
+            [],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .unwrap();
+
+    assert_eq!(page.rows[0].title, "发布 Tray 客户端版本支持图片编辑透传");
+    assert_eq!(
+        versions,
+        (
+            crate::conversation::CONVERSATION_ADAPTER_VERSION,
+            crate::conversation::CONVERSATION_ADAPTER_VERSION,
+        )
+    );
+}
+
+#[test]
 fn codex_conversation_refresh_reparses_same_millisecond_nanosecond_change() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
@@ -1667,7 +1736,7 @@ fn conversation_schema_migrates_lifecycle_columns_for_old_caches() {
     let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
     let lifecycle = conn
         .query_row(
-            "SELECT file_available, source_file_mtime_ms, source_file_mtime_ns, source_file_size FROM conversation_sessions WHERE session_id = 'legacy'",
+            "SELECT file_available, source_file_mtime_ms, source_file_mtime_ns, source_file_size, adapter_version FROM conversation_sessions WHERE session_id = 'legacy'",
             [],
             |row| {
                 Ok((
@@ -1675,11 +1744,12 @@ fn conversation_schema_migrates_lifecycle_columns_for_old_caches() {
                     row.get::<_, i64>(1)?,
                     row.get::<_, i64>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             },
         )
         .unwrap();
-    assert_eq!(lifecycle, (1, 0, 0, 0));
+    assert_eq!(lifecycle, (1, 0, 0, 0, 0));
     let indexes: Vec<String> = conn
         .prepare("PRAGMA index_list(conversation_sessions)")
         .unwrap()

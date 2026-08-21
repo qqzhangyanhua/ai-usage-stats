@@ -40,6 +40,7 @@ const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -53,6 +54,7 @@ struct CachedConversationFingerprint {
     session_id: String,
     source_file_mtime_ns: i64,
     source_file_size: i64,
+    adapter_version: i64,
 }
 
 struct ParsedConversation {
@@ -174,7 +176,10 @@ pub(crate) fn refresh_source_in_roots(
         let size = metadata.len() as i64;
         let cached = load_cached_fingerprints(conn, source, &path)?;
         if let [cached] = cached.as_slice() {
-            if cached.source_file_mtime_ns == mtime_ns && cached.source_file_size == size {
+            if cached.source_file_mtime_ns == mtime_ns
+                && cached.source_file_size == size
+                && cached.adapter_version == CONVERSATION_ADAPTER_VERSION
+            {
                 unchanged_paths
                     .entry(cached.session_id.clone())
                     .or_default()
@@ -1999,8 +2004,9 @@ fn upsert_session(
         INSERT INTO conversation_sessions(
             source, session_id, title, project, model, started_at, ended_at,
             source_file, capabilities_json, support_status, file_available,
-            source_file_mtime_ns, source_file_size, is_top_level, agent_metadata_json
-        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
+            source_file_mtime_ns, source_file_size, adapter_version, is_top_level,
+            agent_metadata_json
+        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
         ON CONFLICT(source, session_id) DO UPDATE SET
             title = excluded.title,
             project = excluded.project,
@@ -2013,6 +2019,7 @@ fn upsert_session(
             file_available = excluded.file_available,
             source_file_mtime_ns = excluded.source_file_mtime_ns,
             source_file_size = excluded.source_file_size,
+            adapter_version = excluded.adapter_version,
             is_top_level = excluded.is_top_level,
             agent_metadata_json = excluded.agent_metadata_json
         "#,
@@ -2030,6 +2037,7 @@ fn upsert_session(
             session.file_available,
             source_file_mtime_ns,
             source_file_size,
+            CONVERSATION_ADAPTER_VERSION,
             is_top_level,
             agent_metadata,
         ],
@@ -2089,12 +2097,14 @@ fn update_session_files(
         conn.execute(
             r#"
             INSERT INTO conversation_session_files(
-                source, session_id, source_file, source_file_mtime_ns, source_file_size
-            ) VALUES(?1, ?2, ?3, ?4, ?5)
+                source, session_id, source_file, source_file_mtime_ns, source_file_size,
+                adapter_version
+            ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(source, source_file) DO UPDATE SET
                 session_id = excluded.session_id,
                 source_file_mtime_ns = excluded.source_file_mtime_ns,
-                source_file_size = excluded.source_file_size
+                source_file_size = excluded.source_file_size,
+                adapter_version = excluded.adapter_version
             "#,
             params![
                 source.as_str(),
@@ -2102,6 +2112,7 @@ fn update_session_files(
                 path.to_string_lossy().to_string(),
                 modified_nanos(&metadata),
                 metadata.len() as i64,
+                CONVERSATION_ADAPTER_VERSION,
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -2548,15 +2559,16 @@ fn load_cached_fingerprints(
     let mut stmt = conn
         .prepare(
             r#"
-        SELECT DISTINCT session_id, source_file_mtime_ns, source_file_size
+        SELECT DISTINCT session_id, source_file_mtime_ns, source_file_size, adapter_version
         FROM (
-            SELECT files.session_id, files.source_file_mtime_ns, files.source_file_size
+            SELECT files.session_id, files.source_file_mtime_ns, files.source_file_size,
+                   files.adapter_version
             FROM conversation_session_files AS files
             JOIN conversation_sessions AS sessions
               ON sessions.source = files.source AND sessions.session_id = files.session_id
             WHERE files.source = ?1 AND files.source_file = ?2 AND sessions.file_available = 1
             UNION ALL
-            SELECT session_id, source_file_mtime_ns, source_file_size
+            SELECT session_id, source_file_mtime_ns, source_file_size, adapter_version
             FROM conversation_sessions
             WHERE source = ?1 AND source_file = ?2 AND file_available = 1
         )
@@ -2572,6 +2584,7 @@ fn load_cached_fingerprints(
                     session_id: row.get(0)?,
                     source_file_mtime_ns: row.get(1)?,
                     source_file_size: row.get(2)?,
+                    adapter_version: row.get(3)?,
                 })
             },
         )
