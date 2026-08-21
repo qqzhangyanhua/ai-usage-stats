@@ -1,0 +1,44 @@
+use super::*;
+
+#[test]
+fn adapter_uses_droid_filename_identity_and_reports_partial_records_structurally() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("droid-sparse.jsonl");
+    std::fs::write(
+        &path,
+        concat!(
+            "{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"call-1\",\"name\":\"Read\",\"input\":{\"path\":\"README.md\"}}]}\n",
+            "{\"type\":\"future_record\",\"secret_body\":\"must not enter diagnostics\"}\n"
+        ),
+    )
+    .unwrap();
+
+    let batch = index(&path).unwrap();
+    let parsed = &batch.conversations[0];
+    assert_eq!(parsed.session.session_id, "droid-sparse");
+    assert!(parsed.session.model.is_empty());
+    assert!(parsed.messages.is_empty());
+    let call = parsed
+        .events
+        .iter()
+        .find(|event| event.kind == EventKind::ToolCall)
+        .unwrap();
+    assert_eq!(call.capability_status, EventStatus::MissingTimestamp);
+    assert_eq!(call.text.as_deref(), Some("README.md"));
+    let unknown = parsed
+        .events
+        .iter()
+        .find(|event| event.kind == EventKind::Unadapted)
+        .unwrap();
+    assert!(!unknown
+        .details
+        .to_string()
+        .contains("must not enter diagnostics"));
+    assert!(batch
+        .diagnostics
+        .iter()
+        .all(|issue| !issue.message.contains("must not enter diagnostics")));
+
+    std::fs::write(&path, "{not-json\n").unwrap();
+    assert!(index(&path).is_err());
+}

@@ -6,6 +6,7 @@ mod conversation;
 mod cursor_account;
 mod cursor_conversation;
 mod cursor_session;
+mod dsh_droid_conversation;
 mod ingest;
 mod instructions;
 mod misc;

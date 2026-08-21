@@ -24,6 +24,8 @@ use crate::ingest;
 
 mod claude;
 mod cursor;
+mod droid;
+mod dsh;
 mod gemini;
 mod opencode;
 mod pi;
@@ -38,6 +40,8 @@ pub(crate) const CONVERSATION_SOURCES: &[Source] = &[
     Source::Codex,
     Source::Claude,
     Source::CursorAgent,
+    Source::Dsh,
+    Source::Factory,
     Source::Pi,
     Source::Gemini,
     Source::Opencode,
@@ -48,7 +52,7 @@ const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
-pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 3;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -122,6 +126,24 @@ const CONVERSATION_ADAPTERS: &[ConversationAdapter] = &[
         reuse_unchanged_index: true,
     },
     ConversationAdapter {
+        source: Source::Dsh,
+        discover: discover_dsh,
+        index: dsh::index,
+        detail: dsh::detail,
+        revision: regular_source_revision,
+        raw_extension: None,
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
+        source: Source::Factory,
+        discover: discover_droid,
+        index: droid::index,
+        detail: droid::detail,
+        revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
         source: Source::Pi,
         discover: discover_jsonl,
         index: index_pi,
@@ -169,6 +191,28 @@ fn discover_extension(roots: &[PathBuf], extension: &str) -> Result<Vec<PathBuf>
 
 fn discover_jsonl(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     discover_extension(roots, "jsonl")
+}
+
+fn discover_dsh(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    Ok(discover_extension(roots, "zstd")?
+        .into_iter()
+        .filter(|path| {
+            path.file_name().and_then(|name| name.to_str()) == Some("session.jsonl.zstd")
+        })
+        .collect())
+}
+
+fn discover_droid(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    Ok(discover_jsonl(roots)?
+        .into_iter()
+        .filter(|path| {
+            let Some(session_id) = path.file_stem().and_then(|name| name.to_str()) else {
+                return false;
+            };
+            path.with_file_name(format!("{session_id}.settings.json"))
+                .is_file()
+        })
+        .collect())
 }
 
 fn discover_gemini(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
@@ -220,6 +264,41 @@ fn single_detail(
     parse: fn(&Path, bool) -> Result<ParsedConversation, String>,
 ) -> Result<ParsedConversation, String> {
     let parsed = parse(path, include_deferred_content)?;
+    if parsed.session.session_id == session_id {
+        Ok(parsed)
+    } else {
+        Err("原始文件中的会话 ID 与索引不一致".to_string())
+    }
+}
+
+type DiagnosticParseFn =
+    fn(&Path, bool) -> Result<(ParsedConversation, Vec<ConversationIndexIssue>), String>;
+
+fn diagnostic_index(
+    path: &Path,
+    event_type: &str,
+    parse: DiagnosticParseFn,
+) -> Result<ConversationIndexBatch, ConversationIndexIssue> {
+    let (conversation, diagnostics) =
+        parse(path, false).map_err(|message| ConversationIndexIssue {
+            path: path.to_string_lossy().to_string(),
+            message,
+            event_type: Some(event_type.to_string()),
+            line: None,
+        })?;
+    Ok(ConversationIndexBatch {
+        conversations: vec![conversation],
+        diagnostics,
+    })
+}
+
+fn diagnostic_detail(
+    path: &Path,
+    session_id: &str,
+    include_deferred_content: bool,
+    parse: DiagnosticParseFn,
+) -> Result<ParsedConversation, String> {
+    let (parsed, _) = parse(path, include_deferred_content)?;
     if parsed.session.session_id == session_id {
         Ok(parsed)
     } else {
@@ -1326,6 +1405,64 @@ fn push_projected_message(
     };
     events.push(message_event(sequence, &message, details));
     messages.push(message);
+}
+
+fn append_capability_degradation_status(
+    sequence: usize,
+    messages: &[ConversationMessage],
+    model: &str,
+    events: &mut Vec<ConversationEvent>,
+) {
+    let mut missing = Vec::new();
+    if !messages.iter().any(|message| message.role == "user") {
+        missing.push("user_message");
+    }
+    if model.is_empty() {
+        missing.push("model");
+    }
+    let tool_results = events
+        .iter()
+        .filter(|event| event.kind == EventKind::ToolResult)
+        .filter_map(|event| event.details.get("call_id").and_then(Value::as_str))
+        .collect::<BTreeSet<_>>();
+    if events
+        .iter()
+        .filter(|event| event.kind == EventKind::ToolCall)
+        .any(|event| {
+            event
+                .details
+                .get("call_id")
+                .and_then(Value::as_str)
+                .is_none_or(|call_id| !tool_results.contains(call_id))
+        })
+    {
+        missing.push("tool_result");
+    }
+    if events.iter().any(|event| {
+        matches!(
+            event.capability_status,
+            EventStatus::MissingTimestamp | EventStatus::UnadaptedMissingTimestamp
+        )
+    }) {
+        missing.push("timestamp");
+    }
+    if missing.is_empty() {
+        return;
+    }
+    let occurred_at = events
+        .iter()
+        .filter_map(|event| event.occurred_at.as_deref())
+        .max()
+        .unwrap_or("");
+    events.push(semantic_event(
+        sequence,
+        EventKind::SystemStatus,
+        occurred_at,
+        None,
+        Some("capability_degraded".to_string()),
+        Some(missing.join(", ")),
+        serde_json::json!({ "missing": missing }),
+    ));
 }
 
 #[allow(clippy::too_many_arguments)]
