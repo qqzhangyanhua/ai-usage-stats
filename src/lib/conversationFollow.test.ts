@@ -4,6 +4,7 @@ import {
   conversationTimelineScrollTarget,
   isConversationResponseCurrent,
   isNearConversationBottom,
+  nextConversationRevisionPollState,
   nextConversationFollowState,
 } from "./conversationFollow";
 
@@ -100,6 +101,34 @@ describe("conversationTimelineScrollTarget", () => {
         scrollHeight: 960,
       }),
     ).toBe(960);
+  });
+});
+
+describe("nextConversationRevisionPollState", () => {
+  it("records a failed revision once and still reloads a later revision", () => {
+    expect(
+      nextConversationRevisionPollState({
+        revision: "broken-r2",
+        changed: true,
+        fileAvailable: true,
+      }),
+    ).toEqual({ knownRevision: "broken-r2", shouldReload: true });
+
+    expect(
+      nextConversationRevisionPollState({
+        revision: "broken-r2",
+        changed: false,
+        fileAvailable: true,
+      }),
+    ).toEqual({ knownRevision: "broken-r2", shouldReload: false });
+
+    expect(
+      nextConversationRevisionPollState({
+        revision: "repaired-r3",
+        changed: true,
+        fileAvailable: true,
+      }),
+    ).toEqual({ knownRevision: "repaired-r3", shouldReload: true });
   });
 });
 

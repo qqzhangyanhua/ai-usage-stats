@@ -71,6 +71,21 @@ export function conversationTimelineScrollTarget({
   return wasAtBottom ? Math.max(0, scrollHeight) : Math.max(0, savedScrollTop);
 }
 
+export function nextConversationRevisionPollState({
+  revision,
+  changed,
+  fileAvailable,
+}: {
+  revision: string;
+  changed: boolean;
+  fileAvailable: boolean;
+}): { knownRevision: string; shouldReload: boolean } {
+  return {
+    knownRevision: revision,
+    shouldReload: changed && fileAvailable,
+  };
+}
+
 export type ConversationFollowInput = {
   previousCount: number;
   nextCount: number;

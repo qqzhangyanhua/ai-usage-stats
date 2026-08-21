@@ -15,6 +15,7 @@ import {
   isConversationResponseCurrent,
   isNearConversationBottom,
   nextConversationFollowState,
+  nextConversationRevisionPollState,
 } from "../lib/conversationFollow";
 import {
   applicationLabel,
@@ -281,7 +282,7 @@ export function Conversations({
   const mountedRef = useRef(true);
   const selectedRef = useRef<ConversationSessionRow | null>(null);
   const detailRef = useRef<ConversationDetailDto | null>(null);
-  const detailRevisionRef = useRef("");
+  const observedDetailRevisionRef = useRef("");
   const timelineRef = useRef<HTMLDivElement>(null);
   const wasAtBottomRef = useRef(true);
   const pendingScrollRef = useRef(false);
@@ -316,7 +317,7 @@ export function Conversations({
       setUnseenCount(0);
     }
     detailRef.current = result;
-    detailRevisionRef.current = result.revision;
+    observedDetailRevisionRef.current = result.revision;
     setDetail(result);
     setDetailFileAvailable(result.session.file_available);
     setDetailError(null);
@@ -425,7 +426,7 @@ export function Conversations({
       setSelected(session);
       setDetailTab("events");
       detailRef.current = null;
-      detailRevisionRef.current = "";
+      observedDetailRevisionRef.current = "";
       savedTimelineScrollTopRef.current = 0;
       setDetail(null);
       setDetailError(null);
@@ -471,15 +472,21 @@ export function Conversations({
         const state = await invoke<ConversationDetailStateDto>("get_conversation_detail_state", {
           source: selectedSource,
           sessionId: selectedSessionId,
-          knownRevision: detailRevisionRef.current,
+          knownRevision: observedDetailRevisionRef.current,
         });
         if (cancelled || !isDetailResponseCurrent(generation)) {
           return;
         }
 
+        const revisionPollState = nextConversationRevisionPollState({
+          revision: state.revision,
+          changed: state.changed,
+          fileAvailable: state.file_available,
+        });
+        observedDetailRevisionRef.current = revisionPollState.knownRevision;
         setDetailFileAvailable(state.file_available);
         setPollError(null);
-        if (state.changed && state.file_available) {
+        if (revisionPollState.shouldReload) {
           const result = await invoke<ConversationDetailDto>("get_conversation_detail", {
             source: selectedSource,
             sessionId: selectedSessionId,
@@ -574,7 +581,7 @@ export function Conversations({
     setSelected(null);
     setDetailTab("events");
     detailRef.current = null;
-    detailRevisionRef.current = "";
+    observedDetailRevisionRef.current = "";
     setDetail(null);
     setDetailError(null);
     setPollError(null);
