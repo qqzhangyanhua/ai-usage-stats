@@ -1,9 +1,15 @@
 //! Factory / Droid 官方额度：读本机 `~/.factory` 的登录态，打 `GET /api/billing/limits`。
 //!
-//! 凭证优先 `auth.v2.file`（AES-256-GCM，`base64(iv):base64(tag):base64(密文)`，
-//! 密钥就是旁边明文的 `auth.v2.key`），解出 `{access_token, refresh_token,
-//! active_organization_id}`；旧版 `auth.json` 是明文，作为兜底。
-//! macOS 上 droid 可能把凭证放进系统钥匙串，那种情况读不到，降级为 unavailable。
+//! droid CLI 有三种凭证存储，按其自身优先级依次尝试：
+//! 1. `login-keychain-v2`（仅 macOS）：密文在 `auth.v2.loginkeychain`，解密密钥不落盘，
+//!    droid 自己也是现场调用 `/usr/bin/security find-generic-password` 从 macOS 登录
+//!    钥匙串（service=`Factory CLI`，account=`auth-encryption-key-security-cli`）取出来
+//!    的——这个钥匙串条目信任的是 `/usr/bin/security` 这个二进制本身，不是调用它的进程，
+//!    所以我们照样调用同一个命令通常不会弹钥匙串授权框。
+//! 2. `keyfile-v2`：`auth.v2.file`（AES-256-GCM，`base64(iv):base64(tag):base64(密文)`），
+//!    密钥是旁边明文的 `auth.v2.key`。droid 切到钥匙串存储之后这对文件就不再刷新，
+//!    留着的话解出来的 access_token 大概率已经过期。
+//! 3. 旧版 `auth.json`，明文 JSON，兜底。
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -112,6 +118,9 @@ fn factory_home() -> PathBuf {
 
 pub fn load_access_token() -> Result<String, String> {
     let home = factory_home();
+    if let Some(token) = read_loginkeychain_v2(&home) {
+        return Ok(token);
+    }
     if let Some(token) = read_keyfile_v2(&home)? {
         return Ok(token);
     }
@@ -119,6 +128,95 @@ pub fn load_access_token() -> Result<String, String> {
         return Ok(token);
     }
     Err("尚未登录 Droid，请先运行 droid 并登录 app.factory.ai".to_string())
+}
+
+/// macOS 钥匙串条目的 service/account，取值与 droid CLI 二进制里反编译出来的常量一致。
+#[cfg(target_os = "macos")]
+const KEYCHAIN_SERVICE: &str = "Factory CLI";
+#[cfg(target_os = "macos")]
+const KEYCHAIN_ACCOUNT: &str = "auth-encryption-key-security-cli";
+
+/// 密文文件存在但取不到密钥（钥匙串条目缺失/解密失败）都当作「这条存储不可用」，
+/// 静默落回 keyfile-v2，不让这一步的失败盖过后面可能有效的凭证。
+#[cfg(target_os = "macos")]
+pub(crate) fn read_loginkeychain_v2(home: &std::path::Path) -> Option<String> {
+    let payload = std::fs::read_to_string(home.join("auth.v2.loginkeychain")).ok()?;
+    // droid 非生产构建会给 account 加 `-dev` 后缀，正常安装用不到，保底也试一下。
+    let key = macos_keychain_password(KEYCHAIN_ACCOUNT)
+        .or_else(|| macos_keychain_password(&format!("{KEYCHAIN_ACCOUNT}-dev")))?;
+    decrypt_credentials(payload.trim(), &key)
+        .ok()
+        .and_then(|plain| access_token_from(&plain))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn read_loginkeychain_v2(_home: &std::path::Path) -> Option<String> {
+    None
+}
+
+/// 调用 `/usr/bin/security`（而不是走 keytar 之类的原生绑定）是关键：droid 写入这个
+/// 条目时把访问权限授给了这个二进制本身，所以别的进程只要也调用同一个命令，走的是
+/// 同一条已授权路径，不会再弹一次钥匙串授权框。
+///
+/// 加了个手动超时：钥匙串被锁定 / 需要用户交互授权时 `security` 会挂起等输入，
+/// 这条调用跑在 `spawn_blocking` 的线程池里，光靠子进程自己卡住不会冻住 UI，
+/// 但会占死一条阻塞线程且这次刷新永远转圈——超时后主动 kill 掉，落回 keyfile-v2。
+#[cfg(target_os = "macos")]
+const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[cfg(target_os = "macos")]
+fn macos_keychain_password(account: &str) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+
+    let mut child = std::process::Command::new("/usr/bin/security")
+        .args([
+            "find-generic-password",
+            "-a",
+            account,
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-w",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let mut stdout = child.stdout.take();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(out) = stdout.as_mut() {
+            let _ = out.read_to_end(&mut buf);
+        }
+        let _ = tx.send(buf);
+    });
+
+    match rx.recv_timeout(KEYCHAIN_TIMEOUT) {
+        Ok(stdout_bytes) => {
+            let status = child.wait().ok()?;
+            parse_security_output(status.success(), &stdout_bytes)
+        }
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn parse_security_output(success: bool, stdout: &[u8]) -> Option<String> {
+    if !success {
+        return None;
+    }
+    let text = String::from_utf8_lossy(stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 fn read_keyfile_v2(home: &std::path::Path) -> Result<Option<String>, String> {

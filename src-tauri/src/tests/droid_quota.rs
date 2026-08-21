@@ -105,6 +105,26 @@ fn droid_credentials_decrypt_from_keyfile_triplet() {
     assert_eq!(decrypted, plain);
 }
 
+/// `security find-generic-password -w` 找不到条目时退出码非 0（比如 44 = item not
+/// found）；这种情况和「密钥为空」都要当成「这条存储不可用」，落回 keyfile-v2，
+/// 不能直接报错断掉后面的兜底路径。
+#[cfg(target_os = "macos")]
+#[test]
+fn droid_security_output_ignored_when_command_failed_or_empty() {
+    assert_eq!(droid::parse_security_output(false, b"irrelevant"), None);
+    assert_eq!(droid::parse_security_output(true, b""), None);
+    assert_eq!(droid::parse_security_output(true, b"   \n"), None);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn droid_security_output_trims_trailing_newline() {
+    assert_eq!(
+        droid::parse_security_output(true, b"9k3F2m1z==\n"),
+        Some("9k3F2m1z==".to_string())
+    );
+}
+
 #[test]
 fn droid_credentials_reject_bad_shape_and_key() {
     let engine = base64::engine::general_purpose::STANDARD;
