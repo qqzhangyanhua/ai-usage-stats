@@ -4,6 +4,39 @@ export type ConversationScrollMetrics = {
   scrollHeight: number;
 };
 
+export type ConversationRequestGate = {
+  acquire: () => boolean;
+  release: () => void;
+};
+
+export function createConversationRequestGate(): ConversationRequestGate {
+  let busy = false;
+  return {
+    acquire() {
+      if (busy) {
+        return false;
+      }
+      busy = true;
+      return true;
+    },
+    release() {
+      busy = false;
+    },
+  };
+}
+
+export function isConversationResponseCurrent({
+  mounted,
+  generation,
+  currentGeneration,
+}: {
+  mounted: boolean;
+  generation: number;
+  currentGeneration: number;
+}): boolean {
+  return mounted && generation === currentGeneration;
+}
+
 export function isNearConversationBottom(
   { scrollTop, clientHeight, scrollHeight }: ConversationScrollMetrics,
   threshold = 40,

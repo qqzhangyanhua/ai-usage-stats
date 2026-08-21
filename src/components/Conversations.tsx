@@ -9,7 +9,12 @@ import {
   type UIEvent,
 } from "react";
 import { Icon } from "../icons";
-import { isNearConversationBottom, nextConversationFollowState } from "../lib/conversationFollow";
+import {
+  createConversationRequestGate,
+  isConversationResponseCurrent,
+  isNearConversationBottom,
+  nextConversationFollowState,
+} from "../lib/conversationFollow";
 import {
   applicationLabel,
   formatClock,
@@ -264,13 +269,24 @@ export function Conversations({
   const [unseenCount, setUnseenCount] = useState(0);
   const catalogGeneration = useRef(0);
   const detailGeneration = useRef(0);
-  const detailRequests = useRef(0);
+  const detailRequestGate = useRef(createConversationRequestGate());
+  const mountedRef = useRef(true);
   const detailRef = useRef<ConversationDetailDto | null>(null);
   const detailRevisionRef = useRef("");
   const timelineRef = useRef<HTMLDivElement>(null);
   const wasAtBottomRef = useRef(true);
   const pendingScrollRef = useRef(false);
   const unseenCountRef = useRef(0);
+
+  const isDetailResponseCurrent = useCallback(
+    (generation: number) =>
+      isConversationResponseCurrent({
+        mounted: mountedRef.current,
+        generation,
+        currentGeneration: detailGeneration.current,
+      }),
+    [],
+  );
 
   const replaceDetail = useCallback((result: ConversationDetailDto, followUpdates: boolean) => {
     if (followUpdates) {
@@ -295,6 +311,14 @@ export function Conversations({
     setDetailFileAvailable(result.session.file_available);
     setDetailError(null);
     setPollError(null);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      detailGeneration.current += 1;
+    };
   }, []);
 
   useEffect(() => {
@@ -339,6 +363,10 @@ export function Conversations({
 
   const loadDetail = useCallback(
     (session: ConversationSessionRow) => {
+      const needsRequest = session.file_available;
+      if (needsRequest && !detailRequestGate.current.acquire()) {
+        return;
+      }
       const generation = ++detailGeneration.current;
       setSelected(session);
       setDetailTab("events");
@@ -353,36 +381,35 @@ export function Conversations({
       wasAtBottomRef.current = true;
       pendingScrollRef.current = false;
 
-      if (!session.file_available) {
+      if (!needsRequest) {
         setDetailLoading(false);
         return;
       }
 
       setDetailLoading(true);
-      detailRequests.current += 1;
       invoke<ConversationDetailDto>("get_conversation_detail", {
         source: session.source,
         sessionId: session.session_id,
       })
         .then((result) => {
-          if (generation === detailGeneration.current) {
+          if (isDetailResponseCurrent(generation)) {
             replaceDetail(result, false);
           }
         })
         .catch((error) => {
-          if (generation === detailGeneration.current) {
+          if (isDetailResponseCurrent(generation)) {
             setDetailError(humanStatus(error));
             onError?.(error);
           }
         })
         .finally(() => {
-          detailRequests.current = Math.max(0, detailRequests.current - 1);
-          if (generation === detailGeneration.current) {
+          detailRequestGate.current.release();
+          if (isDetailResponseCurrent(generation)) {
             setDetailLoading(false);
           }
         });
     },
-    [onError, replaceDetail],
+    [isDetailResponseCurrent, onError, replaceDetail],
   );
 
   const selectedSource = selected?.source ?? null;
@@ -395,18 +422,17 @@ export function Conversations({
 
     let cancelled = false;
     const poll = async () => {
-      if (detailRequests.current > 0) {
+      if (!detailRequestGate.current.acquire()) {
         return;
       }
       const generation = detailGeneration.current;
-      detailRequests.current += 1;
       try {
         const state = await invoke<ConversationDetailStateDto>("get_conversation_detail_state", {
           source: selectedSource,
           sessionId: selectedSessionId,
           knownRevision: detailRevisionRef.current,
         });
-        if (cancelled || generation !== detailGeneration.current) {
+        if (cancelled || !isDetailResponseCurrent(generation)) {
           return;
         }
 
@@ -417,16 +443,16 @@ export function Conversations({
             source: selectedSource,
             sessionId: selectedSessionId,
           });
-          if (!cancelled && generation === detailGeneration.current) {
+          if (!cancelled && isDetailResponseCurrent(generation)) {
             replaceDetail(result, true);
           }
         }
       } catch (error) {
-        if (!cancelled && generation === detailGeneration.current) {
+        if (!cancelled && isDetailResponseCurrent(generation)) {
           setPollError(humanStatus(error));
         }
       } finally {
-        detailRequests.current = Math.max(0, detailRequests.current - 1);
+        detailRequestGate.current.release();
       }
     };
 
@@ -435,7 +461,7 @@ export function Conversations({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [replaceDetail, selectedSessionId, selectedSource]);
+  }, [isDetailResponseCurrent, replaceDetail, selectedSessionId, selectedSource]);
 
   useLayoutEffect(() => {
     if (!detail || detailTab !== "events" || !pendingScrollRef.current) {

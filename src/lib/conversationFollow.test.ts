@@ -1,5 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { isNearConversationBottom, nextConversationFollowState } from "./conversationFollow";
+import {
+  createConversationRequestGate,
+  isConversationResponseCurrent,
+  isNearConversationBottom,
+  nextConversationFollowState,
+} from "./conversationFollow";
+
+describe("createConversationRequestGate", () => {
+  it("serializes requests until the active request releases the gate", () => {
+    const gate = createConversationRequestGate();
+
+    expect(gate.acquire()).toBe(true);
+    expect(gate.acquire()).toBe(false);
+
+    gate.release();
+
+    expect(gate.acquire()).toBe(true);
+  });
+});
+
+describe("isConversationResponseCurrent", () => {
+  it("rejects responses after unmount even when the generation matches", () => {
+    expect(
+      isConversationResponseCurrent({ mounted: false, generation: 3, currentGeneration: 3 }),
+    ).toBe(false);
+  });
+
+  it("rejects stale generations and accepts a mounted current response", () => {
+    expect(
+      isConversationResponseCurrent({ mounted: true, generation: 2, currentGeneration: 3 }),
+    ).toBe(false);
+    expect(
+      isConversationResponseCurrent({ mounted: true, generation: 3, currentGeneration: 3 }),
+    ).toBe(true);
+  });
+});
 
 describe("isNearConversationBottom", () => {
   it("treats a viewport within the threshold as being at the bottom", () => {
