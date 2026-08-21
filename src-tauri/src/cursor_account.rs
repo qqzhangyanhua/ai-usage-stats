@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use crate::adapters::cursor_account::{
     parse_cursor_usage_events, parse_cursor_usage_page, summarize_cursor_usage,
 };
+use crate::cursor_credentials::{self, LocalCredential};
 use crate::domain::{CursorAccountUsageDto, CursorUsageEvent, Filter};
 use crate::store;
 
@@ -44,7 +45,46 @@ pub fn load_token() -> Result<Option<String>, String> {
 }
 
 pub fn has_token() -> Result<bool, String> {
-    Ok(load_token()?.is_some())
+    Ok(credential_status()?.source != CREDENTIAL_SOURCE_NONE)
+}
+
+pub const CREDENTIAL_SOURCE_LOCAL: &str = "local";
+pub const CREDENTIAL_SOURCE_KEYCHAIN: &str = "keychain";
+pub const CREDENTIAL_SOURCE_NONE: &str = "none";
+
+/// 设置页用：告诉用户当前这条链路是本机 Cursor 登录态还是手动粘贴的。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CursorCredentialStatus {
+    /// `local` / `keychain` / `none`
+    pub source: String,
+    pub email: Option<String>,
+    pub expires_at: Option<String>,
+    /// 读到了本机登录态但已过期——提示语要说「去 Cursor 重新登录」而不是「粘贴 cookie」。
+    pub local_expired: bool,
+}
+
+pub fn credential_status() -> Result<CursorCredentialStatus, String> {
+    let local = cursor_credentials::read_local_credential();
+    let local_expired = local.as_ref().is_some_and(LocalCredential::is_expired);
+    if let Some(credential) = local.as_ref().filter(|value| !value.is_expired()) {
+        return Ok(CursorCredentialStatus {
+            source: CREDENTIAL_SOURCE_LOCAL.to_string(),
+            email: credential.email.clone(),
+            expires_at: credential.expires_at_rfc3339(),
+            local_expired: false,
+        });
+    }
+    let source = if load_token()?.is_some() {
+        CREDENTIAL_SOURCE_KEYCHAIN
+    } else {
+        CREDENTIAL_SOURCE_NONE
+    };
+    Ok(CursorCredentialStatus {
+        source: source.to_string(),
+        email: None,
+        expires_at: None,
+        local_expired,
+    })
 }
 
 pub fn incremental_start_ms(conn: &Connection) -> Result<i64, String> {
@@ -52,7 +92,15 @@ pub fn incremental_start_ms(conn: &Connection) -> Result<i64, String> {
 }
 
 pub fn auth_expired_error() -> String {
-    "Cursor 会话已过期，请重新粘贴 WorkosCursorSessionToken".to_string()
+    match cursor_credentials::read_local_credential() {
+        Some(_) => "Cursor 会话已过期，请在本机 Cursor 客户端重新登录".to_string(),
+        None => "Cursor 会话已过期，请重新粘贴 WorkosCursorSessionToken".to_string(),
+    }
+}
+
+pub fn missing_token_error() -> String {
+    "尚未配置 Cursor 会话 token：请先在本机 Cursor 客户端登录，或粘贴 WorkosCursorSessionToken"
+        .to_string()
 }
 
 pub fn network_failure_error() -> String {
@@ -127,6 +175,9 @@ pub fn fetch_refresh_pages(token: &str, start_date_ms: i64) -> Result<Vec<String
     Ok(pages)
 }
 
+/// 显式传入 > 本机 Cursor 登录态 > 钥匙串。
+/// 只有显式传入才写钥匙串：本机登录态有它自己的生命周期，抄进钥匙串反而会盖掉
+/// 用户手动配的值，还会在 Cursor 换号后留下一份过期残留。
 pub fn resolve_session_token(token: Option<String>) -> Result<String, String> {
     match token
         .as_deref()
@@ -137,10 +188,17 @@ pub fn resolve_session_token(token: Option<String>) -> Result<String, String> {
             save_token(&value)?;
             Ok(value)
         }
-        None => load_token()?.ok_or_else(|| {
-            "尚未配置 Cursor 会话 token，请先粘贴 WorkosCursorSessionToken".to_string()
-        }),
+        None => current_token(),
     }
+}
+
+pub fn current_token() -> Result<String, String> {
+    if let Some(credential) = cursor_credentials::read_local_credential() {
+        if !credential.is_expired() {
+            return Ok(credential.session_token);
+        }
+    }
+    load_token()?.ok_or_else(missing_token_error)
 }
 
 pub fn events_page(

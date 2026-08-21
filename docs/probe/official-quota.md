@@ -26,7 +26,16 @@ Claude Code 2.1.80+ 在 statusline 命令的 stdin JSON 里提供：
 
 ## Cursor
 
-复用钥匙串 `WorkosCursorSessionToken`，`GET https://cursor.com/api/usage-summary`。
+凭证优先读本机 Cursor 客户端，读不到才回落钥匙串。`state.vscdb`（Win `%APPDATA%\Cursor\User\globalStorage`、mac `~/Library/Application Support/Cursor/...`、Linux `~/.config/Cursor/...`，三平台都在 `dirs::config_dir()` 下）的 `ItemTable`：
+
+- `cursorAuth/accessToken`：WorkOS JWT，`iss=https://authentication.cursor.sh`，`sub` 形如 `google-oauth|user_01J…`。value 列可能是 TEXT 也可能是 BLOB。
+- `cursorAuth/cachedEmail` / `cursorAuth/stripeMembershipType`：只用于设置页展示。
+- cookie 值 = `<sub 里 "|" 之后那段>` + `%3A%3A` + `<jwt>`，即 `WorkosCursorSessionToken`。
+- 过期判断用 JWT 的 `exp`（留 60s 容差）。
+
+必须原地只读打开：库有几百 MB，且 `immutable=1` / 复制会跳过 WAL 读到陈旧值。
+
+拿到 token 后 `GET https://cursor.com/api/usage-summary`。
 
 Cursor 订阅限额是多档并行，不能只取总量：
 
