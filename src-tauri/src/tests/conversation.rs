@@ -880,6 +880,79 @@ fn codex_conversation_merges_duplicate_session_files_in_stable_order() {
 }
 
 #[test]
+fn codex_conversation_partial_file_loss_preserves_last_good_aggregate_until_restore() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let meta = serde_json::json!({
+        "type": "session_meta",
+        "timestamp": "2026-08-21T00:00:00Z",
+        "payload": {"id": "partial-loss-1", "cwd": "/workspace/partial-loss"}
+    });
+    seed_codex_records(
+        home,
+        "rollout-partial-loss-a.jsonl",
+        &[
+            meta.clone(),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:01Z",
+                "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "first"}]}
+            }),
+        ],
+    );
+    let second_path = seed_codex_records(
+        home,
+        "rollout-partial-loss-b.jsonl",
+        &[
+            meta,
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:02Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "second"}]}
+            }),
+        ],
+    );
+    let second_contents = std::fs::read_to_string(&second_path).unwrap();
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    std::fs::remove_file(&second_path).unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let missing =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(missing.total, 1);
+    assert_eq!(missing.rows[0].ended_at, "2026-08-21T00:00:02Z");
+    assert_eq!(missing.rows[0].source_files.len(), 2);
+    assert!(!missing.rows[0].file_available);
+    assert!(
+        crate::conversation::load_detail(&conn, home, "codex", "partial-loss-1")
+            .unwrap_err()
+            .contains("详情不可读取")
+    );
+
+    std::fs::write(&second_path, second_contents).unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let restored =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(restored.total, 1);
+    assert!(restored.rows[0].file_available);
+    assert_eq!(restored.rows[0].source_files.len(), 2);
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "partial-loss-1").unwrap();
+    assert_eq!(
+        detail
+            .events
+            .iter()
+            .filter_map(|event| event.text.as_deref())
+            .collect::<Vec<_>>(),
+        vec!["first", "second"]
+    );
+}
+
+#[test]
 fn codex_conversation_parse_failure_preserves_the_last_good_multi_file_aggregate() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();

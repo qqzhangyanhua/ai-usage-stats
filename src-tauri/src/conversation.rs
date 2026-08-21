@@ -132,6 +132,39 @@ pub(crate) fn refresh_codex_in_roots(
         }
     }
 
+    let mut incomplete_session_ids = BTreeSet::new();
+    if issues.is_empty() {
+        let mut scanned_paths_by_session: BTreeMap<String, BTreeSet<PathBuf>> = unchanged_paths
+            .iter()
+            .map(|(session_id, paths)| (session_id.clone(), paths.iter().cloned().collect()))
+            .collect();
+        for (session_id, parsed_files) in &grouped {
+            scanned_paths_by_session
+                .entry(session_id.clone())
+                .or_default()
+                .extend(
+                    parsed_files
+                        .iter()
+                        .map(|parsed| PathBuf::from(&parsed.session.source_file)),
+                );
+        }
+        for (session_id, scanned_paths) in &scanned_paths_by_session {
+            let indexed_paths = load_session_files(conn, Source::Codex.as_str(), session_id)?
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+            if !indexed_paths.is_empty() && !indexed_paths.is_subset(scanned_paths) {
+                let scanned_paths = scanned_paths.iter().cloned().collect::<Vec<_>>();
+                update_session_files(conn, session_id, &scanned_paths, false)?;
+                mark_session_unavailable(conn, session_id)?;
+                incomplete_session_ids.insert(session_id.clone());
+            }
+        }
+        for session_id in &incomplete_session_ids {
+            grouped.remove(session_id);
+            unchanged_paths.remove(session_id);
+        }
+    }
+
     for (session_id, paths) in std::mem::take(&mut unchanged_paths) {
         let indexed_paths = load_session_files(conn, Source::Codex.as_str(), &session_id)?;
         let scanned = paths.iter().cloned().collect::<BTreeSet<_>>();
@@ -151,6 +184,7 @@ pub(crate) fn refresh_codex_in_roots(
     let seen_session_ids = unchanged_paths
         .keys()
         .chain(grouped.keys())
+        .chain(incomplete_session_ids.iter())
         .cloned()
         .collect::<BTreeSet<_>>();
     let blocked_session_ids = failed_session_ids(conn, &issues)?;
@@ -2159,17 +2193,17 @@ fn tombstone_missing_sessions(
         if seen_session_ids.contains(&session_id) {
             continue;
         }
-        conn.execute(
-            "UPDATE conversation_sessions SET file_available = 0 WHERE source = ?1 AND session_id = ?2",
-            params![Source::Codex.as_str(), session_id],
-        )
-        .map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM conversation_session_files WHERE source = ?1 AND session_id = ?2",
-            params![Source::Codex.as_str(), session_id],
-        )
-        .map_err(|e| e.to_string())?;
+        mark_session_unavailable(conn, &session_id)?;
     }
+    Ok(())
+}
+
+fn mark_session_unavailable(conn: &Connection, session_id: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE conversation_sessions SET file_available = 0 WHERE source = ?1 AND session_id = ?2",
+        params![Source::Codex.as_str(), session_id],
+    )
+    .map_err(|error| error.to_string())?;
     Ok(())
 }
 
