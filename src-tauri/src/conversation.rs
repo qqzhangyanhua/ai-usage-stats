@@ -21,6 +21,7 @@ const CAPABILITY_MESSAGES: &str = "messages";
 const CAPABILITY_EVENTS: &str = "events";
 const CAPABILITY_USAGE: &str = "usage";
 const EXPERIMENTAL: &str = "experimental";
+const DETAIL_READ_ATTEMPTS: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -47,6 +48,12 @@ struct PendingMessageDelta {
     occurred_at: String,
     role: String,
     text: String,
+}
+
+pub(crate) struct PreparedConversationDetail {
+    source: Source,
+    session: ConversationSessionRow,
+    usage_records: Vec<UsageRecord>,
 }
 
 pub fn refresh_codex(
@@ -157,12 +164,38 @@ pub fn load_detail(
     source: &str,
     session_id: &str,
 ) -> Result<ConversationDetailDto, String> {
+    let prepared = prepare_detail(conn, source, session_id)?;
+    load_prepared_detail(home, prepared)
+}
+
+pub(crate) fn prepare_detail(
+    conn: &Connection,
+    source: &str,
+    session_id: &str,
+) -> Result<PreparedConversationDetail, String> {
     let source = Source::parse(source).filter(|source| *source == Source::Codex);
     let Some(source) = source else {
         return Err("当前仅支持读取 Codex 对话详情".to_string());
     };
-    let mut session = load_session(conn, source.as_str(), session_id)?
+    let session = load_session(conn, source.as_str(), session_id)?
         .ok_or_else(|| "未找到该对话记录".to_string())?;
+    let usage_records = load_usage_records(conn, source, session_id)?;
+    Ok(PreparedConversationDetail {
+        source,
+        session,
+        usage_records,
+    })
+}
+
+pub(crate) fn load_prepared_detail(
+    home: &Path,
+    prepared: PreparedConversationDetail,
+) -> Result<ConversationDetailDto, String> {
+    let PreparedConversationDetail {
+        source,
+        mut session,
+        usage_records,
+    } = prepared;
     let path = PathBuf::from(&session.source_file);
     if !path.exists() {
         return Err("原文件已删除，详情不可读取".to_string());
@@ -173,7 +206,6 @@ pub fn load_detail(
         return Err("原始文件中的会话 ID 与索引不一致".to_string());
     }
     session.file_available = true;
-    let usage_records = load_usage_records(conn, source, session_id)?;
     Ok(ConversationDetailDto {
         revision,
         session,
@@ -197,18 +229,14 @@ pub fn detail_state(
     let session = load_session(conn, source.as_str(), session_id)?
         .ok_or_else(|| "未找到该对话记录".to_string())?;
     let path = PathBuf::from(&session.source_file);
-    if !path.exists() {
+    let Some(revision) = detail_file_revision(&path, &ingest::source_scan_dirs(home, source))?
+    else {
         return Ok(ConversationDetailStateDto {
             revision: known_revision.to_string(),
             changed: false,
             file_available: false,
         });
-    }
-
-    ensure_trusted_path(&path, &ingest::source_scan_dirs(home, source))?;
-    let metadata =
-        fs::metadata(&path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
-    let revision = metadata_revision(&metadata);
+    };
     Ok(ConversationDetailStateDto {
         changed: revision != known_revision,
         revision,
@@ -219,20 +247,28 @@ pub fn detail_state(
 fn parse_codex_file_with_revision(
     path: &Path,
 ) -> Result<(ParsedCodexConversation, String), String> {
-    for _ in 0..3 {
-        let before =
-            fs::metadata(path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
-        let before_revision = metadata_revision(&before);
-        let parsed = parse_codex_file_mode(path, true);
-        let after =
-            fs::metadata(path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
-        let revision = metadata_revision(&after);
-        if revision != before_revision {
+    read_consistent_snapshot(
+        || {
+            fs::metadata(path)
+                .map(|metadata| metadata_revision(&metadata))
+                .map_err(|error| format!("读取原始文件元数据失败：{error}"))
+        },
+        || parse_codex_file_mode(path, true).map_err(|issue| issue.message),
+    )
+}
+
+pub(crate) fn read_consistent_snapshot<T>(
+    mut revision: impl FnMut() -> Result<String, String>,
+    mut read: impl FnMut() -> Result<T, String>,
+) -> Result<(T, String), String> {
+    for _ in 0..DETAIL_READ_ATTEMPTS {
+        let before_revision = revision()?;
+        let snapshot = read();
+        let after_revision = revision()?;
+        if after_revision != before_revision {
             continue;
         }
-        return parsed
-            .map(|parsed| (parsed, revision))
-            .map_err(|issue| issue.message);
+        return snapshot.map(|snapshot| (snapshot, after_revision));
     }
     Err("原始文件在读取期间持续变化，请重试".to_string())
 }
@@ -958,12 +994,22 @@ fn modified_millis(metadata: &fs::Metadata) -> i64 {
 }
 
 fn metadata_revision(metadata: &fs::Metadata) -> String {
-    format!("{}:{}", modified_millis(metadata), metadata.len())
+    let modified_ns = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("{modified_ns}:{}", metadata.len())
 }
 
 fn ensure_trusted_path(path: &Path, roots: &[PathBuf]) -> Result<(), String> {
     let canonical_path =
         fs::canonicalize(path).map_err(|error| format!("无法验证原始文件路径：{error}"))?;
+    ensure_canonical_path_in_roots(&canonical_path, roots)
+}
+
+fn ensure_canonical_path_in_roots(canonical_path: &Path, roots: &[PathBuf]) -> Result<(), String> {
     for root in roots {
         let Ok(canonical_root) = fs::canonicalize(root) else {
             continue;
@@ -973,6 +1019,32 @@ fn ensure_trusted_path(path: &Path, roots: &[PathBuf]) -> Result<(), String> {
         }
     }
     Err("原始文件不在 Codex 允许的扫描目录内".to_string())
+}
+
+fn detail_file_revision(path: &Path, roots: &[PathBuf]) -> Result<Option<String>, String> {
+    checked_detail_file_revision(
+        roots,
+        || fs::canonicalize(path),
+        |canonical_path| fs::metadata(canonical_path).map(|metadata| metadata_revision(&metadata)),
+    )
+}
+
+pub(crate) fn checked_detail_file_revision(
+    roots: &[PathBuf],
+    canonicalize_file: impl FnOnce() -> std::io::Result<PathBuf>,
+    read_revision: impl FnOnce(&Path) -> std::io::Result<String>,
+) -> Result<Option<String>, String> {
+    let canonical_path = match canonicalize_file() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("无法验证原始文件路径：{error}")),
+    };
+    ensure_canonical_path_in_roots(&canonical_path, roots)?;
+    match read_revision(&canonical_path) {
+        Ok(revision) => Ok(Some(revision)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("读取原始文件元数据失败：{error}")),
+    }
 }
 
 fn escape_like(value: &str) -> String {

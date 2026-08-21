@@ -16,6 +16,126 @@ fn seed_codex_fixture(
 }
 
 #[test]
+fn conversation_detail_prepared_context_loads_after_connection_is_dropped() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let prepared = crate::conversation::prepare_detail(&conn, "codex", "conv-1").unwrap();
+    drop(conn);
+
+    let detail = crate::conversation::load_prepared_detail(home, prepared).unwrap();
+    assert_eq!(detail.session.session_id, "conv-1");
+    assert!(!detail.messages.is_empty());
+}
+
+#[test]
+fn conversation_detail_consistent_snapshot_stops_after_three_changed_attempts() {
+    use std::cell::Cell;
+    use std::collections::VecDeque;
+
+    let revisions = std::cell::RefCell::new(VecDeque::from([
+        "before-1", "after-1", "before-2", "after-2", "before-3", "after-3",
+    ]));
+    let attempts = Cell::new(0);
+    let error = crate::conversation::read_consistent_snapshot(
+        || Ok(revisions.borrow_mut().pop_front().unwrap().to_string()),
+        || {
+            attempts.set(attempts.get() + 1);
+            Err::<(), _>("JSON EOF".to_string())
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(attempts.get(), 3);
+    assert!(error.contains("持续变化"), "unexpected error: {error}");
+}
+
+#[test]
+fn conversation_detail_file_revision_maps_canonicalize_and_metadata_not_found_to_unavailable() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join(".codex/sessions");
+    std::fs::create_dir_all(&root).unwrap();
+    let canonical_root = std::fs::canonicalize(&root).unwrap();
+
+    let missing_during_canonicalize = crate::conversation::checked_detail_file_revision(
+        std::slice::from_ref(&root),
+        || Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        |_| Ok("unused".to_string()),
+    )
+    .unwrap();
+    assert_eq!(missing_during_canonicalize, None);
+
+    let missing_during_metadata = crate::conversation::checked_detail_file_revision(
+        std::slice::from_ref(&root),
+        || Ok(canonical_root.clone()),
+        |_| Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+    )
+    .unwrap();
+    assert_eq!(missing_during_metadata, None);
+}
+
+#[test]
+fn conversation_detail_revision_uses_modified_nanoseconds_and_size() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    let metadata = std::fs::metadata(path).unwrap();
+    let modified_ns = metadata
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    assert_eq!(detail.revision, format!("{modified_ns}:{}", metadata.len()));
+}
+
+#[test]
+fn conversation_detail_rejects_newline_terminated_invalid_json() {
+    use std::io::Write;
+
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    writeln!(
+        std::fs::OpenOptions::new().append(true).open(path).unwrap(),
+        "{{\"type\":"
+    )
+    .unwrap();
+
+    let error = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap_err();
+    assert!(error.contains("JSON 无效"), "unexpected error: {error}");
+}
+
+#[test]
+fn conversation_detail_rejects_unterminated_trailing_json_syntax_error() {
+    use std::io::Write;
+
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    write!(
+        std::fs::OpenOptions::new().append(true).open(path).unwrap(),
+        "{{\"type\": nope}}"
+    )
+    .unwrap();
+
+    let error = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap_err();
+    assert!(error.contains("JSON 无效"), "unexpected error: {error}");
+}
+
+#[test]
 fn conversation_detail_state_detects_append_delete_and_restore_without_refresh() {
     use std::io::Write;
 

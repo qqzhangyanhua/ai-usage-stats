@@ -509,10 +509,13 @@ async fn get_conversation_detail(
     source: String,
     session_id: String,
 ) -> Result<ConversationDetailDto, String> {
+    let home = ingest::default_home();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.lock_read()?;
-        conversation::load_detail(&conn, &ingest::default_home(), &source, &session_id)
+        let prepared = conversation::prepare_detail(&conn, &source, &session_id)?;
+        drop(conn);
+        conversation::load_prepared_detail(&home, prepared)
     })
     .await
     .map_err(|e| e.to_string())?
