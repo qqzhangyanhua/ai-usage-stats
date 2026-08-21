@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"claude-no-usage","timestamp":"2026-09-01T11:00:00Z","cwd":"/workspace/claude-empty","message":{"role":"user","content":"Explain this module"}}
+{"type":"assistant","sessionId":"claude-no-usage","timestamp":"2026-09-01T11:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"It coordinates local state."}]}}

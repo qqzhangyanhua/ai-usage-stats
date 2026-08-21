@@ -6,7 +6,7 @@ use crate::domain::{
     CursorSessionRecord, CursorUsageEvent, OfficialQuotaWindow, Source, UsageRecord,
 };
 
-pub const ADAPTER_VERSION: i64 = 7;
+pub const ADAPTER_VERSION: i64 = 8;
 
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
@@ -144,6 +144,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file TEXT NOT NULL,
             capabilities_json TEXT NOT NULL DEFAULT '[]',
             support_status TEXT NOT NULL DEFAULT 'experimental',
+            is_top_level INTEGER NOT NULL DEFAULT 1,
             -- Reconstructable relationship IDs only; conversation bodies remain in source files.
             agent_metadata_json TEXT NOT NULL DEFAULT '{}',
             PRIMARY KEY(source, session_id)
@@ -184,6 +185,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     )?;
     // 源文件被工具自身清理后不再物理删除历史记录，只打时间戳归档（ADR 0004）。
     ensure_column(conn, "usage_records", "archived_at", "TEXT")?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "is_top_level",
+        "INTEGER NOT NULL DEFAULT 1",
+    )?;
     ensure_column(
         conn,
         "conversation_sessions",

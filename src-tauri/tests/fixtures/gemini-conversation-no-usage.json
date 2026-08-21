@@ -1,0 +1,8 @@
+{
+  "sessionId": "gemini-no-usage",
+  "projectHash": "gemini-empty",
+  "messages": [
+    {"id":"gemini-user-empty","timestamp":"2026-09-03T09:00:00Z","type":"user","content":"Hello"},
+    {"id":"gemini-assistant-empty","timestamp":"2026-09-03T09:00:01Z","type":"gemini","content":"Hello."}
+  ]
+}

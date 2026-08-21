@@ -429,12 +429,63 @@ pub fn rebuild_cache(
         ..IngestReport::default()
     };
     match source {
-        Some(source) => ingest_source(&transaction, home, &overrides, source, &mut report)?,
-        None => ingest_all_sources(&transaction, home, &overrides, &mut report)?,
+        Some(source) => {
+            ingest_source(&transaction, home, &overrides, source, &mut report)?;
+            refresh_conversation_catalog(
+                &transaction,
+                home,
+                &overrides,
+                std::slice::from_ref(&source),
+                &mut report,
+            );
+        }
+        None => {
+            ingest_all_sources(&transaction, home, &overrides, &mut report)?;
+            refresh_conversation_catalog(
+                &transaction,
+                home,
+                &overrides,
+                crate::conversation::CONVERSATION_SOURCES,
+                &mut report,
+            );
+        }
     }
-    report.partial_success = report.files_failed > 0;
+    report.partial_success = report.files_failed > 0 || !report.conversation_issues.is_empty();
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(report)
+}
+
+fn refresh_conversation_catalog(
+    conn: &Connection,
+    home: &Path,
+    overrides: &PathOverrides,
+    sources: &[Source],
+    report: &mut IngestReport,
+) {
+    for &source in sources {
+        if !crate::conversation::CONVERSATION_SOURCES.contains(&source) {
+            continue;
+        }
+        let dirs = source_scan_dirs_with(overrides, home, source);
+        match crate::conversation::refresh_source_in_roots(conn, source, &dirs) {
+            Ok(issues) => report
+                .conversation_issues
+                .extend(issues.into_iter().map(|issue| IngestIssue {
+                    source: source.as_str().to_string(),
+                    path: issue.path,
+                    message: issue.message,
+                })),
+            Err(message) => report.conversation_issues.push(IngestIssue {
+                source: source.as_str().to_string(),
+                path: dirs
+                    .iter()
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                message,
+            }),
+        }
+    }
 }
 
 fn ingest_all_inner(
@@ -444,25 +495,13 @@ fn ingest_all_inner(
 ) -> Result<IngestReport, String> {
     let mut report = IngestReport::default();
     ingest_all_sources(conn, home, overrides, &mut report)?;
-    let codex_dirs = source_scan_dirs_with(overrides, home, Source::Codex);
-    match crate::conversation::refresh_codex_in_roots(conn, &codex_dirs) {
-        Ok(issues) => report
-            .conversation_issues
-            .extend(issues.into_iter().map(|issue| IngestIssue {
-                source: Source::Codex.as_str().to_string(),
-                path: issue.path,
-                message: issue.message,
-            })),
-        Err(message) => report.conversation_issues.push(IngestIssue {
-            source: Source::Codex.as_str().to_string(),
-            path: codex_dirs
-                .iter()
-                .map(|path| path.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
-            message,
-        }),
-    }
+    refresh_conversation_catalog(
+        conn,
+        home,
+        overrides,
+        crate::conversation::CONVERSATION_SOURCES,
+        &mut report,
+    );
     cursor_session::ingest(conn, home, &mut report);
     report.partial_success = report.partial_success || !report.conversation_issues.is_empty();
     Ok(report)
