@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Icon } from "../icons";
 import {
+  conversationTimelineScrollTarget,
   createConversationRequestGate,
   isConversationResponseCurrent,
   isNearConversationBottom,
@@ -47,6 +48,11 @@ import { ModelLabel } from "./VendorIcon";
 const PAGE_SIZE = 20;
 
 type DetailTab = "events" | "usage";
+
+type ConversationDetailRequestIntent = {
+  session: ConversationSessionRow;
+  generation: number;
+};
 
 const DETAIL_TABS = [
   { value: "events", label: "完整事件" },
@@ -269,13 +275,17 @@ export function Conversations({
   const [unseenCount, setUnseenCount] = useState(0);
   const catalogGeneration = useRef(0);
   const detailGeneration = useRef(0);
-  const detailRequestGate = useRef(createConversationRequestGate());
+  const detailRequestGate = useRef(
+    createConversationRequestGate<ConversationDetailRequestIntent>(),
+  );
   const mountedRef = useRef(true);
+  const selectedRef = useRef<ConversationSessionRow | null>(null);
   const detailRef = useRef<ConversationDetailDto | null>(null);
   const detailRevisionRef = useRef("");
   const timelineRef = useRef<HTMLDivElement>(null);
   const wasAtBottomRef = useRef(true);
   const pendingScrollRef = useRef(false);
+  const savedTimelineScrollTopRef = useRef(0);
   const unseenCountRef = useRef(0);
 
   const isDetailResponseCurrent = useCallback(
@@ -313,11 +323,49 @@ export function Conversations({
     setPollError(null);
   }, []);
 
+  const performDetailRequest = useCallback(
+    async ({ session, generation }: ConversationDetailRequestIntent) => {
+      try {
+        const result = await invoke<ConversationDetailDto>("get_conversation_detail", {
+          source: session.source,
+          sessionId: session.session_id,
+        });
+        if (isDetailResponseCurrent(generation)) {
+          replaceDetail(result, false);
+        }
+      } catch (error) {
+        if (isDetailResponseCurrent(generation)) {
+          setDetailError(humanStatus(error));
+          onError?.(error);
+        }
+      } finally {
+        if (isDetailResponseCurrent(generation)) {
+          setDetailLoading(false);
+        }
+      }
+    },
+    [isDetailResponseCurrent, onError, replaceDetail],
+  );
+
+  const drainDetailRequests = useCallback(
+    async (initialIntent: ConversationDetailRequestIntent) => {
+      let intent: ConversationDetailRequestIntent | null = initialIntent;
+      while (intent) {
+        await performDetailRequest(intent);
+        intent = detailRequestGate.current.release();
+      }
+    },
+    [performDetailRequest],
+  );
+
   useEffect(() => {
+    const requestGate = detailRequestGate.current;
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       detailGeneration.current += 1;
+      selectedRef.current = null;
+      requestGate.clearPending();
     };
   }, []);
 
@@ -364,14 +412,21 @@ export function Conversations({
   const loadDetail = useCallback(
     (session: ConversationSessionRow) => {
       const needsRequest = session.file_available;
-      if (needsRequest && !detailRequestGate.current.acquire()) {
+      const acquired = !needsRequest || detailRequestGate.current.acquire();
+      const isSameSelection =
+        selectedRef.current?.source === session.source &&
+        selectedRef.current.session_id === session.session_id;
+      if (!acquired && isSameSelection) {
         return;
       }
+
       const generation = ++detailGeneration.current;
+      selectedRef.current = session;
       setSelected(session);
       setDetailTab("events");
       detailRef.current = null;
       detailRevisionRef.current = "";
+      savedTimelineScrollTopRef.current = 0;
       setDetail(null);
       setDetailError(null);
       setPollError(null);
@@ -382,34 +437,20 @@ export function Conversations({
       pendingScrollRef.current = false;
 
       if (!needsRequest) {
+        detailRequestGate.current.clearPending();
         setDetailLoading(false);
         return;
       }
 
       setDetailLoading(true);
-      invoke<ConversationDetailDto>("get_conversation_detail", {
-        source: session.source,
-        sessionId: session.session_id,
-      })
-        .then((result) => {
-          if (isDetailResponseCurrent(generation)) {
-            replaceDetail(result, false);
-          }
-        })
-        .catch((error) => {
-          if (isDetailResponseCurrent(generation)) {
-            setDetailError(humanStatus(error));
-            onError?.(error);
-          }
-        })
-        .finally(() => {
-          detailRequestGate.current.release();
-          if (isDetailResponseCurrent(generation)) {
-            setDetailLoading(false);
-          }
-        });
+      const intent = { session, generation };
+      if (acquired) {
+        void drainDetailRequests(intent);
+      } else {
+        detailRequestGate.current.queueLatest(intent);
+      }
     },
-    [isDetailResponseCurrent, onError, replaceDetail],
+    [drainDetailRequests],
   );
 
   const selectedSource = selected?.source ?? null;
@@ -452,7 +493,10 @@ export function Conversations({
           setPollError(humanStatus(error));
         }
       } finally {
-        detailRequestGate.current.release();
+        const pendingIntent = detailRequestGate.current.release();
+        if (pendingIntent) {
+          void drainDetailRequests(pendingIntent);
+        }
       }
     };
 
@@ -461,17 +505,28 @@ export function Conversations({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isDetailResponseCurrent, replaceDetail, selectedSessionId, selectedSource]);
+  }, [
+    drainDetailRequests,
+    isDetailResponseCurrent,
+    replaceDetail,
+    selectedSessionId,
+    selectedSource,
+  ]);
 
   useLayoutEffect(() => {
-    if (!detail || detailTab !== "events" || !pendingScrollRef.current) {
+    if (!detail || detailTab !== "events") {
       return;
     }
     const frame = window.requestAnimationFrame(() => {
       const timeline = timelineRef.current;
       if (timeline) {
-        timeline.scrollTop = timeline.scrollHeight;
-        wasAtBottomRef.current = true;
+        timeline.scrollTop = conversationTimelineScrollTarget({
+          wasAtBottom: pendingScrollRef.current || wasAtBottomRef.current,
+          savedScrollTop: savedTimelineScrollTopRef.current,
+          scrollHeight: timeline.scrollHeight,
+        });
+        savedTimelineScrollTopRef.current = timeline.scrollTop;
+        wasAtBottomRef.current = isNearConversationBottom(timeline);
       }
       pendingScrollRef.current = false;
     });
@@ -479,6 +534,7 @@ export function Conversations({
   }, [detail, detailTab]);
 
   function handleTimelineScroll(event: UIEvent<HTMLDivElement>) {
+    savedTimelineScrollTopRef.current = event.currentTarget.scrollTop;
     const isAtBottom = isNearConversationBottom(event.currentTarget);
     wasAtBottomRef.current = isAtBottom;
     if (isAtBottom) {
@@ -491,6 +547,7 @@ export function Conversations({
     const timeline = timelineRef.current;
     if (timeline) {
       timeline.scrollTop = timeline.scrollHeight;
+      savedTimelineScrollTopRef.current = timeline.scrollTop;
     } else {
       pendingScrollRef.current = true;
     }
@@ -499,8 +556,21 @@ export function Conversations({
     setUnseenCount(0);
   }
 
+  function handleDetailTabChange(nextTab: DetailTab) {
+    if (detailTab === "events" && nextTab !== "events") {
+      const timeline = timelineRef.current;
+      if (timeline) {
+        savedTimelineScrollTopRef.current = timeline.scrollTop;
+        wasAtBottomRef.current = isNearConversationBottom(timeline);
+      }
+    }
+    setDetailTab(nextTab);
+  }
+
   function closeDetail() {
     detailGeneration.current += 1;
+    selectedRef.current = null;
+    detailRequestGate.current.clearPending();
     setSelected(null);
     setDetailTab("events");
     detailRef.current = null;
@@ -509,6 +579,7 @@ export function Conversations({
     setDetailError(null);
     setPollError(null);
     setDetailFileAvailable(true);
+    savedTimelineScrollTopRef.current = 0;
     unseenCountRef.current = 0;
     setUnseenCount(0);
     pendingScrollRef.current = false;
@@ -587,7 +658,7 @@ export function Conversations({
               options={DETAIL_TABS}
               disabled={detailLoading || Boolean(detailError)}
               ariaLabel="对话详情视图"
-              onChange={setDetailTab}
+              onChange={handleDetailTabChange}
             />
             {detail ? (
               <span className="muted">

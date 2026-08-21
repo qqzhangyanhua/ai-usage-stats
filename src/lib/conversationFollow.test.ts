@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createConversationRequestGate,
+  conversationTimelineScrollTarget,
   isConversationResponseCurrent,
   isNearConversationBottom,
   nextConversationFollowState,
@@ -15,6 +16,30 @@ describe("createConversationRequestGate", () => {
 
     gate.release();
 
+    expect(gate.acquire()).toBe(true);
+  });
+
+  it("hands the latest foreground intent off after an active poll releases", () => {
+    const gate = createConversationRequestGate<string>();
+    expect(gate.acquire()).toBe(true);
+
+    gate.queueLatest("session-a");
+    gate.queueLatest("session-b");
+
+    expect(gate.release()).toBe("session-b");
+    expect(gate.acquire()).toBe(false);
+    expect(gate.release()).toBeNull();
+    expect(gate.acquire()).toBe(true);
+  });
+
+  it("can discard a pending foreground intent when the detail view closes", () => {
+    const gate = createConversationRequestGate<string>();
+    expect(gate.acquire()).toBe(true);
+    gate.queueLatest("session-a");
+
+    gate.clearPending();
+
+    expect(gate.release()).toBeNull();
     expect(gate.acquire()).toBe(true);
   });
 });
@@ -53,6 +78,28 @@ describe("isNearConversationBottom", () => {
     expect(isNearConversationBottom({ scrollTop: 0, clientHeight: 500, scrollHeight: 300 })).toBe(
       true,
     );
+  });
+});
+
+describe("conversationTimelineScrollTarget", () => {
+  it("restores an away-from-bottom position when the event tab mounts again", () => {
+    expect(
+      conversationTimelineScrollTarget({
+        wasAtBottom: false,
+        savedScrollTop: 240,
+        scrollHeight: 900,
+      }),
+    ).toBe(240);
+  });
+
+  it("uses the latest bottom when follow mode is active", () => {
+    expect(
+      conversationTimelineScrollTarget({
+        wasAtBottom: true,
+        savedScrollTop: 240,
+        scrollHeight: 960,
+      }),
+    ).toBe(960);
   });
 });
 

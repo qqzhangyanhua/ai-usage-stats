@@ -4,13 +4,16 @@ export type ConversationScrollMetrics = {
   scrollHeight: number;
 };
 
-export type ConversationRequestGate = {
+export type ConversationRequestGate<T> = {
   acquire: () => boolean;
-  release: () => void;
+  queueLatest: (intent: T) => void;
+  clearPending: () => void;
+  release: () => T | null;
 };
 
-export function createConversationRequestGate(): ConversationRequestGate {
+export function createConversationRequestGate<T = never>(): ConversationRequestGate<T> {
   let busy = false;
+  let pending: T | null = null;
   return {
     acquire() {
       if (busy) {
@@ -19,8 +22,20 @@ export function createConversationRequestGate(): ConversationRequestGate {
       busy = true;
       return true;
     },
+    queueLatest(intent) {
+      pending = intent;
+    },
+    clearPending() {
+      pending = null;
+    },
     release() {
+      if (pending !== null) {
+        const intent = pending;
+        pending = null;
+        return intent;
+      }
       busy = false;
+      return null;
     },
   };
 }
@@ -42,6 +57,18 @@ export function isNearConversationBottom(
   threshold = 40,
 ): boolean {
   return scrollHeight - scrollTop - clientHeight <= Math.max(0, threshold);
+}
+
+export function conversationTimelineScrollTarget({
+  wasAtBottom,
+  savedScrollTop,
+  scrollHeight,
+}: {
+  wasAtBottom: boolean;
+  savedScrollTop: number;
+  scrollHeight: number;
+}): number {
+  return wasAtBottom ? Math.max(0, scrollHeight) : Math.max(0, savedScrollTop);
 }
 
 export type ConversationFollowInput = {
