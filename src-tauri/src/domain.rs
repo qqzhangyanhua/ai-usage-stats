@@ -622,6 +622,7 @@ pub struct ConversationSessionRow {
     pub started_at: String,
     pub ended_at: String,
     pub source_file: String,
+    pub source_files: Vec<String>,
     pub capabilities: Vec<String>,
     pub support_status: String,
     pub file_available: bool,
@@ -731,7 +732,10 @@ pub struct ConversationAttachment {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationEvent {
+    pub event_id: String,
     pub sequence: u32,
+    pub source_file: String,
+    pub source_sequence: u32,
     pub kind: ConversationEventKind,
     pub occurred_at: Option<String>,
     pub actor: Option<ConversationEventActor>,
@@ -745,7 +749,7 @@ pub struct ConversationEvent {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationEventContentDto {
-    pub sequence: u32,
+    pub event_id: String,
     pub text: Option<String>,
     pub details: serde_json::Value,
 }
@@ -769,6 +773,40 @@ pub struct ConversationExportDto {
     pub content: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationAgentLinkStatus {
+    Linked,
+    MissingSource,
+    Unresolved,
+    Conflict,
+    Cycle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationAgentCapabilityStatus {
+    Complete,
+    Partial,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationAgentLink {
+    pub relationship_id: String,
+    pub session_id: Option<String>,
+    pub launch_event_id: Option<String>,
+    pub status: ConversationAgentLinkStatus,
+    pub session: Option<ConversationSessionRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationAgentRelations {
+    pub capability_status: ConversationAgentCapabilityStatus,
+    pub parent: Option<ConversationAgentLink>,
+    pub children: Vec<ConversationAgentLink>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationDetailDto {
     pub revision: String,
@@ -776,6 +814,7 @@ pub struct ConversationDetailDto {
     pub messages: Vec<ConversationMessage>,
     pub events: Vec<ConversationEvent>,
     pub usage_records: Vec<UsageRecord>,
+    pub agent_relations: ConversationAgentRelations,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

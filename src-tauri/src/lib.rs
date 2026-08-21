@@ -549,7 +549,7 @@ async fn get_conversation_event_content(
     app: tauri::AppHandle,
     source: String,
     session_id: String,
-    sequence: u32,
+    event_id: String,
 ) -> Result<ConversationEventContentDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -559,7 +559,7 @@ async fn get_conversation_event_content(
             &ingest::default_home(),
             &source,
             &session_id,
-            sequence,
+            &event_id,
         )
     })
     .await

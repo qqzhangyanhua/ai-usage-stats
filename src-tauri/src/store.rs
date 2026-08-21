@@ -148,12 +148,25 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file_mtime_ms INTEGER NOT NULL DEFAULT 0,
             source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
+            -- Reconstructable relationship IDs only; conversation bodies remain in source files.
+            agent_metadata_json TEXT NOT NULL DEFAULT '{}',
             PRIMARY KEY(source, session_id)
         );
         CREATE INDEX IF NOT EXISTS idx_conversation_sessions_ended
             ON conversation_sessions(ended_at DESC);
         CREATE INDEX IF NOT EXISTS idx_conversation_sessions_source_file
             ON conversation_sessions(source, source_file);
+
+        CREATE TABLE IF NOT EXISTS conversation_session_files (
+            source TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
+            source_file_size INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(source, source_file)
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_session_files_session
+            ON conversation_session_files(source, session_id);
 
         CREATE TABLE IF NOT EXISTS official_quota (
             provider TEXT PRIMARY KEY,
@@ -200,6 +213,24 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     ensure_column(
         conn,
         "conversation_sessions",
+        "source_file_size",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "agent_metadata_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_session_files",
+        "source_file_mtime_ns",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_session_files",
         "source_file_size",
         "INTEGER NOT NULL DEFAULT 0",
     )?;

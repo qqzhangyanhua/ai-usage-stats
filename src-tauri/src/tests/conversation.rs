@@ -26,6 +26,22 @@ fn seed_codex_fixture(
     path
 }
 
+fn seed_codex_records(
+    home: &std::path::Path,
+    file_name: &str,
+    records: &[serde_json::Value],
+) -> std::path::PathBuf {
+    let path = home.join(".codex/sessions/2026/08").join(file_name);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let content = records
+        .iter()
+        .map(serde_json::Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&path, format!("{content}\n")).unwrap();
+    path
+}
+
 fn seed_rich_codex_conversation(
     home: &std::path::Path,
 ) -> (std::path::PathBuf, String, std::path::PathBuf) {
@@ -109,8 +125,10 @@ fn codex_conversation_detail_defers_large_tool_results_until_requested() {
     assert!(!event.text.as_ref().unwrap().contains("FULL-END"));
     assert!(event.details.get("output").is_none());
 
-    let full = crate::conversation::load_event_content(&conn, home, "codex", "rich-1", 3).unwrap();
-    assert_eq!(full.sequence, 3);
+    let full =
+        crate::conversation::load_event_content(&conn, home, "codex", "rich-1", &event.event_id)
+            .unwrap();
+    assert_eq!(full.event_id, event.event_id);
     assert_eq!(full.text.as_deref(), Some(large_output.as_str()));
     assert_eq!(full.details["output"], large_output);
 }
@@ -135,7 +153,7 @@ fn codex_conversation_detail_reports_attachments_and_loads_images_on_demand() {
         "message details must not eagerly return attachment bodies"
     );
     assert_eq!(event.attachments.len(), 2);
-    assert_eq!(event.attachments[0].id, "1:0");
+    assert!(event.attachments[0].id.starts_with(&event.event_id));
     assert_eq!(event.attachments[0].kind, ConversationAttachmentKind::Image);
     assert_eq!(
         event.attachments[0].status,
@@ -155,9 +173,14 @@ fn codex_conversation_detail_reports_attachments_and_loads_images_on_demand() {
         ConversationAttachmentStatus::Missing
     );
 
-    let thumbnail =
-        crate::conversation::load_attachment_thumbnail(&conn, home, "codex", "rich-1", "1:0")
-            .unwrap();
+    let thumbnail = crate::conversation::load_attachment_thumbnail(
+        &conn,
+        home,
+        "codex",
+        "rich-1",
+        &event.attachments[0].id,
+    )
+    .unwrap();
     assert_eq!(thumbnail.attachment, event.attachments[0]);
     let thumbnail_bytes = BASE64
         .decode(
@@ -173,8 +196,14 @@ fn codex_conversation_detail_reports_attachments_and_loads_images_on_demand() {
         (2, 2)
     );
 
-    let image =
-        crate::conversation::load_attachment(&conn, home, "codex", "rich-1", "1:0").unwrap();
+    let image = crate::conversation::load_attachment(
+        &conn,
+        home,
+        "codex",
+        "rich-1",
+        &event.attachments[0].id,
+    )
+    .unwrap();
     assert_eq!(image.attachment, event.attachments[0]);
     assert_eq!(
         image.data_url,
@@ -217,8 +246,18 @@ fn codex_conversation_attachment_loader_rejects_unrelated_source_siblings() {
     let conn = store::open_memory().unwrap();
 
     crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "rich-1").unwrap();
+    let attachment_id = detail
+        .events
+        .iter()
+        .flat_map(|event| &event.attachments)
+        .find(|attachment| attachment.name == "outside.png")
+        .unwrap()
+        .id
+        .clone();
     let error =
-        crate::conversation::load_attachment(&conn, home, "codex", "rich-1", "1:2").unwrap_err();
+        crate::conversation::load_attachment(&conn, home, "codex", "rich-1", &attachment_id)
+            .unwrap_err();
 
     assert!(error.contains("允许的目录"), "unexpected error: {error}");
 }
@@ -643,16 +682,16 @@ fn codex_conversation_detail_orders_by_timestamp_then_source_sequence() {
     let order = detail
         .events
         .iter()
-        .map(|event| (event.kind.as_str(), event.sequence))
+        .map(|event| (event.kind.as_str(), event.sequence, event.source_sequence))
         .collect::<Vec<_>>();
 
     assert_eq!(
         order,
         vec![
-            ("system_status", 0),
-            ("plan", 2),
-            ("error", 1),
-            ("unadapted", 3),
+            ("system_status", 0, 0),
+            ("plan", 1, 2),
+            ("error", 2, 1),
+            ("unadapted", 3, 3),
         ]
     );
     assert_eq!(detail.events[3].occurred_at, None);
@@ -716,6 +755,328 @@ fn codex_conversation_detail_projects_semantic_events_and_preserves_unknown_even
 }
 
 #[test]
+fn codex_conversation_merges_duplicate_session_files_in_stable_order() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let meta = serde_json::json!({
+        "type": "session_meta",
+        "timestamp": "2026-08-21T00:00:00Z",
+        "payload": {"id": "split-1", "cwd": "/workspace/split", "title": "Split session"}
+    });
+    let duplicate = serde_json::json!({
+        "type": "response_item",
+        "timestamp": "2026-08-21T00:00:02Z",
+        "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "shared"}]}
+    });
+    seed_codex_records(
+        home,
+        "rollout-split-a.jsonl",
+        &[
+            meta.clone(),
+            duplicate.clone(),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:04Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "late"}]}
+            }),
+        ],
+    );
+    let second_path = seed_codex_records(
+        home,
+        "rollout-split-b.jsonl",
+        &[
+            meta,
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:01Z",
+                "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "early"}]}
+            }),
+            duplicate,
+        ],
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "split-1").unwrap();
+
+    assert_eq!(page.total, 1);
+    assert_eq!(page.rows[0].source_files.len(), 2);
+    assert_eq!(detail.session.source_files, page.rows[0].source_files);
+    assert_eq!(
+        std::path::Path::new(&page.rows[0].source_file)
+            .file_name()
+            .and_then(|name| name.to_str()),
+        Some("rollout-split-a.jsonl")
+    );
+    let texts = detail
+        .events
+        .iter()
+        .filter_map(|event| event.text.as_deref())
+        .collect::<Vec<_>>();
+    assert_eq!(texts, vec!["early", "shared", "late"]);
+    assert!(detail
+        .events
+        .windows(2)
+        .all(|pair| pair[0].sequence < pair[1].sequence));
+    let event_ids = detail
+        .events
+        .iter()
+        .map(|event| event.event_id.clone())
+        .collect::<Vec<_>>();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let refreshed = crate::conversation::load_detail(&conn, home, "codex", "split-1").unwrap();
+    assert_eq!(
+        refreshed
+            .events
+            .iter()
+            .map(|event| event.event_id.clone())
+            .collect::<Vec<_>>(),
+        event_ids
+    );
+    conn.execute(
+        "UPDATE conversation_sessions SET title = 'cached-title' WHERE source = 'codex' AND session_id = 'split-1'",
+        [],
+    )
+    .unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let unchanged =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(unchanged.rows[0].title, "cached-title");
+
+    let known_revision = refreshed.revision;
+    use std::io::Write as _;
+    writeln!(
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(second_path)
+            .unwrap(),
+        "{}",
+        serde_json::json!({
+            "type": "response_item",
+            "timestamp": "2026-08-21T00:00:05Z",
+            "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "new tail"}]}
+        })
+    )
+    .unwrap();
+    let changed =
+        crate::conversation::detail_state(&conn, home, "codex", "split-1", &known_revision)
+            .unwrap();
+    assert!(changed.changed);
+    assert!(changed.file_available);
+    assert!(crate::conversation::build_export(
+        &conn,
+        home,
+        "codex",
+        "split-1",
+        crate::domain::ConversationExportFormat::Json,
+    )
+    .unwrap_err()
+    .contains("多个原始文件"));
+}
+
+#[test]
+fn codex_conversation_parse_failure_preserves_the_last_good_multi_file_aggregate() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let meta = serde_json::json!({
+        "type": "session_meta",
+        "timestamp": "2026-08-21T00:00:00Z",
+        "payload": {"id": "last-good-1", "cwd": "/workspace/last-good"}
+    });
+    let first_path = seed_codex_records(
+        home,
+        "rollout-last-good-a.jsonl",
+        &[
+            meta.clone(),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:01Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "first"}]}
+            }),
+        ],
+    );
+    let second_path = seed_codex_records(
+        home,
+        "rollout-last-good-b.jsonl",
+        &[
+            meta,
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:02Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "second"}]}
+            }),
+        ],
+    );
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let mut first = std::fs::read_to_string(&first_path).unwrap();
+    first.push_str(
+        &serde_json::json!({
+            "type": "response_item",
+            "timestamp": "2026-08-21T00:00:09Z",
+            "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "partial update"}]}
+        })
+        .to_string(),
+    );
+    first.push('\n');
+    std::fs::write(first_path, first).unwrap();
+    std::fs::write(second_path, "{not-json}\n").unwrap();
+
+    let issues = crate::conversation::refresh_codex(&conn, home).unwrap();
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+
+    assert_eq!(issues.len(), 1);
+    assert_eq!(page.rows.len(), 1);
+    assert_eq!(page.rows[0].ended_at, "2026-08-21T00:00:02Z");
+    assert_eq!(page.rows[0].source_files.len(), 2);
+}
+
+#[test]
+fn codex_conversation_links_structured_child_agents_and_preserves_launch_events() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_records(
+        home,
+        "rollout-parent.jsonl",
+        &[
+            serde_json::json!({
+                "type": "session_meta",
+                "timestamp": "2026-08-21T00:00:00Z",
+                "payload": {"id": "parent-1", "cwd": "/workspace/agents", "title": "Parent"}
+            }),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:01Z",
+                "payload": {"type": "function_call", "name": "spawn_agent", "call_id": "spawn-1", "arguments": "{\"message\":\"Inspect child work\"}"}
+            }),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:02Z",
+                "payload": {"type": "function_call_output", "call_id": "spawn-1", "output": "{\"agent_id\":\"child-1\"}"}
+            }),
+        ],
+    );
+    seed_codex_records(
+        home,
+        "rollout-child.jsonl",
+        &[
+            serde_json::json!({
+                "type": "session_meta",
+                "timestamp": "2026-08-21T00:00:03Z",
+                "payload": {"id": "child-1", "parent_id": "parent-1", "cwd": "/workspace/agents", "title": "Child"}
+            }),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:04Z",
+                "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "child result"}]}
+            }),
+        ],
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let parent = crate::conversation::load_detail(&conn, home, "codex", "parent-1").unwrap();
+    let child = crate::conversation::load_detail(&conn, home, "codex", "child-1").unwrap();
+
+    let launch = parent
+        .events
+        .iter()
+        .find(|event| event.name.as_deref() == Some("spawn_agent"))
+        .unwrap();
+    assert_eq!(parent.agent_relations.children.len(), 1);
+    let child_link = &parent.agent_relations.children[0];
+    assert_eq!(
+        child_link.status,
+        crate::domain::ConversationAgentLinkStatus::Linked
+    );
+    assert_eq!(
+        child_link.launch_event_id.as_deref(),
+        Some(launch.event_id.as_str())
+    );
+    assert_eq!(child_link.session.as_ref().unwrap().session_id, "child-1");
+    assert_eq!(
+        child.events.last().unwrap().text.as_deref(),
+        Some("child result")
+    );
+    assert_eq!(
+        child
+            .agent_relations
+            .parent
+            .as_ref()
+            .and_then(|link| link.session.as_ref())
+            .map(|session| session.session_id.as_str()),
+        Some("parent-1")
+    );
+}
+
+#[test]
+fn codex_conversation_rejects_fuzzy_child_merging_and_reports_unavailable_linkage() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_records(
+        home,
+        "rollout-unresolved-parent.jsonl",
+        &[
+            serde_json::json!({
+                "type": "session_meta",
+                "timestamp": "2026-08-21T00:00:00Z",
+                "payload": {"id": "unresolved-parent", "cwd": "/workspace/same", "title": "Same title"}
+            }),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:01Z",
+                "payload": {"type": "function_call", "name": "spawn_agent", "call_id": "spawn-plain", "arguments": "{}"}
+            }),
+            serde_json::json!({
+                "type": "response_item",
+                "timestamp": "2026-08-21T00:00:02Z",
+                "payload": {"type": "function_call_output", "call_id": "spawn-plain", "output": "agent_id: possible-child"}
+            }),
+        ],
+    );
+    seed_codex_records(
+        home,
+        "rollout-possible-child.jsonl",
+        &[serde_json::json!({
+            "type": "session_meta",
+            "timestamp": "2026-08-21T00:00:02Z",
+            "payload": {"id": "possible-child", "cwd": "/workspace/same", "title": "Same title"}
+        })],
+    );
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    let parent =
+        crate::conversation::load_detail(&conn, home, "codex", "unresolved-parent").unwrap();
+    let candidate =
+        crate::conversation::load_detail(&conn, home, "codex", "possible-child").unwrap();
+
+    assert_eq!(page.total, 2);
+    assert_eq!(parent.agent_relations.children.len(), 1);
+    assert_eq!(
+        parent.agent_relations.capability_status,
+        crate::domain::ConversationAgentCapabilityStatus::Unavailable
+    );
+    assert_eq!(
+        parent.agent_relations.children[0].status,
+        crate::domain::ConversationAgentLinkStatus::Unresolved
+    );
+    assert!(parent.agent_relations.children[0].session.is_none());
+    assert!(candidate.agent_relations.parent.is_none());
+}
+
+#[test]
 fn codex_conversation_detail_links_existing_usage_by_exact_source_and_session_id() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
@@ -735,6 +1096,8 @@ fn codex_conversation_detail_links_existing_usage_by_exact_source_and_session_id
         110,
     );
     early.output_tokens = 10;
+    let mut early_copy = early.clone();
+    early_copy.source_file = "duplicate-channel.jsonl".to_string();
     let late = rec(
         "2026-08-21T00:01:00Z",
         Source::Codex,
@@ -762,7 +1125,11 @@ fn codex_conversation_detail_links_existing_usage_by_exact_source_and_session_id
         "semantic-2",
         440,
     );
-    store::insert_records(&conn, &[late, wrong_source, early, wrong_session]).unwrap();
+    store::insert_records(
+        &conn,
+        &[late, wrong_source, early_copy, early, wrong_session],
+    )
+    .unwrap();
 
     crate::conversation::refresh_codex(&conn, home).unwrap();
     let detail = crate::conversation::load_detail(&conn, home, "codex", "semantic-1").unwrap();
@@ -953,8 +1320,10 @@ fn codex_conversation_refresh_reparses_same_millisecond_nanosecond_change() {
     conn.execute_batch(
         r#"
         UPDATE conversation_sessions
-        SET title = 'cached-title',
-            source_file_mtime_ns =
+        SET title = 'cached-title'
+        WHERE source = 'codex' AND session_id = 'conv-1';
+        UPDATE conversation_session_files
+        SET source_file_mtime_ns =
                 (source_file_mtime_ns / 1000000) * 1000000
                 + CASE source_file_mtime_ns % 1000000 WHEN 1 THEN 2 ELSE 1 END
         WHERE source = 'codex' AND session_id = 'conv-1';
