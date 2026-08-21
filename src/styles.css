@@ -996,10 +996,10 @@ input[type="checkbox"] {
 .billing-panel {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  padding: 5px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px 12px 8px;
   border-radius: 12px;
 }
 
@@ -1010,12 +1010,29 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 
+.billing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
 .billing-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 240px;
+  width: 100%;
+}
+
+.billing-row + .billing-row {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
 }
 
 .billing-row .src-ico {
@@ -1027,6 +1044,7 @@ input[type="checkbox"] {
 
 .billing-row strong {
   font-size: 12px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1050,11 +1068,27 @@ input[type="checkbox"] {
   overflow: hidden;
 }
 
+.billing-row .billing-bar {
+  flex: 1 1 64px;
+  width: auto;
+  min-width: 64px;
+}
+
 .billing-bar i {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--purple), var(--cyan));
+}
+
+.billing-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .billing-stat {
@@ -1343,15 +1377,14 @@ button.heat-cell {
 }
 
 .billing-panel.collapsible-section .panel-head {
-  flex: 1 1 100%;
+  flex: 0 0 auto;
+  margin-bottom: 2px;
 }
 
 .billing-panel .collapsible-body {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
+  display: block;
   width: 100%;
+  min-width: 0;
 }
 
 .collapsible-trend {
