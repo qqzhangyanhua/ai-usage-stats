@@ -1064,7 +1064,7 @@ fn modified_millis(meta: &fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-fn content_fingerprint(path: &Path) -> String {
+pub(crate) fn content_fingerprint(path: &Path) -> String {
     let Ok(bytes) = fs::read(path) else {
         return "missing".to_string();
     };

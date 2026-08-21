@@ -27,6 +27,8 @@ mod cursor;
 mod droid;
 mod dsh;
 mod gemini;
+mod grok;
+mod kimi;
 mod opencode;
 mod pi;
 
@@ -42,6 +44,8 @@ pub(crate) const CONVERSATION_SOURCES: &[Source] = &[
     Source::CursorAgent,
     Source::Dsh,
     Source::Factory,
+    Source::Kimi,
+    Source::Grok,
     Source::Pi,
     Source::Gemini,
     Source::Opencode,
@@ -52,7 +56,7 @@ const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
-pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 4;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -140,6 +144,24 @@ const CONVERSATION_ADAPTERS: &[ConversationAdapter] = &[
         index: droid::index,
         detail: droid::detail,
         revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
+        source: Source::Kimi,
+        discover: kimi::discover,
+        index: kimi::index,
+        detail: kimi::detail,
+        revision: kimi::source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
+        source: Source::Grok,
+        discover: grok::discover,
+        index: grok::index,
+        detail: grok::detail,
+        revision: grok::source_revision,
         raw_extension: Some("jsonl"),
         reuse_unchanged_index: true,
     },
@@ -1337,6 +1359,48 @@ fn parse_codex_file_mode(
         events,
         is_top_level: true,
     })
+}
+
+fn tag_source_events(
+    events: &mut [ConversationEvent],
+    source_sequence: usize,
+    native_identity: Option<&str>,
+) {
+    for event in events {
+        event.source_sequence = source_sequence as u32;
+        if let (Some(native_identity), Value::Object(details)) =
+            (native_identity, &mut event.details)
+        {
+            details.insert(
+                "native_id".to_string(),
+                Value::String(native_identity.to_string()),
+            );
+        }
+    }
+}
+
+fn assign_native_event_ids(events: &mut [ConversationEvent], source: Source, session_id: &str) {
+    for event in events {
+        if !event.event_id.is_empty() {
+            continue;
+        }
+        if let Some(native_id) = optional_text(
+            &event.details,
+            &[
+                "native_id",
+                "call_id",
+                "message_id",
+                "prompt_id",
+                "event_id",
+            ],
+        ) {
+            event.event_id = format!(
+                "{}:{session_id}:{}:{native_id}",
+                source.as_str(),
+                event.kind.as_str()
+            );
+        }
+    }
 }
 
 fn assign_event_provenance(events: &mut [ConversationEvent], source_file: &str) {

@@ -9,6 +9,7 @@ mod cursor_session;
 mod dsh_droid_conversation;
 mod ingest;
 mod instructions;
+mod kimi_grok_conversation;
 mod misc;
 mod official_quota;
 mod opencode_conversation;
