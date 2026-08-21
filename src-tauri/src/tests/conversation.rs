@@ -73,6 +73,9 @@ fn conversation_detail_state_detects_append_delete_and_restore_without_refresh()
             .unwrap();
     assert!(restored.file_available);
     assert!(restored.changed);
+
+    let restored_detail = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    assert!(restored_detail.session.file_available);
 }
 
 #[test]
@@ -97,6 +100,52 @@ fn conversation_detail_state_reads_metadata_without_parsing_body() {
             .unwrap();
     assert!(!unchanged.changed);
     assert!(unchanged.file_available);
+}
+
+#[test]
+fn conversation_detail_state_tracks_an_incomplete_trailing_jsonl_line_until_completion() {
+    use std::io::Write;
+
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let path = seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let initial = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    let initial_message_count = initial.messages.len();
+    let initial_event_count = initial.events.len();
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
+    file.write_all(
+        br#"{"type":"response_item","timestamp":"2026-08-20T00:04:00Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"stream"#,
+    )
+    .unwrap();
+    file.flush().unwrap();
+
+    let partial = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    assert_eq!(partial.messages.len(), initial_message_count);
+    assert_eq!(partial.events.len(), initial_event_count);
+    assert_ne!(partial.revision, initial.revision);
+
+    file.write_all(br#"ed"}]}}"#).unwrap();
+    file.write_all(b"\n").unwrap();
+    file.flush().unwrap();
+    drop(file);
+
+    let completed_state =
+        crate::conversation::detail_state(&conn, home, "codex", "conv-1", &partial.revision)
+            .unwrap();
+    assert!(completed_state.changed);
+    assert!(completed_state.file_available);
+
+    let completed = crate::conversation::load_detail(&conn, home, "codex", "conv-1").unwrap();
+    assert_eq!(completed.messages.len(), initial_message_count + 1);
+    assert_eq!(completed.events.len(), initial_event_count + 1);
+    assert_eq!(completed.messages.last().unwrap().text, "streamed");
+    assert_eq!(completed.revision, completed_state.revision);
 }
 
 #[test]

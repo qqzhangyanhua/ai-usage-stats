@@ -161,11 +161,8 @@ pub fn load_detail(
     let Some(source) = source else {
         return Err("当前仅支持读取 Codex 对话详情".to_string());
     };
-    let session = load_session(conn, source.as_str(), session_id)?
+    let mut session = load_session(conn, source.as_str(), session_id)?
         .ok_or_else(|| "未找到该对话记录".to_string())?;
-    if !session.file_available {
-        return Err("原文件已删除，详情不可读取".to_string());
-    }
     let path = PathBuf::from(&session.source_file);
     if !path.exists() {
         return Err("原文件已删除，详情不可读取".to_string());
@@ -175,6 +172,7 @@ pub fn load_detail(
     if parsed.session.session_id != session.session_id {
         return Err("原始文件中的会话 ID 与索引不一致".to_string());
     }
+    session.file_available = true;
     let usage_records = load_usage_records(conn, source, session_id)?;
     Ok(ConversationDetailDto {
         revision,
@@ -225,18 +223,28 @@ fn parse_codex_file_with_revision(
         let before =
             fs::metadata(path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
         let before_revision = metadata_revision(&before);
-        let parsed = parse_codex_file(path).map_err(|issue| issue.message)?;
+        let parsed = parse_codex_file_mode(path, true);
         let after =
             fs::metadata(path).map_err(|error| format!("读取原始文件元数据失败：{error}"))?;
         let revision = metadata_revision(&after);
-        if revision == before_revision {
-            return Ok((parsed, revision));
+        if revision != before_revision {
+            continue;
         }
+        return parsed
+            .map(|parsed| (parsed, revision))
+            .map_err(|issue| issue.message);
     }
     Err("原始文件在读取期间持续变化，请重试".to_string())
 }
 
 fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, ConversationIndexIssue> {
+    parse_codex_file_mode(path, false)
+}
+
+fn parse_codex_file_mode(
+    path: &Path,
+    tolerate_incomplete_tail: bool,
+) -> Result<ParsedCodexConversation, ConversationIndexIssue> {
     let content = fs::read_to_string(path).map_err(|error| ConversationIndexIssue {
         path: path.to_string_lossy().to_string(),
         message: format!("读取原始文件失败：{error}"),
@@ -253,18 +261,33 @@ fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, Conversation
     let mut event_messages = Vec::new();
     let mut events = Vec::new();
     let mut pending_delta = None;
+    let last_line_index = content.lines().count().saturating_sub(1);
+    let has_unterminated_tail = !content.ends_with('\n');
 
     for (index, raw) in content.lines().enumerate() {
         let raw = raw.trim();
         if raw.is_empty() {
             continue;
         }
-        let value: Value = serde_json::from_str(raw).map_err(|error| ConversationIndexIssue {
-            path: path.to_string_lossy().to_string(),
-            message: format!("JSON 无效：{error}"),
-            event_type: Some("json_line".to_string()),
-            line: Some((index + 1) as u64),
-        })?;
+        let value: Value = match serde_json::from_str(raw) {
+            Ok(value) => value,
+            Err(error)
+                if tolerate_incomplete_tail
+                    && has_unterminated_tail
+                    && index == last_line_index
+                    && error.classify() == serde_json::error::Category::Eof =>
+            {
+                break;
+            }
+            Err(error) => {
+                return Err(ConversationIndexIssue {
+                    path: path.to_string_lossy().to_string(),
+                    message: format!("JSON 无效：{error}"),
+                    event_type: Some("json_line".to_string()),
+                    line: Some((index + 1) as u64),
+                });
+            }
+        };
         let timestamp = text_field(&value, "timestamp");
         if !timestamp.is_empty() {
             if started_at.is_empty() {
