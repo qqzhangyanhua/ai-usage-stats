@@ -1,4 +1,15 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
 use crate::test_support::*;
+
+fn test_png_bytes() -> Vec<u8> {
+    let pixels = image::RgbaImage::from_pixel(2, 2, image::Rgba([24, 160, 200, 255]));
+    let mut output = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(pixels)
+        .write_to(&mut output, image::ImageFormat::Png)
+        .unwrap();
+    output.into_inner()
+}
 
 fn seed_codex_conversation(home: &std::path::Path) -> std::path::PathBuf {
     seed_codex_fixture(home, "rollout-conv-1.jsonl", "codex-conversation.jsonl")
@@ -13,6 +24,258 @@ fn seed_codex_fixture(
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, fixture(fixture_name)).unwrap();
     path
+}
+
+fn seed_rich_codex_conversation(
+    home: &std::path::Path,
+) -> (std::path::PathBuf, String, std::path::PathBuf) {
+    let attachment = home.join("attachments/screenshot.png");
+    std::fs::create_dir_all(attachment.parent().unwrap()).unwrap();
+    std::fs::write(&attachment, test_png_bytes()).unwrap();
+    let missing = home.join("attachments/missing.pdf");
+    let large_output = format!("{}FULL-END", "large tool output\n".repeat(400));
+    let records = [
+        serde_json::json!({
+            "type": "session_meta",
+            "timestamp": "2026-08-24T00:00:00Z",
+            "payload": {"id": "rich-1", "cwd": home, "title": "富内容会话"}
+        }),
+        serde_json::json!({
+            "type": "response_item",
+            "timestamp": "2026-08-24T00:00:01Z",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "查看附件"},
+                    {"type": "input_image", "file_path": attachment, "name": "screenshot.png", "mime_type": "image/png"},
+                    {"type": "input_file", "file_path": missing, "name": "missing.pdf", "mime_type": "application/pdf"}
+                ]
+            }
+        }),
+        serde_json::json!({
+            "type": "response_item",
+            "timestamp": "2026-08-24T00:00:02Z",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "text": "# 结果\n\n|列|值|\n|-|-|\n|状态|完成|\n\n```rust\nfn main() {}\n```\n\n<iframe src=\"https://unsafe.invalid\"></iframe>\n\n[危险](javascript:alert(1))"
+                }]
+            }
+        }),
+        serde_json::json!({
+            "type": "response_item",
+            "timestamp": "2026-08-24T00:00:03Z",
+            "payload": {"type": "function_call_output", "call_id": "call-rich", "output": large_output}
+        }),
+    ];
+    let transcript = records
+        .iter()
+        .map(serde_json::Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let path = home.join(".codex/sessions/2026/08/rollout-rich-1.jsonl");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, format!("{transcript}\n")).unwrap();
+    (path, large_output, missing)
+}
+
+#[test]
+fn codex_conversation_detail_defers_large_tool_results_until_requested() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let (_, large_output, _) = seed_rich_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "rich-1").unwrap();
+    let event = detail
+        .events
+        .iter()
+        .find(|event| event.sequence == 3)
+        .unwrap();
+
+    assert_eq!(
+        event.content_status,
+        ConversationEventContentStatus::Deferred
+    );
+    assert!(event
+        .text
+        .as_ref()
+        .unwrap()
+        .starts_with("large tool output"));
+    assert!(!event.text.as_ref().unwrap().contains("FULL-END"));
+    assert!(event.details.get("output").is_none());
+
+    let full = crate::conversation::load_event_content(&conn, home, "codex", "rich-1", 3).unwrap();
+    assert_eq!(full.sequence, 3);
+    assert_eq!(full.text.as_deref(), Some(large_output.as_str()));
+    assert_eq!(full.details["output"], large_output);
+}
+
+#[test]
+fn codex_conversation_detail_reports_attachments_and_loads_images_on_demand() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let (_, _, missing_path) = seed_rich_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let detail = crate::conversation::load_detail(&conn, home, "codex", "rich-1").unwrap();
+    let event = detail
+        .events
+        .iter()
+        .find(|event| event.sequence == 1)
+        .unwrap();
+
+    assert!(
+        event.details.get("content").is_none(),
+        "message details must not eagerly return attachment bodies"
+    );
+    assert_eq!(event.attachments.len(), 2);
+    assert_eq!(event.attachments[0].id, "1:0");
+    assert_eq!(event.attachments[0].kind, ConversationAttachmentKind::Image);
+    assert_eq!(
+        event.attachments[0].status,
+        ConversationAttachmentStatus::Available
+    );
+    assert_eq!(
+        event.attachments[0].size_bytes,
+        Some(test_png_bytes().len() as u64)
+    );
+    assert_eq!(event.attachments[1].name, "missing.pdf");
+    assert_eq!(
+        event.attachments[1].original_path,
+        missing_path.to_string_lossy()
+    );
+    assert_eq!(
+        event.attachments[1].status,
+        ConversationAttachmentStatus::Missing
+    );
+
+    let thumbnail =
+        crate::conversation::load_attachment_thumbnail(&conn, home, "codex", "rich-1", "1:0")
+            .unwrap();
+    assert_eq!(thumbnail.attachment, event.attachments[0]);
+    let thumbnail_bytes = BASE64
+        .decode(
+            thumbnail
+                .data_url
+                .strip_prefix("data:image/png;base64,")
+                .unwrap(),
+        )
+        .unwrap();
+    let decoded_thumbnail = image::load_from_memory(&thumbnail_bytes).unwrap();
+    assert_eq!(
+        (decoded_thumbnail.width(), decoded_thumbnail.height()),
+        (2, 2)
+    );
+
+    let image =
+        crate::conversation::load_attachment(&conn, home, "codex", "rich-1", "1:0").unwrap();
+    assert_eq!(image.attachment, event.attachments[0]);
+    assert_eq!(
+        image.data_url,
+        format!("data:image/png;base64,{}", BASE64.encode(test_png_bytes()))
+    );
+
+    assert_eq!(detail.events.len(), 4, "缺失附件不应阻断其余事件");
+}
+
+#[test]
+fn codex_conversation_attachment_loader_rejects_unrelated_source_siblings() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let (source_path, _, _) = seed_rich_codex_conversation(home);
+    let project = home.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let outside_image = source_path.parent().unwrap().join("unrelated.png");
+    std::fs::write(&outside_image, test_png_bytes()).unwrap();
+    let mut records = std::fs::read_to_string(&source_path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    records[0]["payload"]["cwd"] = serde_json::json!(project);
+    records[1]["payload"]["content"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "type": "input_image",
+            "file_path": outside_image,
+            "name": "outside.png",
+            "mime_type": "image/png"
+        }));
+    let content = records
+        .iter()
+        .map(serde_json::Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(&source_path, format!("{content}\n")).unwrap();
+    let conn = store::open_memory().unwrap();
+
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    let error =
+        crate::conversation::load_attachment(&conn, home, "codex", "rich-1", "1:2").unwrap_err();
+
+    assert!(error.contains("允许的目录"), "unexpected error: {error}");
+}
+
+#[test]
+fn codex_conversation_exports_markdown_and_raw_json_from_the_current_source_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    let (source_path, _, missing_path) = seed_rich_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let changed = std::fs::read_to_string(&source_path)
+        .unwrap()
+        .replace("# 结果", "# 导出后的结果");
+    std::fs::write(&source_path, &changed).unwrap();
+
+    let markdown = crate::conversation::build_export(
+        &conn,
+        home,
+        "codex",
+        "rich-1",
+        ConversationExportFormat::Markdown,
+    )
+    .unwrap();
+    assert_eq!(markdown.default_name, "富内容会话.md");
+    let markdown_text = String::from_utf8(markdown.content.clone()).unwrap();
+    assert!(markdown_text.contains("# 导出后的结果"));
+    assert!(markdown_text.contains("FULL-END"));
+    assert!(markdown_text.contains(&missing_path.to_string_lossy().to_string()));
+    assert!(markdown_text.contains("附件缺失"));
+    let markdown_path = home.join("exported.md");
+    crate::user_files::write_export(&markdown_path, &markdown.content, None).unwrap();
+    assert_eq!(std::fs::read(&markdown_path).unwrap(), markdown.content);
+    let error =
+        crate::user_files::write_export(&markdown_path, b"replacement export\n", None).unwrap_err();
+    assert!(error.contains("已存在"));
+    assert_eq!(std::fs::read(&markdown_path).unwrap(), markdown.content);
+    let rejected_path = home.join("exported.txt");
+    let error = crate::user_files::write_export(&rejected_path, b"not allowed", None).unwrap_err();
+    assert!(error.contains("可写名单"));
+    assert!(!rejected_path.exists());
+
+    let raw_json = crate::conversation::build_export(
+        &conn,
+        home,
+        "codex",
+        "rich-1",
+        ConversationExportFormat::Json,
+    )
+    .unwrap();
+    assert_eq!(raw_json.default_name, "富内容会话.jsonl");
+    assert_eq!(raw_json.content, changed.as_bytes());
+    assert!(String::from_utf8_lossy(&raw_json.content).contains("FULL-END"));
+    let json_path = home.join("exported.jsonl");
+    crate::user_files::write_export(&json_path, &raw_json.content, None).unwrap();
+    assert_eq!(std::fs::read(json_path).unwrap(), changed.as_bytes());
 }
 
 #[test]

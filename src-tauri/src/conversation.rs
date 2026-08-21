@@ -1,16 +1,22 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use base64::prelude::*;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::domain::{
+    ConversationAttachment, ConversationAttachmentContentDto,
+    ConversationAttachmentKind as AttachmentKind, ConversationAttachmentStatus as AttachmentStatus,
     ConversationDetailDto, ConversationDetailStateDto, ConversationEvent,
     ConversationEventActor as EventActor, ConversationEventCapabilityStatus as EventStatus,
-    ConversationEventKind as EventKind, ConversationMessage, ConversationPage, ConversationQuery,
-    ConversationSessionRow, Source, UsageRecord,
+    ConversationEventContentDto, ConversationEventContentStatus as ContentStatus,
+    ConversationEventKind as EventKind, ConversationExportDto, ConversationExportFormat,
+    ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow, Source,
+    UsageRecord,
 };
 use crate::ingest;
 
@@ -22,6 +28,10 @@ const CAPABILITY_EVENTS: &str = "events";
 const CAPABILITY_USAGE: &str = "usage";
 const EXPERIMENTAL: &str = "experimental";
 const DETAIL_READ_ATTEMPTS: usize = 3;
+const LARGE_CONTENT_THRESHOLD: usize = 4_096;
+const CONTENT_PREVIEW_CHARS: usize = 2_000;
+const THUMBNAIL_MAX_WIDTH: u32 = 320;
+const THUMBNAIL_MAX_HEIGHT: u32 = 240;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -253,7 +263,7 @@ fn parse_codex_file_with_revision(
                 .map(|metadata| metadata_revision(&metadata))
                 .map_err(|error| format!("读取原始文件元数据失败：{error}"))
         },
-        || parse_codex_file_mode(path, true).map_err(|issue| issue.message),
+        || parse_codex_file_mode(path, true, false).map_err(|issue| issue.message),
     )
 }
 
@@ -273,13 +283,239 @@ pub(crate) fn read_consistent_snapshot<T>(
     Err("原始文件在读取期间持续变化，请重试".to_string())
 }
 
+pub fn load_event_content(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+    sequence: u32,
+) -> Result<ConversationEventContentDto, String> {
+    let (_, session, path) = load_trusted_session(conn, home, source, session_id)?;
+    let parsed = parse_codex_file_for_detail(&path, true)?;
+    ensure_matching_session(&parsed, &session)?;
+    let event = parsed
+        .events
+        .into_iter()
+        .find(|event| event.sequence == sequence)
+        .ok_or_else(|| "原始文件中未找到该事件".to_string())?;
+    Ok(ConversationEventContentDto {
+        sequence,
+        text: event.text,
+        details: event.details,
+    })
+}
+
+pub fn load_attachment(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+    attachment_id: &str,
+) -> Result<ConversationAttachmentContentDto, String> {
+    let candidate = resolve_attachment(conn, home, source, session_id, attachment_id)?;
+    let data_url = attachment_data_url(&candidate)?;
+    Ok(ConversationAttachmentContentDto {
+        attachment: candidate.attachment,
+        data_url,
+    })
+}
+
+pub fn load_attachment_thumbnail(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+    attachment_id: &str,
+) -> Result<ConversationAttachmentContentDto, String> {
+    let candidate = resolve_attachment(conn, home, source, session_id, attachment_id)?;
+    let data_url = attachment_thumbnail_data_url(&candidate)?;
+    Ok(ConversationAttachmentContentDto {
+        attachment: candidate.attachment,
+        data_url,
+    })
+}
+
+fn resolve_attachment(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+    attachment_id: &str,
+) -> Result<AttachmentCandidate, String> {
+    let (_, session, path) = load_trusted_session(conn, home, source, session_id)?;
+    let parsed = parse_codex_file_for_detail(&path, true)?;
+    ensure_matching_session(&parsed, &session)?;
+    let event = parsed
+        .events
+        .iter()
+        .find(|event| {
+            event
+                .attachments
+                .iter()
+                .any(|attachment| attachment.id == attachment_id)
+        })
+        .ok_or_else(|| "原始文件中未找到该附件".to_string())?;
+    let attachment = event
+        .attachments
+        .iter()
+        .find(|attachment| attachment.id == attachment_id)
+        .cloned()
+        .ok_or_else(|| "原始文件中未找到该附件".to_string())?;
+    if attachment.kind != AttachmentKind::Image {
+        return Err("该附件不是可预览的图片".to_string());
+    }
+    let payload = read_source_payload(&path, event.sequence)?;
+    let mut candidate = attachment_candidates(event.sequence, &payload, &parsed.session.project)
+        .into_iter()
+        .find(|candidate| candidate.attachment.id == attachment_id)
+        .ok_or_else(|| "原始文件中未找到该附件".to_string())?;
+    candidate.attachment = attachment;
+    ensure_attachment_path_allowed(&candidate, &parsed.session.project)?;
+    Ok(candidate)
+}
+
+pub fn build_export(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+    format: ConversationExportFormat,
+) -> Result<ConversationExportDto, String> {
+    let (_, session, path) = load_trusted_session(conn, home, source, session_id)?;
+    let raw = fs::read(&path).map_err(|error| format!("读取原始文件失败：{error}"))?;
+    let parsed = parse_codex_file_mode(&path, false, true).map_err(|issue| issue.message)?;
+    ensure_matching_session(&parsed, &session)?;
+    let base_name = safe_export_name(&parsed.session.title, &session.session_id);
+    match format {
+        ConversationExportFormat::Json => Ok(ConversationExportDto {
+            default_name: format!("{base_name}.jsonl"),
+            content: raw,
+        }),
+        ConversationExportFormat::Markdown => Ok(ConversationExportDto {
+            default_name: format!("{base_name}.md"),
+            content: render_markdown_export(&parsed).into_bytes(),
+        }),
+    }
+}
+
+fn safe_export_name(title: &str, session_id: &str) -> String {
+    let source = if title.trim().is_empty() {
+        session_id
+    } else {
+        title.trim()
+    };
+    let name: String = source
+        .chars()
+        .map(|character| match character {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => character,
+        })
+        .take(100)
+        .collect();
+    if name.is_empty() {
+        "conversation".to_string()
+    } else {
+        name
+    }
+}
+
+fn render_markdown_export(parsed: &ParsedCodexConversation) -> String {
+    let session = &parsed.session;
+    let mut markdown = format!(
+        "# {}\n\n- 来源：{}\n- 会话 ID：`{}`\n- 项目：{}\n- 模型：{}\n- 开始：{}\n- 结束：{}\n\n",
+        session.title,
+        session.source,
+        session.session_id,
+        explicit_value(&session.project),
+        explicit_value(&session.model),
+        explicit_value(&session.started_at),
+        explicit_value(&session.ended_at),
+    );
+    for event in &parsed.events {
+        markdown.push_str(&format!(
+            "---\n\n## {} · {}\n\n- 时间：{}\n",
+            event.sequence,
+            event.kind.as_str(),
+            event.occurred_at.as_deref().unwrap_or("时间缺失")
+        ));
+        if let Some(actor) = event.actor {
+            markdown.push_str(&format!("- 角色：{}\n", actor.as_str()));
+        }
+        if let Some(name) = &event.name {
+            markdown.push_str(&format!("- 名称：`{name}`\n"));
+        }
+        if let Some(text) = &event.text {
+            markdown.push('\n');
+            markdown.push_str(text);
+            markdown.push('\n');
+        }
+        if !event.attachments.is_empty() {
+            markdown.push_str("\n### 附件\n\n");
+            for attachment in &event.attachments {
+                let status = match attachment.status {
+                    AttachmentStatus::Available => "可用",
+                    AttachmentStatus::Missing => "附件缺失",
+                    AttachmentStatus::Embedded => "内嵌",
+                    AttachmentStatus::Unsupported => "不支持应用内加载",
+                };
+                let size = attachment
+                    .size_bytes
+                    .map(|size| format!("{size} bytes"))
+                    .unwrap_or_else(|| "大小未知".to_string());
+                markdown.push_str(&format!(
+                    "- **{}** · `{}` · {} · {} · {}\n",
+                    attachment.name, attachment.original_path, attachment.media_type, size, status
+                ));
+            }
+        }
+        if let Some(details) = export_details(&event.details) {
+            markdown.push_str("\n<details><summary>原始事件数据</summary>\n\n```json\n");
+            markdown.push_str(&details);
+            markdown.push_str("\n```\n\n</details>\n");
+        }
+    }
+    markdown
+}
+
+fn explicit_value(value: &str) -> &str {
+    if value.is_empty() {
+        "缺失"
+    } else {
+        value
+    }
+}
+
+fn export_details(details: &Value) -> Option<String> {
+    let mut details = details.clone();
+    if let Value::Object(object) = &mut details {
+        object.remove("content");
+        object.remove("message");
+        object.remove("output");
+        object.remove("result");
+        if object.is_empty() {
+            return None;
+        }
+    } else if details.is_null() {
+        return None;
+    }
+    serde_json::to_string_pretty(&details).ok()
+}
+
 fn parse_codex_file(path: &Path) -> Result<ParsedCodexConversation, ConversationIndexIssue> {
-    parse_codex_file_mode(path, false)
+    parse_codex_file_mode(path, false, false)
+}
+
+fn parse_codex_file_for_detail(
+    path: &Path,
+    include_deferred_content: bool,
+) -> Result<ParsedCodexConversation, String> {
+    parse_codex_file_mode(path, true, include_deferred_content).map_err(|issue| issue.message)
 }
 
 fn parse_codex_file_mode(
     path: &Path,
     tolerate_incomplete_tail: bool,
+    include_deferred_content: bool,
 ) -> Result<ParsedCodexConversation, ConversationIndexIssue> {
     let content = fs::read_to_string(path).map_err(|error| ConversationIndexIssue {
         path: path.to_string_lossy().to_string(),
@@ -374,7 +610,9 @@ fn parse_codex_file_mode(
                 if let Some(message) = response_message(payload, &timestamp) {
                     events.push(message_event(index, &message, payload.clone()));
                     response_messages.push(message);
-                } else if let Some(event) = response_semantic_event(index, &timestamp, payload) {
+                } else if let Some(event) =
+                    response_semantic_event(index, &timestamp, payload, include_deferred_content)
+                {
                     events.push(event);
                 }
             }
@@ -409,6 +647,8 @@ fn parse_codex_file_mode(
         }
     }
     flush_message_delta(&mut pending_delta, &mut event_messages, &mut events);
+    populate_attachments(&mut events, &project);
+    strip_message_bodies_from_details(&mut events);
     deduplicate_message_channels(&mut events);
     events.sort_by(compare_event_order);
 
@@ -602,11 +842,13 @@ fn semantic_event(
         name,
         text,
         details,
+        attachments: Vec::new(),
         capability_status: if occurred_at.is_empty() {
             EventStatus::MissingTimestamp
         } else {
             EventStatus::Complete
         },
+        content_status: ContentStatus::Complete,
     }
 }
 
@@ -614,6 +856,7 @@ fn response_semantic_event(
     sequence: usize,
     occurred_at: &str,
     payload: &Value,
+    include_deferred_content: bool,
 ) -> Option<ConversationEvent> {
     let kind = payload.get("type").and_then(Value::as_str).unwrap_or("");
     match kind {
@@ -629,14 +872,11 @@ fn response_semantic_event(
                 payload.clone(),
             ))
         }
-        "function_call_output" | "custom_tool_call_output" => Some(semantic_event(
+        "function_call_output" | "custom_tool_call_output" => Some(tool_result_event(
             sequence,
-            EventKind::ToolResult,
             occurred_at,
-            Some(EventActor::Tool),
-            optional_text(payload, &["name"]),
-            optional_text(payload, &["output", "result"]),
-            payload.clone(),
+            payload,
+            include_deferred_content,
         )),
         "reasoning" => Some(semantic_event(
             sequence,
@@ -655,6 +895,42 @@ fn response_semantic_event(
             payload.clone(),
         )),
     }
+}
+
+fn tool_result_event(
+    sequence: usize,
+    occurred_at: &str,
+    payload: &Value,
+    include_deferred_content: bool,
+) -> ConversationEvent {
+    let text = optional_text(payload, &["output", "result"]);
+    let should_defer = !include_deferred_content
+        && text
+            .as_ref()
+            .is_some_and(|text| text.len() > LARGE_CONTENT_THRESHOLD);
+    let mut details = payload.clone();
+    let rendered_text = if should_defer {
+        if let Value::Object(object) = &mut details {
+            object.remove("output");
+            object.remove("result");
+        }
+        text.map(|text| text.chars().take(CONTENT_PREVIEW_CHARS).collect())
+    } else {
+        text
+    };
+    let mut event = semantic_event(
+        sequence,
+        EventKind::ToolResult,
+        occurred_at,
+        Some(EventActor::Tool),
+        optional_text(payload, &["name"]),
+        rendered_text,
+        details,
+    );
+    if should_defer {
+        event.content_status = ContentStatus::Deferred;
+    }
+    event
 }
 
 fn event_msg_semantic_event(
@@ -722,6 +998,255 @@ fn unadapted_event(
         EventStatus::Unadapted
     };
     event
+}
+
+struct AttachmentCandidate {
+    attachment: ConversationAttachment,
+    source: String,
+    resolved_path: Option<PathBuf>,
+}
+
+fn populate_attachments(events: &mut [ConversationEvent], project: &str) {
+    for event in events {
+        event.attachments = attachment_candidates(event.sequence, &event.details, project)
+            .into_iter()
+            .map(|candidate| candidate.attachment)
+            .collect();
+    }
+}
+
+fn strip_message_bodies_from_details(events: &mut [ConversationEvent]) {
+    for event in events {
+        if event.kind != EventKind::Message {
+            continue;
+        }
+        if let Value::Object(object) = &mut event.details {
+            object.remove("content");
+            object.remove("message");
+            object.remove("attachments");
+        }
+    }
+}
+
+fn read_source_payload(path: &Path, sequence: u32) -> Result<Value, String> {
+    let content = fs::read_to_string(path).map_err(|error| format!("读取原始文件失败：{error}"))?;
+    let raw = content
+        .lines()
+        .nth(sequence as usize)
+        .ok_or_else(|| "原始文件中未找到附件所在事件".to_string())?;
+    let value: Value =
+        serde_json::from_str(raw).map_err(|error| format!("附件所在事件 JSON 无效：{error}"))?;
+    Ok(value.get("payload").cloned().unwrap_or(value))
+}
+
+fn attachment_candidates(
+    sequence: u32,
+    payload: &Value,
+    project: &str,
+) -> Vec<AttachmentCandidate> {
+    let mut values = Vec::new();
+    for key in ["content", "attachments"] {
+        match payload.get(key) {
+            Some(Value::Array(items)) => values.extend(items),
+            Some(value @ Value::Object(_)) => values.push(value),
+            _ => {}
+        }
+    }
+    values
+        .into_iter()
+        .filter_map(|value| attachment_candidate(value, project))
+        .enumerate()
+        .map(|(index, mut candidate)| {
+            candidate.attachment.id = format!("{sequence}:{index}");
+            candidate
+        })
+        .collect()
+}
+
+fn attachment_candidate(value: &Value, project: &str) -> Option<AttachmentCandidate> {
+    let object = value.as_object()?;
+    let raw_type = object.get("type").and_then(Value::as_str).unwrap_or("");
+    let kind = if raw_type.contains("image") {
+        AttachmentKind::Image
+    } else if raw_type.contains("file") || raw_type.contains("attachment") {
+        AttachmentKind::File
+    } else {
+        return None;
+    };
+    let source = ["file_path", "path", "url", "image_url"]
+        .iter()
+        .find_map(|key| object.get(*key).and_then(attachment_source_value))?;
+    let embedded = source.starts_with("data:");
+    let remote = source.starts_with("http://") || source.starts_with("https://");
+    let resolved_path = if embedded || remote {
+        None
+    } else {
+        let path = PathBuf::from(&source);
+        Some(if path.is_absolute() || project.is_empty() {
+            path
+        } else {
+            PathBuf::from(project).join(path)
+        })
+    };
+    let metadata = resolved_path
+        .as_ref()
+        .and_then(|path| fs::metadata(path).ok());
+    let status = if embedded {
+        AttachmentStatus::Embedded
+    } else if remote {
+        AttachmentStatus::Unsupported
+    } else if metadata.is_some() {
+        AttachmentStatus::Available
+    } else {
+        AttachmentStatus::Missing
+    };
+    let original_path = if embedded {
+        "内嵌图片数据".to_string()
+    } else {
+        source.clone()
+    };
+    let name = first_text(value, &["name", "file_name"]);
+    let name = if name.is_empty() {
+        Path::new(&original_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(if kind == AttachmentKind::Image {
+                "image"
+            } else {
+                "attachment"
+            })
+            .to_string()
+    } else {
+        name
+    };
+    let media_type = optional_text(value, &["mime_type", "media_type"])
+        .unwrap_or_else(|| infer_media_type(&name, kind));
+    Some(AttachmentCandidate {
+        attachment: ConversationAttachment {
+            id: String::new(),
+            kind,
+            name,
+            original_path,
+            media_type,
+            size_bytes: metadata.map(|metadata| metadata.len()),
+            status,
+        },
+        source,
+        resolved_path,
+    })
+}
+
+fn attachment_source_value(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| value.get("url").and_then(Value::as_str).map(str::to_string))
+}
+
+fn infer_media_type(name: &str, kind: AttachmentKind) -> String {
+    let extension = Path::new(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "pdf" => "application/pdf",
+        "json" => "application/json",
+        "md" => "text/markdown",
+        "txt" => "text/plain",
+        _ if kind == AttachmentKind::Image => "image/*",
+        _ => "application/octet-stream",
+    }
+    .to_string()
+}
+
+fn ensure_attachment_path_allowed(
+    candidate: &AttachmentCandidate,
+    project: &str,
+) -> Result<(), String> {
+    if candidate.attachment.status != AttachmentStatus::Available {
+        return Ok(());
+    }
+    let path = candidate
+        .resolved_path
+        .as_ref()
+        .ok_or_else(|| "附件路径不可用".to_string())?;
+    let canonical_path =
+        fs::canonicalize(path).map_err(|_| "原附件已不存在，无法加载图片".to_string())?;
+    let project_path = Path::new(project);
+    if !project_path.is_absolute() {
+        return Err("附件路径不在会话项目允许的目录内".to_string());
+    }
+    let project_root =
+        fs::canonicalize(project_path).map_err(|_| "会话项目目录不可用".to_string())?;
+    if project_root.parent().is_some() && canonical_path.starts_with(project_root) {
+        Ok(())
+    } else {
+        Err("附件路径不在会话项目允许的目录内".to_string())
+    }
+}
+
+fn attachment_data_url(candidate: &AttachmentCandidate) -> Result<String, String> {
+    if candidate.attachment.status == AttachmentStatus::Embedded {
+        if candidate.source.starts_with("data:image/") {
+            return Ok(candidate.source.clone());
+        }
+        return Err("内嵌附件不是可预览的图片".to_string());
+    }
+    let bytes = attachment_bytes(candidate)?;
+    Ok(format!(
+        "data:{};base64,{}",
+        candidate.attachment.media_type,
+        BASE64_STANDARD.encode(bytes)
+    ))
+}
+
+fn attachment_thumbnail_data_url(candidate: &AttachmentCandidate) -> Result<String, String> {
+    let bytes = attachment_bytes(candidate)?;
+    let image =
+        image::load_from_memory(&bytes).map_err(|error| format!("图片格式无效：{error}"))?;
+    let thumbnail = image.thumbnail(
+        image.width().min(THUMBNAIL_MAX_WIDTH),
+        image.height().min(THUMBNAIL_MAX_HEIGHT),
+    );
+    let mut encoded = Cursor::new(Vec::new());
+    thumbnail
+        .write_to(&mut encoded, image::ImageFormat::Png)
+        .map_err(|error| format!("生成图片缩略图失败：{error}"))?;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        BASE64_STANDARD.encode(encoded.into_inner())
+    ))
+}
+
+fn attachment_bytes(candidate: &AttachmentCandidate) -> Result<Vec<u8>, String> {
+    match candidate.attachment.status {
+        AttachmentStatus::Embedded => {
+            let (metadata, encoded) = candidate
+                .source
+                .split_once(',')
+                .ok_or_else(|| "内嵌图片数据无效".to_string())?;
+            if !metadata.starts_with("data:image/") || !metadata.ends_with(";base64") {
+                return Err("内嵌附件不是可预览的图片".to_string());
+            }
+            BASE64_STANDARD
+                .decode(encoded)
+                .map_err(|error| format!("内嵌图片数据无效：{error}"))
+        }
+        AttachmentStatus::Missing => Err("原附件已不存在，无法加载图片".to_string()),
+        AttachmentStatus::Unsupported => Err("远程附件不在应用内加载".to_string()),
+        AttachmentStatus::Available => {
+            let path = candidate
+                .resolved_path
+                .as_ref()
+                .ok_or_else(|| "附件路径不可用".to_string())?;
+            fs::read(path).map_err(|error| format!("读取原附件失败：{error}"))
+        }
+    }
 }
 
 fn optional_text(value: &Value, keys: &[&str]) -> Option<String> {
@@ -909,6 +1434,37 @@ fn load_session(
     )
     .optional()
     .map_err(|e| e.to_string())
+}
+
+fn load_trusted_session(
+    conn: &Connection,
+    home: &Path,
+    source: &str,
+    session_id: &str,
+) -> Result<(Source, ConversationSessionRow, PathBuf), String> {
+    let source = Source::parse(source).filter(|source| *source == Source::Codex);
+    let Some(source) = source else {
+        return Err("当前仅支持读取 Codex 对话详情".to_string());
+    };
+    let session = load_session(conn, source.as_str(), session_id)?
+        .ok_or_else(|| "未找到该对话记录".to_string())?;
+    let path = PathBuf::from(&session.source_file);
+    if !path.exists() {
+        return Err("原始文件已不存在，无法读取对话详情".to_string());
+    }
+    ensure_trusted_path(&path, &ingest::source_scan_dirs(home, source))?;
+    Ok((source, session, path))
+}
+
+fn ensure_matching_session(
+    parsed: &ParsedCodexConversation,
+    session: &ConversationSessionRow,
+) -> Result<(), String> {
+    if parsed.session.session_id == session.session_id {
+        Ok(())
+    } else {
+        Err("原始文件中的会话 ID 与索引不一致".to_string())
+    }
 }
 
 fn tombstone_missing_sessions(

@@ -32,7 +32,8 @@ use tauri::Manager;
 
 use crate::domain::{
     ApplicationAnalyticsDto, BillingWindowsDto, BudgetConfig, BudgetStatusDto, CodeVolumeSummary,
-    ConversationDetailDto, ConversationDetailStateDto, ConversationPage, ConversationQuery,
+    ConversationAttachmentContentDto, ConversationDetailDto, ConversationDetailStateDto,
+    ConversationEventContentDto, ConversationExportFormat, ConversationPage, ConversationQuery,
     CursorAccountEventPage, CursorAccountEventQuery, CursorAccountUsageDto, CursorSessionDetailDto,
     CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
     GlobalInstructionDto, IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto,
@@ -544,6 +545,107 @@ async fn get_conversation_detail_state(
 }
 
 #[tauri::command]
+async fn get_conversation_event_content(
+    app: tauri::AppHandle,
+    source: String,
+    session_id: String,
+    sequence: u32,
+) -> Result<ConversationEventContentDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        conversation::load_event_content(
+            &conn,
+            &ingest::default_home(),
+            &source,
+            &session_id,
+            sequence,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_conversation_attachment(
+    app: tauri::AppHandle,
+    source: String,
+    session_id: String,
+    attachment_id: String,
+) -> Result<ConversationAttachmentContentDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        conversation::load_attachment(
+            &conn,
+            &ingest::default_home(),
+            &source,
+            &session_id,
+            &attachment_id,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_conversation_attachment_thumbnail(
+    app: tauri::AppHandle,
+    source: String,
+    session_id: String,
+    attachment_id: String,
+) -> Result<ConversationAttachmentContentDto, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.lock_read()?;
+        conversation::load_attachment_thumbnail(
+            &conn,
+            &ingest::default_home(),
+            &source,
+            &session_id,
+            &attachment_id,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn export_conversation(
+    app: tauri::AppHandle,
+    source: String,
+    session_id: String,
+    format: ConversationExportFormat,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = ingest::default_home();
+        let export = {
+            let state = app.state::<AppState>();
+            let conn = state.lock_read()?;
+            conversation::build_export(&conn, &home, &source, &session_id, format)?
+        };
+        let (label, extensions): (&str, &[&str]) = match format {
+            ConversationExportFormat::Markdown => ("Markdown", &["md"]),
+            ConversationExportFormat::Json => ("Raw JSON", &["jsonl"]),
+        };
+        let path = rfd::FileDialog::new()
+            .set_file_name(&export.default_name)
+            .add_filter(label, extensions)
+            .save_file();
+        match path {
+            Some(path) => {
+                let expected_mtime = user_files::observe_mtime(&path)?;
+                user_files::write_export(&path, &export.content, expected_mtime.as_deref())?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn get_cursor_account_events_page(
     app: tauri::AppHandle,
     query: CursorAccountEventQuery,
@@ -995,6 +1097,10 @@ pub fn run() {
             get_conversation_sessions_page,
             get_conversation_detail,
             get_conversation_detail_state,
+            get_conversation_event_content,
+            get_conversation_attachment,
+            get_conversation_attachment_thumbnail,
+            export_conversation,
             refresh_cursor_account_usage,
             get_cursor_account_usage,
             get_cursor_account_events_page,

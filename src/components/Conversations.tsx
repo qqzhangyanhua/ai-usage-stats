@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -25,12 +26,16 @@ import {
   projectLabel,
   relativeTime,
 } from "../lib/format";
+import { ConversationMarkdown } from "../lib/conversationMarkdown";
 import type {
+  ConversationAttachment,
+  ConversationAttachmentContentDto,
   ConversationDetailDto,
   ConversationDetailStateDto,
   ConversationEvent,
   ConversationEventActor,
   ConversationEventCapabilityStatus,
+  ConversationEventContentDto,
   ConversationEventKind,
   ConversationPage,
   ConversationSessionRow,
@@ -131,77 +136,504 @@ function prettyDetails(details: unknown): string {
   }
 }
 
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) {
+    return "大小未知";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = units[0];
+  for (let index = 1; value >= 1024 && index < units.length; index += 1) {
+    value /= 1024;
+    unit = units[index];
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
+}
+
+function attachmentStatusText(attachment: ConversationAttachment): string {
+  if (attachment.status === "missing") {
+    return "原附件已不存在";
+  }
+  if (attachment.status === "unsupported") {
+    return "无法在应用内加载";
+  }
+  return attachment.status === "embedded" ? "已嵌入" : "可用";
+}
+
+function attachmentSignature(attachment: ConversationAttachment): string {
+  return `${attachment.kind}\u0000${attachment.status}\u0000${attachment.original_path}\u0000${attachment.size_bytes ?? ""}`;
+}
+
+function attachmentRequestKey(attachment: ConversationAttachment): string {
+  return `${attachment.id}\u0000${attachmentSignature(attachment)}`;
+}
+
+type ImageCacheEntry = { signature: string; dataUrl: string };
+type AsyncLoadState = "loading" | "error";
+
+function useKeyedAsyncLoad<Key extends string | number>() {
+  const [states, setStates] = useState<Partial<Record<Key, AsyncLoadState>>>({});
+  const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
+  const mounted = useRef(true);
+  const inFlight = useRef(new Set<Key>());
+
+  useEffect(() => {
+    const activeRequests = inFlight.current;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      activeRequests.clear();
+    };
+  }, []);
+
+  const run = useCallback(
+    async <Result,>(key: Key, task: () => Promise<Result>, onSuccess: (result: Result) => void) => {
+      if (inFlight.current.has(key)) {
+        return;
+      }
+      inFlight.current.add(key);
+      setStates((current) => ({ ...current, [key]: "loading" }));
+      setErrors((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      try {
+        const result = await task();
+        if (!mounted.current) {
+          return;
+        }
+        onSuccess(result);
+        setStates((current) => {
+          const next = { ...current };
+          delete next[key];
+          return next;
+        });
+      } catch (error) {
+        if (mounted.current) {
+          setStates((current) => ({ ...current, [key]: "error" }));
+          setErrors((current) => ({ ...current, [key]: humanStatus(error) }));
+        }
+      } finally {
+        inFlight.current.delete(key);
+      }
+    },
+    [],
+  );
+
+  return { states, errors, run };
+}
+
+function ImageDialog({
+  name,
+  dataUrl,
+  onClose,
+}: {
+  name: string;
+  dataUrl: string;
+  onClose: () => void;
+}) {
+  const titleId = `conversation-image-${encodeURIComponent(name).replaceAll("%", "")}`;
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusable = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+    focusable()[0]?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const controls = focusable();
+      if (controls.length === 0) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="conversation-image-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="conversation-image-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
+        <header>
+          <h3 id={titleId}>{name}</h3>
+          <Button variant="icon" onClick={onClose} aria-label="关闭图片预览">
+            <Icon name="close" size={15} />
+          </Button>
+        </header>
+        <div className="conversation-image-stage">
+          <img src={dataUrl} alt={name} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EventTimeline({
   events,
+  source,
+  sessionId,
+  onEventContentLoaded,
   timelineRef,
   onScroll,
 }: {
   events: ConversationEvent[];
+  source: string;
+  sessionId: string;
+  onEventContentLoaded: (content: ConversationEventContentDto) => void;
   timelineRef: RefObject<HTMLDivElement | null>;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
 }) {
+  const { states: eventLoads, errors: eventErrors, run: runEventLoad } =
+    useKeyedAsyncLoad<number>();
+  const { states: thumbnailLoads, errors: thumbnailErrors, run: runThumbnailLoad } =
+    useKeyedAsyncLoad<string>();
+  const { states: imageLoads, errors: imageErrors, run: runImageLoad } =
+    useKeyedAsyncLoad<string>();
+  const [thumbnailData, setThumbnailData] = useState<Record<string, ImageCacheEntry>>({});
+  const requestedThumbnails = useRef(new Map<string, string>());
+  const [imageData, setImageData] = useState<Record<string, ImageCacheEntry>>({});
+  const [openImage, setOpenImage] = useState<{ name: string; dataUrl: string } | null>(null);
+  const currentAttachmentSignatures = useMemo(
+    () =>
+      new Map(
+        events.flatMap((event) =>
+          event.attachments.map(
+            (attachment) => [attachment.id, attachmentSignature(attachment)] as const,
+          ),
+        ),
+      ),
+    [events],
+  );
+  const attachmentSignatures = useRef(currentAttachmentSignatures);
+  useEffect(() => {
+    attachmentSignatures.current = currentAttachmentSignatures;
+  }, [currentAttachmentSignatures]);
+
+  async function loadFullEvent(sequence: number) {
+    await runEventLoad(
+      sequence,
+      () =>
+        invoke<ConversationEventContentDto>("get_conversation_event_content", {
+          source,
+          sessionId,
+          sequence,
+        }),
+      onEventContentLoaded,
+    );
+  }
+
+  const loadThumbnail = useCallback(
+    async (attachment: ConversationAttachment, retry = false) => {
+      if (retry) {
+        requestedThumbnails.current.delete(attachment.id);
+      }
+      const signature = attachmentSignature(attachment);
+      if (requestedThumbnails.current.get(attachment.id) === signature) {
+        return;
+      }
+      requestedThumbnails.current.set(attachment.id, signature);
+      await runThumbnailLoad(
+        attachmentRequestKey(attachment),
+        () =>
+          invoke<ConversationAttachmentContentDto>("get_conversation_attachment_thumbnail", {
+            source,
+            sessionId,
+            attachmentId: attachment.id,
+          }),
+        (result) => {
+          if (attachmentSignatures.current.get(attachment.id) === signature) {
+            setThumbnailData((current) => ({
+              ...current,
+              [attachment.id]: { signature, dataUrl: result.data_url },
+            }));
+          }
+        },
+      );
+    },
+    [runThumbnailLoad, sessionId, source],
+  );
+
+  useEffect(() => {
+    for (const event of events) {
+      for (const attachment of event.attachments) {
+        if (
+          attachment.kind === "image" &&
+          (attachment.status === "available" || attachment.status === "embedded")
+        ) {
+          void loadThumbnail(attachment);
+        }
+      }
+    }
+  }, [events, loadThumbnail]);
+
+  async function loadImage(attachment: ConversationAttachment) {
+    const signature = attachmentSignature(attachment);
+    const cached = imageData[attachment.id];
+    if (cached?.signature === signature) {
+      setOpenImage({ name: attachment.name, dataUrl: cached.dataUrl });
+      return;
+    }
+    await runImageLoad(
+      attachmentRequestKey(attachment),
+      () =>
+        invoke<ConversationAttachmentContentDto>("get_conversation_attachment", {
+          source,
+          sessionId,
+          attachmentId: attachment.id,
+        }),
+      (result) => {
+        if (attachmentSignatures.current.get(attachment.id) === signature) {
+          setImageData((current) => ({
+            ...current,
+            [attachment.id]: { signature, dataUrl: result.data_url },
+          }));
+          setOpenImage({ name: attachment.name, dataUrl: result.data_url });
+        }
+      },
+    );
+  }
+
+  if (events.length === 0) {
+    return (
+      <EmptyState
+        icon="chat"
+        title="这条会话暂无事件"
+        hint="当前会话没有可展示的语义事件。"
+      />
+    );
+  }
+
   return (
-    <div
-      className="conversation-timeline"
-      aria-label="完整事件列表"
-      ref={timelineRef}
-      onScroll={onScroll}
-    >
-      {events.length === 0 ? (
-        <EmptyState icon="chat" title="这条会话暂无事件" hint="当前会话没有可展示的语义事件。" />
+    <>
+      <div
+        className="conversation-timeline"
+        aria-label="完整事件列表"
+        ref={timelineRef}
+        onScroll={onScroll}
+      >
+        {events.map((event) => {
+          const label = EVENT_LABELS[event.kind];
+          const showDetails =
+            event.kind === "unadapted" ||
+            ((event.kind === "plan" ||
+              event.kind === "tool_call" ||
+              event.kind === "tool_result") &&
+              hasEventDetails(event.details));
+          const showCapabilityStatus =
+            event.capability_status !== "complete" &&
+            event.kind !== "unadapted" &&
+            event.occurred_at !== null;
+          const usesMarkdown =
+            event.kind === "message" ||
+            event.kind === "plan" ||
+            event.kind === "error" ||
+            event.kind === "tool_result";
+          const isDeferred = event.content_status === "deferred";
+          return (
+            <article
+              className={`conversation-event event-${event.kind.replaceAll("_", "-")}`}
+              key={event.sequence}
+            >
+              <header className="conversation-event-meta">
+                <strong>{label}</strong>
+                {event.occurred_at ? (
+                  <time dateTime={event.occurred_at}>{formatClock(event.occurred_at)}</time>
+                ) : (
+                  <span className="conversation-event-missing-time">时间缺失</span>
+                )}
+              </header>
+              <div className="conversation-event-content">
+                {event.kind === "unadapted" ? (
+                  <span className="conversation-unadapted-state">尚未适配</span>
+                ) : showCapabilityStatus ? (
+                  <span className="conversation-capability-status">
+                    {capabilityStatusLabel(event.capability_status)}
+                  </span>
+                ) : null}
+                {event.actor || event.name ? (
+                  <div className="conversation-event-identity">
+                    {event.actor ? <span>{actorLabel(event.actor)}</span> : null}
+                    {event.name ? <code>{event.name}</code> : null}
+                  </div>
+                ) : null}
+                {event.text ? (
+                  usesMarkdown ? (
+                    <ConversationMarkdown markdown={event.text} />
+                  ) : (
+                    <pre className="conversation-event-text conversation-event-command">{event.text}</pre>
+                  )
+                ) : null}
+                {isDeferred ? (
+                  <div className="conversation-deferred" aria-live="polite">
+                    <span>仅显示前部内容</span>
+                    <Button
+                      variant="text"
+                      onClick={() => void loadFullEvent(event.sequence)}
+                      disabled={eventLoads[event.sequence] === "loading"}
+                    >
+                      {eventLoads[event.sequence] === "loading" ? <Spinner size={12} /> : null}
+                      加载全文
+                    </Button>
+                    {eventLoads[event.sequence] === "error" ? (
+                      <span className="conversation-inline-error" role="alert">
+                        {eventErrors[event.sequence]}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {showDetails ? (
+                  <details className="conversation-event-details">
+                    <summary>{event.kind === "unadapted" ? "查看原始事件" : "查看详细数据"}</summary>
+                    <pre>{prettyDetails(event.details)}</pre>
+                  </details>
+                ) : null}
+                {event.attachments.length > 0 ? (
+                  <div className="conversation-attachments" aria-label="附件">
+                    {event.attachments.map((attachment) => {
+                      const signature = attachmentSignature(attachment);
+                      const requestKey = attachmentRequestKey(attachment);
+                      const cachedThumbnail = thumbnailData[attachment.id];
+                      const thumbnailUrl =
+                        cachedThumbnail?.signature === signature ? cachedThumbnail.dataUrl : null;
+                      const thumbnailState = thumbnailLoads[requestKey];
+                      const imageState = imageLoads[requestKey];
+                      const canLoadImage =
+                        attachment.kind === "image" &&
+                        (attachment.status === "available" || attachment.status === "embedded");
+                      return (
+                        <div className="conversation-attachment" key={attachment.id}>
+                          <div className="conversation-attachment-main">
+                            <strong>{attachment.name}</strong>
+                            <code>{attachment.original_path || "—"}</code>
+                            <div className="conversation-attachment-meta">
+                              <span>{attachment.media_type || "未知类型"}</span>
+                              <span>{formatBytes(attachment.size_bytes)}</span>
+                              <span className={`attachment-status status-${attachment.status}`}>
+                                {attachmentStatusText(attachment)}
+                              </span>
+                            </div>
+                            {thumbnailState === "error" ? (
+                              <div className="conversation-attachment-action">
+                                <span className="conversation-inline-error" role="alert">
+                                  {thumbnailErrors[requestKey]}
+                                </span>
+                                <Button
+                                  variant="text"
+                                  onClick={() => void loadThumbnail(attachment, true)}
+                                >
+                                  重试缩略图
+                                </Button>
+                              </div>
+                            ) : null}
+                            {imageState === "error" ? (
+                              <span className="conversation-inline-error" role="alert">
+                                {imageErrors[requestKey]}
+                              </span>
+                            ) : null}
+                          </div>
+                          {canLoadImage ? (
+                            thumbnailUrl ? (
+                              <button
+                                type="button"
+                                className="conversation-image-thumb"
+                                onClick={() => void loadImage(attachment)}
+                                disabled={imageState === "loading"}
+                                aria-label={`查看原图：${attachment.name}`}
+                              >
+                                <img src={thumbnailUrl} alt="" />
+                                {imageState === "loading" ? (
+                                  <span className="conversation-image-loading" aria-hidden>
+                                    <Spinner size={14} />
+                                  </span>
+                                ) : null}
+                              </button>
+                            ) : (
+                              <div
+                                className="conversation-image-placeholder"
+                                aria-label={
+                                  thumbnailState === "error"
+                                    ? undefined
+                                    : "正在生成缩略图"
+                                }
+                                aria-hidden={thumbnailState === "error" || undefined}
+                              >
+                                {thumbnailState === "loading" ? (
+                                  <Spinner size={14} />
+                                ) : (
+                                  <Icon name="alertTriangle" size={14} />
+                                )}
+                              </div>
+                            )
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {!event.text &&
+                !showDetails &&
+                !event.actor &&
+                !event.name &&
+                event.attachments.length === 0 ? (
+                  <span className="muted">无附加内容</span>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {openImage ? (
+        <ImageDialog
+          name={openImage.name}
+          dataUrl={openImage.dataUrl}
+          onClose={() => setOpenImage(null)}
+        />
       ) : null}
-      {events.map((event) => {
-        const label = EVENT_LABELS[event.kind];
-        const showDetails =
-          event.kind === "unadapted" ||
-          ((event.kind === "plan" || event.kind === "tool_call" || event.kind === "tool_result") &&
-            hasEventDetails(event.details));
-        const showCapabilityStatus =
-          event.capability_status !== "complete" &&
-          event.kind !== "unadapted" &&
-          event.occurred_at !== null;
-        return (
-          <article
-            className={`conversation-event event-${event.kind.replaceAll("_", "-")}`}
-            key={event.sequence}
-          >
-            <header className="conversation-event-meta">
-              <strong>{label}</strong>
-              {event.occurred_at ? (
-                <time dateTime={event.occurred_at}>{formatClock(event.occurred_at)}</time>
-              ) : (
-                <span className="conversation-event-missing-time">时间缺失</span>
-              )}
-            </header>
-            <div className="conversation-event-content">
-              {event.kind === "unadapted" ? (
-                <span className="conversation-unadapted-state">尚未适配</span>
-              ) : showCapabilityStatus ? (
-                <span className="conversation-capability-status">
-                  {capabilityStatusLabel(event.capability_status)}
-                </span>
-              ) : null}
-              {event.actor || event.name ? (
-                <div className="conversation-event-identity">
-                  {event.actor ? <span>{actorLabel(event.actor)}</span> : null}
-                  {event.name ? <code>{event.name}</code> : null}
-                </div>
-              ) : null}
-              {event.text ? <div className="conversation-event-text">{event.text}</div> : null}
-              {showDetails ? (
-                <details className="conversation-event-details">
-                  <summary>{event.kind === "unadapted" ? "查看原始事件" : "查看详细数据"}</summary>
-                  <pre>{prettyDetails(event.details)}</pre>
-                </details>
-              ) : null}
-              {!event.text && !showDetails && !event.actor && !event.name ? (
-                <span className="muted">无附加内容</span>
-              ) : null}
-            </div>
-          </article>
-        );
-      })}
-    </div>
+    </>
   );
 }
 
@@ -274,6 +706,9 @@ export function Conversations({
   const [pollError, setPollError] = useState<string | null>(null);
   const [detailFileAvailable, setDetailFileAvailable] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
+  const [exportFormat, setExportFormat] = useState<"markdown" | "json" | null>(null);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [exportError, setExportError] = useState(false);
   const catalogGeneration = useRef(0);
   const detailGeneration = useRef(0);
   const detailRequestGate = useRef(
@@ -432,6 +867,9 @@ export function Conversations({
       setDetailError(null);
       setPollError(null);
       setDetailFileAvailable(session.file_available);
+      setExportFormat(null);
+      setExportStatus(null);
+      setExportError(false);
       unseenCountRef.current = 0;
       setUnseenCount(0);
       wasAtBottomRef.current = true;
@@ -442,7 +880,6 @@ export function Conversations({
         setDetailLoading(false);
         return;
       }
-
       setDetailLoading(true);
       const intent = { session, generation };
       if (acquired) {
@@ -591,6 +1028,51 @@ export function Conversations({
     setUnseenCount(0);
     pendingScrollRef.current = false;
     setDetailLoading(false);
+    setExportFormat(null);
+    setExportStatus(null);
+    setExportError(false);
+  }
+
+  async function exportConversation(format: "markdown" | "json") {
+    if (!selected) {
+      return;
+    }
+    setExportFormat(format);
+    setExportStatus(null);
+    setExportError(false);
+    try {
+      const saved = await invoke<boolean>("export_conversation", {
+        source: selected.source,
+        sessionId: selected.session_id,
+        format,
+      });
+      setExportStatus(saved ? "已导出" : "已取消");
+    } catch (error) {
+      setExportError(true);
+      setExportStatus(humanStatus(error));
+    } finally {
+      setExportFormat(null);
+    }
+  }
+
+  function updateEventContent(content: ConversationEventContentDto) {
+    setDetail((current) =>
+      current
+        ? {
+            ...current,
+            events: current.events.map((event) =>
+              event.sequence === content.sequence
+                ? {
+                    ...event,
+                    text: content.text,
+                    details: content.details,
+                    content_status: "complete",
+                  }
+                : event,
+            ),
+          }
+        : current,
+    );
   }
 
   if (selected) {
@@ -599,20 +1081,50 @@ export function Conversations({
       <div className="conversation-detail-view">
         <section className="panel conversation-detail-head">
           <div className="conversation-detail-actions">
-            <Button onClick={closeDetail} size="sm">
-              <Icon name="chevron" size={13} />
-              返回目录
-            </Button>
-            <div className="conversation-detail-statuses">
-              <span className={`conversation-status status-${session.support_status}`}>
-                {statusLabel(session.support_status)}
-              </span>
-              {!detailFileAvailable ? (
-                <span className="conversation-file-unavailable">
-                  <Icon name="alertTriangle" size={12} />
-                  原文件已删除
+            <div className="conversation-detail-navigation">
+              <Button onClick={closeDetail} size="sm">
+                <Icon name="chevron" size={13} />
+                返回目录
+              </Button>
+              <div className="conversation-detail-statuses">
+                <span className={`conversation-status status-${session.support_status}`}>
+                  {statusLabel(session.support_status)}
                 </span>
-              ) : null}
+                {!detailFileAvailable ? (
+                  <span className="conversation-file-unavailable">
+                    <Icon name="alertTriangle" size={12} />
+                    原文件已删除
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="conversation-export-wrap">
+              <div className="conversation-export-actions" aria-label="导出会话">
+                <Icon name="download" size={14} />
+                <Button
+                  variant="text"
+                  onClick={() => void exportConversation("markdown")}
+                  disabled={exportFormat !== null || !detailFileAvailable || !detail}
+                >
+                  {exportFormat === "markdown" ? <Spinner size={12} /> : null}
+                  Markdown
+                </Button>
+                <Button
+                  variant="text"
+                  onClick={() => void exportConversation("json")}
+                  disabled={exportFormat !== null || !detailFileAvailable || !detail}
+                >
+                  {exportFormat === "json" ? <Spinner size={12} /> : null}
+                  JSON
+                </Button>
+              </div>
+              <span
+                className={exportError ? "conversation-export-status is-error" : "conversation-export-status"}
+                role={exportError ? "alert" : "status"}
+                aria-live={exportError ? "assertive" : "polite"}
+              >
+                {exportStatus}
+              </span>
             </div>
           </div>
           <div className="conversation-detail-title">
@@ -713,7 +1225,11 @@ export function Conversations({
             detailTab === "events" ? (
               <div className="conversation-events-view">
                 <EventTimeline
+                  key={`${session.source}:${session.session_id}`}
                   events={detail.events}
+                  source={session.source}
+                  sessionId={session.session_id}
+                  onEventContentLoaded={updateEventContent}
                   timelineRef={timelineRef}
                   onScroll={handleTimelineScroll}
                 />
