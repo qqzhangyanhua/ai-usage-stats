@@ -47,6 +47,26 @@ Cursor 订阅限额是多档并行，不能只取总量：
 
 与账号用量事件接口 `get-filtered-usage-events` 分开。结构变更时保留上次正确缓存。
 
+## Droid (Factory)
+
+凭证读本机 `~/.factory`（`FACTORY_HOME_OVERRIDE` 可覆盖）：
+
+- `auth.v2.file`：`base64(iv):base64(tag):base64(密文)`，AES-256-GCM，**iv 是 16 字节**（不是常见的 12），tag 单独一段而不是拼在密文尾。
+- `auth.v2.key`：明文放在旁边的 base64 32 字节密钥。
+- 解出 `{access_token, refresh_token, active_organization_id}`；`access_token` 是 WorkOS JWT（`iss=https://api.workos.com`）。
+- 旧版 `auth.json` 是明文同结构，作为兜底。macOS 上 droid 可能改用系统钥匙串，那种情况读不到，该行 `unavailable`。
+
+`GET https://api.factory.ai/api/billing/limits`，`Authorization: Bearer <access_token>`：
+
+- `limits.standard.{fiveHour,weekly,monthly}` → 窗口 `five_hour` / `weekly` / `monthly`，标签「标准 …」
+- `limits.core.{fiveHour,weekly,monthly}` → 窗口 `core_*`，标签「Core …」（Droid Core 池）
+- 每档 `usedPercent`（0–100）、`windowEnd`（ISO，→ `resets_at`）、`secondsRemaining`
+- 另有 `extraUsageBalanceCents` / `overagePreference` / `usesTokenRateLimitsBilling`，当前不采
+
+`windowEnd` 已过去的档位跳过——对齐 droid 自己的显示逻辑（过期窗说明该桶不在计费窗内，不等于 0%）。全部过期时报结构异常，保留上次正确缓存。
+
+EU 区是 `https://api.eu.factory.ai`，当前不自动识别。
+
 ## Grok CLI-proxy billing
 
 读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token。优先 `https://auth.x.ai…` 作用域，其次 `https://accounts.x.ai/sign-in`。token 字段为 `key`（兼容 `access_token`）。跳过 `web_login` 与纯 API key（`xai::api_key` / `auth_mode=api_key`）。

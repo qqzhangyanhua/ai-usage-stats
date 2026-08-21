@@ -2,12 +2,17 @@
 
 mod adapters;
 mod billing;
+mod claude_quota;
+mod codex_quota;
 mod conversation;
 mod cursor_account;
 mod cursor_conversation;
 mod cursor_credentials;
+mod cursor_quota;
 mod cursor_session;
+mod droid_quota;
 mod dsh_droid_conversation;
+mod grok_quota;
 mod ingest;
 mod instructions;
 mod kimi_grok_conversation;
@@ -17,6 +22,7 @@ mod opencode_conversation;
 mod overview;
 mod parity;
 mod query;
+mod quota_alerts;
 mod qwen_copilot_conversation;
 mod store;
 mod work_timeline;

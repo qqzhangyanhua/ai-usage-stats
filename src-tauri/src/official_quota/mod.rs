@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod codex;
 pub mod cursor;
+pub mod droid;
 pub mod grok;
 pub(crate) mod grok_grpc;
 pub mod hook;
@@ -146,6 +147,7 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
         OfficialQuotaProvider::Codex => codex::fetch_rate_limits(),
         OfficialQuotaProvider::Cursor => cursor::fetch_usage_summary(),
         OfficialQuotaProvider::Grok => grok::fetch_rate_limits(),
+        OfficialQuotaProvider::Droid => droid::fetch_rate_limits(),
     }
 }
 
