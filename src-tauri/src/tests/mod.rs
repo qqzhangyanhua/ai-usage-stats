@@ -5,6 +5,7 @@ mod billing;
 mod conversation;
 mod cursor_account;
 mod cursor_conversation;
+mod cursor_credentials;
 mod cursor_session;
 mod dsh_droid_conversation;
 mod ingest;

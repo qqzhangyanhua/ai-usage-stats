@@ -8,9 +8,7 @@ use crate::official_quota::{parse_resets_at, sanitize_percent};
 const USAGE_SUMMARY_URL: &str = "https://cursor.com/api/usage-summary";
 
 pub fn fetch_usage_summary() -> Result<(Vec<OfficialQuotaWindow>, String), String> {
-    let token = cursor_account::load_token()?.ok_or_else(|| {
-        "尚未配置 Cursor 会话 token，请先在设置页粘贴 WorkosCursorSessionToken".to_string()
-    })?;
+    let token = cursor_account::current_token()?;
     let raw = request_usage_summary(&token)?;
     let windows = parse_usage_summary(&raw)?;
     Ok((windows, Utc::now().to_rfc3339()))

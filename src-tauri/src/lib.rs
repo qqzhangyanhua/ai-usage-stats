@@ -6,6 +6,7 @@ pub mod budget;
 pub mod conversation;
 pub mod cost;
 pub mod cursor_account;
+pub mod cursor_credentials;
 pub mod cursor_session;
 pub mod cursor_session_detail;
 pub mod cursor_session_query;
@@ -708,6 +709,13 @@ async fn has_cursor_session_token() -> Result<bool, String> {
 }
 
 #[tauri::command]
+async fn get_cursor_credential_status() -> Result<cursor_account::CursorCredentialStatus, String> {
+    tauri::async_runtime::spawn_blocking(cursor_account::credential_status)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn clear_cursor_account_usage(
     app: tauri::AppHandle,
 ) -> Result<CursorAccountUsageDto, String> {
@@ -1106,6 +1114,7 @@ pub fn run() {
             get_cursor_account_events_page,
             save_cursor_session_token,
             has_cursor_session_token,
+            get_cursor_credential_status,
             clear_cursor_account_usage,
             export_csv,
             export_json,
