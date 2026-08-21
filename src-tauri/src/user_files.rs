@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use crate::domain::WriteUserFileResult;
 
 const BACKUP_KEEP: usize = 5;
-const BACKUP_DIR: &str = "instruction-backups";
+const INSTRUCTION_BACKUP_DIR: &str = "instruction-backups";
 
 pub fn write(
     home: &Path,
@@ -19,25 +19,60 @@ pub fn write(
     if !is_allowed(home, path) {
         return Err("该路径不在可写名单中".into());
     }
+    write_protected(
+        home,
+        data_dir,
+        path,
+        content.as_bytes(),
+        expected_mtime,
+        INSTRUCTION_BACKUP_DIR,
+    )
+}
 
+pub fn observe_mtime(path: &Path) -> Result<Option<String>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let metadata = fs::metadata(path).map_err(|error| format!("读取目标文件状态失败：{error}"))?;
+    Ok(mtime_rfc3339(&metadata))
+}
+
+pub fn write_export(
+    path: &Path,
+    content: &[u8],
+    expected_mtime: Option<&str>,
+) -> Result<WriteUserFileResult, String> {
+    if !is_allowed_export(path) {
+        return Err("导出路径不在可写名单中".into());
+    }
+    if expected_mtime.is_some() {
+        return Err("导出目标已存在，请选择新文件名".into());
+    }
+    atomic_create_new(path, content)?;
+    let meta = fs::metadata(path).map_err(|e| format!("写入后读取失败：{e}"))?;
+    Ok(WriteUserFileResult {
+        modified_at: mtime_rfc3339(&meta),
+        byte_size: meta.len(),
+    })
+}
+
+fn write_protected(
+    home: &Path,
+    data_dir: &Path,
+    path: &Path,
+    content: &[u8],
+    expected_mtime: Option<&str>,
+    backup_dir: &str,
+) -> Result<WriteUserFileResult, String> {
     let exists = path.is_file();
-    let current_mtime = exists
-        .then(|| {
-            fs::metadata(path)
-                .ok()
-                .and_then(|meta| mtime_rfc3339(&meta))
-        })
-        .flatten();
+    let current_mtime = if exists { observe_mtime(path)? } else { None };
     if current_mtime.as_deref() != expected_mtime {
         return Err("该文件在外部被修改过".into());
     }
-
     if exists {
-        backup_original(data_dir, home, path)?;
+        backup_original(data_dir, home, path, backup_dir)?;
     }
-
     atomic_write(path, content)?;
-
     let meta = fs::metadata(path).map_err(|e| format!("写入后读取失败：{e}"))?;
     Ok(WriteUserFileResult {
         modified_at: mtime_rfc3339(&meta),
@@ -60,13 +95,26 @@ pub fn is_allowed(home: &Path, path: &Path) -> bool {
     }
 }
 
+fn is_allowed_export(path: &Path) -> bool {
+    path.is_absolute()
+        && matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("md" | "jsonl")
+        )
+}
+
 fn is_plain_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\\')
 }
 
-fn backup_original(data_dir: &Path, home: &Path, path: &Path) -> Result<(), String> {
+fn backup_original(
+    data_dir: &Path,
+    home: &Path,
+    path: &Path,
+    backup_dir: &str,
+) -> Result<(), String> {
     let original = fs::read(path).map_err(|e| format!("备份前读取失败：{e}"))?;
-    let dir = backup_dir_for(data_dir, home, path);
+    let dir = backup_dir_for(data_dir, home, path, backup_dir);
     fs::create_dir_all(&dir).map_err(|e| format!("创建备份目录失败：{e}"))?;
     let stamp = Utc::now().format("%Y%m%dT%H%M%S%.3fZ").to_string();
     let dest = dir.join(format!("{stamp}.bak"));
@@ -75,12 +123,13 @@ fn backup_original(data_dir: &Path, home: &Path, path: &Path) -> Result<(), Stri
     Ok(())
 }
 
-fn backup_dir_for(data_dir: &Path, home: &Path, path: &Path) -> PathBuf {
+fn backup_dir_for(data_dir: &Path, home: &Path, path: &Path, backup_dir: &str) -> PathBuf {
     let rel = path
         .strip_prefix(home)
-        .map(|p| p.to_string_lossy().replace(['/', '\\'], "__"))
-        .unwrap_or_else(|_| "unknown".into());
-    data_dir.join(BACKUP_DIR).join(rel)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace(['/', '\\', ':'], "__");
+    data_dir.join(backup_dir).join(rel)
 }
 
 fn prune_backups(dir: &Path) -> Result<(), String> {
@@ -100,18 +149,25 @@ fn prune_backups(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
+fn atomic_create_new(path: &Path, content: &[u8]) -> Result<(), String> {
+    let tmp = temporary_path(path)?;
+    if let Err(error) = fs::write(&tmp, content) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("写入临时文件失败：{error}"));
     }
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let tmp = path.with_file_name(format!(
-        ".{}.tmp-{nonce}",
-        path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
-    ));
+    let result = fs::hard_link(&tmp, path);
+    let _ = fs::remove_file(&tmp);
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err("导出目标已存在，请选择新文件名".to_string())
+        }
+        Err(error) => Err(format!("创建导出文件失败：{error}")),
+    }
+}
+
+fn atomic_write(path: &Path, content: &[u8]) -> Result<(), String> {
+    let tmp = temporary_path(path)?;
     let write_result = fs::write(&tmp, content).map_err(|e| format!("写入临时文件失败：{e}"));
     if write_result.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -124,6 +180,22 @@ fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
             Err(format!("替换目标文件失败：{error}"))
         }
     }
+}
+
+fn temporary_path(path: &Path) -> Result<PathBuf, String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
+    }
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    Ok(path.with_file_name(format!(
+        ".{}.tmp-{nonce}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("file")
+    )))
 }
 
 fn mtime_rfc3339(meta: &fs::Metadata) -> Option<String> {

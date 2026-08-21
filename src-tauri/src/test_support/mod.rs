@@ -16,9 +16,10 @@ pub use crate::billing_window;
 pub use crate::budget;
 pub use crate::cost::derive_cost;
 pub use crate::domain::{
-    BudgetConfig, ConversationEventActor, ConversationEventCapabilityStatus, ConversationEventKind,
-    CostSource, CursorSessionQuery, Filter, PriceEntry, PriceOrigin, PriceTable, SessionQuery,
-    Source, UsageRecord,
+    BudgetConfig, ConversationAttachmentKind, ConversationAttachmentStatus, ConversationEventActor,
+    ConversationEventCapabilityStatus, ConversationEventContentStatus, ConversationEventKind,
+    ConversationExportFormat, CostSource, CursorSessionQuery, Filter, PriceEntry, PriceOrigin,
+    PriceTable, SessionQuery, Source, UsageRecord,
 };
 pub use crate::ingest;
 pub use crate::query;

@@ -694,6 +694,40 @@ pub enum ConversationEventCapabilityStatus {
     UnadaptedMissingTimestamp,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationEventContentStatus {
+    Complete,
+    Deferred,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationAttachmentKind {
+    Image,
+    File,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationAttachmentStatus {
+    Available,
+    Missing,
+    Embedded,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationAttachment {
+    pub id: String,
+    pub kind: ConversationAttachmentKind,
+    pub name: String,
+    pub original_path: String,
+    pub media_type: String,
+    pub size_bytes: Option<u64>,
+    pub status: ConversationAttachmentStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConversationEvent {
     pub sequence: u32,
@@ -703,7 +737,35 @@ pub struct ConversationEvent {
     pub name: Option<String>,
     pub text: Option<String>,
     pub details: serde_json::Value,
+    pub attachments: Vec<ConversationAttachment>,
     pub capability_status: ConversationEventCapabilityStatus,
+    pub content_status: ConversationEventContentStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConversationEventContentDto {
+    pub sequence: u32,
+    pub text: Option<String>,
+    pub details: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationAttachmentContentDto {
+    pub attachment: ConversationAttachment,
+    pub data_url: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationExportFormat {
+    Markdown,
+    Json,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConversationExportDto {
+    pub default_name: String,
+    pub content: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

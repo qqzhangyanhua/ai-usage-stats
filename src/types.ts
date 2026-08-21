@@ -403,6 +403,22 @@ export type ConversationEventCapabilityStatus =
   | "unadapted"
   | "unadapted_missing_timestamp";
 
+export type ConversationEventContentStatus = "complete" | "deferred";
+
+export type ConversationAttachmentKind = "image" | "file";
+
+export type ConversationAttachmentStatus = "available" | "missing" | "embedded" | "unsupported";
+
+export type ConversationAttachment = {
+  id: string;
+  kind: ConversationAttachmentKind;
+  name: string;
+  original_path: string;
+  media_type: string;
+  size_bytes: number | null;
+  status: ConversationAttachmentStatus;
+};
+
 export type ConversationEvent = {
   sequence: number;
   kind: ConversationEventKind;
@@ -411,7 +427,20 @@ export type ConversationEvent = {
   name: string | null;
   text: string | null;
   details: unknown;
+  attachments: ConversationAttachment[];
   capability_status: ConversationEventCapabilityStatus;
+  content_status: ConversationEventContentStatus;
+};
+
+export type ConversationEventContentDto = {
+  sequence: number;
+  text: string | null;
+  details: unknown;
+};
+
+export type ConversationAttachmentContentDto = {
+  attachment: ConversationAttachment;
+  data_url: string;
 };
 
 export type ConversationUsageRecord = {
