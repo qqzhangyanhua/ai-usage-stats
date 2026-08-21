@@ -23,6 +23,7 @@ use crate::domain::{
 use crate::ingest;
 
 mod claude;
+mod copilot;
 mod cursor;
 mod droid;
 mod dsh;
@@ -31,6 +32,7 @@ mod grok;
 mod kimi;
 mod opencode;
 mod pi;
+mod qwen;
 
 const DEFAULT_PAGE_SIZE: u32 = 20;
 const MAX_PAGE_SIZE: u32 = 200;
@@ -49,6 +51,8 @@ pub(crate) const CONVERSATION_SOURCES: &[Source] = &[
     Source::Pi,
     Source::Gemini,
     Source::Opencode,
+    Source::Qwen,
+    Source::Copilot,
 ];
 const EXPERIMENTAL: &str = "experimental";
 const DETAIL_READ_ATTEMPTS: usize = 3;
@@ -56,7 +60,7 @@ const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
-pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 5;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -191,6 +195,24 @@ const CONVERSATION_ADAPTERS: &[ConversationAdapter] = &[
         revision: opencode::source_revision,
         raw_extension: None,
         reuse_unchanged_index: false,
+    },
+    ConversationAdapter {
+        source: Source::Qwen,
+        discover: qwen::discover,
+        index: qwen::index,
+        detail: qwen::detail,
+        revision: regular_source_revision,
+        raw_extension: Some("json"),
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
+        source: Source::Copilot,
+        discover: copilot::discover,
+        index: copilot::index,
+        detail: copilot::detail,
+        revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
     },
 ];
 
@@ -1043,6 +1065,10 @@ pub fn build_export(
         ConversationExportFormat::Json if paths.len() > 1 => {
             Err("该会话包含多个原始文件，无法导出为单一原始 JSONL".to_string())
         }
+        ConversationExportFormat::Json if source == Source::Qwen => Ok(ConversationExportDto {
+            default_name: format!("{base_name}.json"),
+            content: qwen::export_session_records(&paths[0], session_id)?,
+        }),
         ConversationExportFormat::Json => Ok(ConversationExportDto {
             default_name: format!(
                 "{base_name}.{}",
@@ -1510,6 +1536,14 @@ fn append_capability_degradation_status(
     }) {
         missing.push("timestamp");
     }
+    append_declared_capability_degradation_status(sequence, &missing, events);
+}
+
+fn append_declared_capability_degradation_status(
+    sequence: usize,
+    missing: &[&str],
+    events: &mut Vec<ConversationEvent>,
+) {
     if missing.is_empty() {
         return;
     }

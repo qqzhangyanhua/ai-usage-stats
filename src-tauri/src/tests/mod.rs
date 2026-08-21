@@ -16,5 +16,6 @@ mod opencode_conversation;
 mod overview;
 mod parity;
 mod query;
+mod qwen_copilot_conversation;
 mod store;
 mod work_timeline;
