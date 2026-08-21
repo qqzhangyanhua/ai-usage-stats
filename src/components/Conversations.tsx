@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+  type UIEvent,
+} from "react";
 import { Icon } from "../icons";
+import { isNearConversationBottom, nextConversationFollowState } from "../lib/conversationFollow";
 import {
   applicationLabel,
   formatClock,
@@ -11,6 +20,7 @@ import {
 } from "../lib/format";
 import type {
   ConversationDetailDto,
+  ConversationDetailStateDto,
   ConversationEvent,
   ConversationEventActor,
   ConversationEventCapabilityStatus,
@@ -109,26 +119,30 @@ function prettyDetails(details: unknown): string {
   }
 }
 
-function EventTimeline({ events }: { events: ConversationEvent[] }) {
-  if (events.length === 0) {
-    return (
-      <EmptyState
-        icon="chat"
-        title="这条会话暂无事件"
-        hint="当前会话没有可展示的语义事件。"
-      />
-    );
-  }
-
+function EventTimeline({
+  events,
+  timelineRef,
+  onScroll,
+}: {
+  events: ConversationEvent[];
+  timelineRef: RefObject<HTMLDivElement | null>;
+  onScroll: (event: UIEvent<HTMLDivElement>) => void;
+}) {
   return (
-    <div className="conversation-timeline" aria-label="完整事件列表">
+    <div
+      className="conversation-timeline"
+      aria-label="完整事件列表"
+      ref={timelineRef}
+      onScroll={onScroll}
+    >
+      {events.length === 0 ? (
+        <EmptyState icon="chat" title="这条会话暂无事件" hint="当前会话没有可展示的语义事件。" />
+      ) : null}
       {events.map((event) => {
         const label = EVENT_LABELS[event.kind];
         const showDetails =
           event.kind === "unadapted" ||
-          ((event.kind === "plan" ||
-            event.kind === "tool_call" ||
-            event.kind === "tool_result") &&
+          ((event.kind === "plan" || event.kind === "tool_call" || event.kind === "tool_result") &&
             hasEventDetails(event.details));
         const showCapabilityStatus =
           event.capability_status !== "complete" &&
@@ -245,8 +259,43 @@ export function Conversations({
   const [detailTab, setDetailTab] = useState<DetailTab>("events");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [detailFileAvailable, setDetailFileAvailable] = useState(true);
+  const [unseenCount, setUnseenCount] = useState(0);
   const catalogGeneration = useRef(0);
   const detailGeneration = useRef(0);
+  const detailRequests = useRef(0);
+  const detailRef = useRef<ConversationDetailDto | null>(null);
+  const detailRevisionRef = useRef("");
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef(true);
+  const pendingScrollRef = useRef(false);
+  const unseenCountRef = useRef(0);
+
+  const replaceDetail = useCallback((result: ConversationDetailDto, followUpdates: boolean) => {
+    if (followUpdates) {
+      const follow = nextConversationFollowState({
+        previousCount: detailRef.current?.events.length ?? 0,
+        nextCount: result.events.length,
+        wasAtBottom: wasAtBottomRef.current,
+        unseenCount: unseenCountRef.current,
+      });
+      pendingScrollRef.current = follow.shouldScroll;
+      unseenCountRef.current = follow.unseenCount;
+      setUnseenCount(follow.unseenCount);
+    } else {
+      pendingScrollRef.current = true;
+      wasAtBottomRef.current = true;
+      unseenCountRef.current = 0;
+      setUnseenCount(0);
+    }
+    detailRef.current = result;
+    detailRevisionRef.current = result.revision;
+    setDetail(result);
+    setDetailFileAvailable(result.session.file_available);
+    setDetailError(null);
+    setPollError(null);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -293,16 +342,31 @@ export function Conversations({
       const generation = ++detailGeneration.current;
       setSelected(session);
       setDetailTab("events");
+      detailRef.current = null;
+      detailRevisionRef.current = "";
       setDetail(null);
       setDetailError(null);
+      setPollError(null);
+      setDetailFileAvailable(session.file_available);
+      unseenCountRef.current = 0;
+      setUnseenCount(0);
+      wasAtBottomRef.current = true;
+      pendingScrollRef.current = false;
+
+      if (!session.file_available) {
+        setDetailLoading(false);
+        return;
+      }
+
       setDetailLoading(true);
+      detailRequests.current += 1;
       invoke<ConversationDetailDto>("get_conversation_detail", {
         source: session.source,
         sessionId: session.session_id,
       })
         .then((result) => {
           if (generation === detailGeneration.current) {
-            setDetail(result);
+            replaceDetail(result, false);
           }
         })
         .catch((error) => {
@@ -312,20 +376,116 @@ export function Conversations({
           }
         })
         .finally(() => {
+          detailRequests.current = Math.max(0, detailRequests.current - 1);
           if (generation === detailGeneration.current) {
             setDetailLoading(false);
           }
         });
     },
-    [onError],
+    [onError, replaceDetail],
   );
+
+  const selectedSource = selected?.source ?? null;
+  const selectedSessionId = selected?.session_id ?? null;
+
+  useEffect(() => {
+    if (!selectedSource || !selectedSessionId) {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      if (detailRequests.current > 0) {
+        return;
+      }
+      const generation = detailGeneration.current;
+      detailRequests.current += 1;
+      try {
+        const state = await invoke<ConversationDetailStateDto>("get_conversation_detail_state", {
+          source: selectedSource,
+          sessionId: selectedSessionId,
+          knownRevision: detailRevisionRef.current,
+        });
+        if (cancelled || generation !== detailGeneration.current) {
+          return;
+        }
+
+        setDetailFileAvailable(state.file_available);
+        setPollError(null);
+        if (state.changed && state.file_available) {
+          const result = await invoke<ConversationDetailDto>("get_conversation_detail", {
+            source: selectedSource,
+            sessionId: selectedSessionId,
+          });
+          if (!cancelled && generation === detailGeneration.current) {
+            replaceDetail(result, true);
+          }
+        }
+      } catch (error) {
+        if (!cancelled && generation === detailGeneration.current) {
+          setPollError(humanStatus(error));
+        }
+      } finally {
+        detailRequests.current = Math.max(0, detailRequests.current - 1);
+      }
+    };
+
+    const timer = window.setInterval(poll, 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [replaceDetail, selectedSessionId, selectedSource]);
+
+  useLayoutEffect(() => {
+    if (!detail || detailTab !== "events" || !pendingScrollRef.current) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const timeline = timelineRef.current;
+      if (timeline) {
+        timeline.scrollTop = timeline.scrollHeight;
+        wasAtBottomRef.current = true;
+      }
+      pendingScrollRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detail, detailTab]);
+
+  function handleTimelineScroll(event: UIEvent<HTMLDivElement>) {
+    const isAtBottom = isNearConversationBottom(event.currentTarget);
+    wasAtBottomRef.current = isAtBottom;
+    if (isAtBottom) {
+      unseenCountRef.current = 0;
+      setUnseenCount(0);
+    }
+  }
+
+  function scrollToLatestEvent() {
+    const timeline = timelineRef.current;
+    if (timeline) {
+      timeline.scrollTop = timeline.scrollHeight;
+    } else {
+      pendingScrollRef.current = true;
+    }
+    wasAtBottomRef.current = true;
+    unseenCountRef.current = 0;
+    setUnseenCount(0);
+  }
 
   function closeDetail() {
     detailGeneration.current += 1;
     setSelected(null);
     setDetailTab("events");
+    detailRef.current = null;
+    detailRevisionRef.current = "";
     setDetail(null);
     setDetailError(null);
+    setPollError(null);
+    setDetailFileAvailable(true);
+    unseenCountRef.current = 0;
+    setUnseenCount(0);
+    pendingScrollRef.current = false;
     setDetailLoading(false);
   }
 
@@ -339,9 +499,17 @@ export function Conversations({
               <Icon name="chevron" size={13} />
               返回目录
             </Button>
-            <span className={`conversation-status status-${session.support_status}`}>
-              {statusLabel(session.support_status)}
-            </span>
+            <div className="conversation-detail-statuses">
+              <span className={`conversation-status status-${session.support_status}`}>
+                {statusLabel(session.support_status)}
+              </span>
+              {!detailFileAvailable ? (
+                <span className="conversation-file-unavailable">
+                  <Icon name="alertTriangle" size={12} />
+                  原文件已删除
+                </span>
+              ) : null}
+            </div>
           </div>
           <div className="conversation-detail-title">
             <span>{applicationLabel(session.source)}</span>
@@ -403,6 +571,28 @@ export function Conversations({
               </span>
             ) : null}
           </div>
+          {!detailFileAvailable ? (
+            <div className="conversation-detail-notice" role="status">
+              <Icon name="alertTriangle" size={16} />
+              <div>
+                <strong>原文件已删除，详情不可继续读取</strong>
+                <span>
+                  {detail
+                    ? "当前显示的是已加载快照；文件恢复后将自动更新。"
+                    : "仍可查看目录元数据；文件恢复后将自动读取详情。"}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          {pollError ? (
+            <div className="conversation-detail-notice" role="status">
+              <Icon name="alertTriangle" size={16} />
+              <div>
+                <strong>暂时无法检查最新内容</strong>
+                <span>{pollError}；后台将继续重试。</span>
+              </div>
+            </div>
+          ) : null}
           {detailLoading ? (
             <EmptyState icon="chat" title="正在读取原始会话…" />
           ) : detailError ? (
@@ -417,7 +607,21 @@ export function Conversations({
             </div>
           ) : detail ? (
             detailTab === "events" ? (
-              <EventTimeline events={detail.events} />
+              <div className="conversation-events-view">
+                <EventTimeline
+                  events={detail.events}
+                  timelineRef={timelineRef}
+                  onScroll={handleTimelineScroll}
+                />
+                <div className="conversation-follow-control" aria-live="polite">
+                  {unseenCount > 0 ? (
+                    <Button size="sm" onClick={scrollToLatestEvent}>
+                      <Icon name="chevron" size={13} className="conversation-follow-icon" />
+                      新增 {unseenCount} 条事件
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
             ) : (
               <UsageRecordsTable records={detail.usage_records} />
             )
@@ -519,9 +723,17 @@ export function Conversations({
                       </div>
                     </td>
                     <td>
-                      <span className={`conversation-status status-${row.support_status}`}>
-                        {statusLabel(row.support_status)}
-                      </span>
+                      <div className="conversation-row-statuses">
+                        <span className={`conversation-status status-${row.support_status}`}>
+                          {statusLabel(row.support_status)}
+                        </span>
+                        {!row.file_available ? (
+                          <span className="conversation-file-unavailable">
+                            <Icon name="alertTriangle" size={12} />
+                            原文件已删除
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
