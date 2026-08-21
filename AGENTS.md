@@ -34,7 +34,7 @@ Rust 测试按模块拆分在 `src-tauri/src/tests/`，共享辅助函数在 `sr
 
 - **`pnpm tauri dev` / `pnpm tauri build` / 菜单栏托盘**：需图形会话与本机数据；Cloud 上跳过 GUI walkthrough 与完整打包。跨平台安装包由 `.github/workflows/release.yml` 在 GitHub-hosted runner 上打（见 `docs/platforms.md`）。
 - **真实 `~/.codex`、`~/.claude` 等路径**：禁止依赖；用 `src-tauri/tests/fixtures/` + `tempfile`（见 `ingest_all_fixtures_is_stable_on_refresh`）。
-- **Cursor 账号联网拉取**：需用户 cookie / 钥匙串；只测 parser 与 store fixture。
+- **Cursor 账号联网拉取**：需本机 Cursor 客户端登录态；只测 parser 与 store fixture。
 - **Probe 本机字段**：`cargo run --bin probe` 仅在开发者机器上跑，结果写入 `docs/probe/`。
 
 ## 改不同层时的检查清单

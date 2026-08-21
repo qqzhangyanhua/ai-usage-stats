@@ -26,7 +26,7 @@ Claude Code 2.1.80+ 在 statusline 命令的 stdin JSON 里提供：
 
 ## Cursor
 
-凭证优先读本机 Cursor 客户端，读不到才回落钥匙串。`state.vscdb`（Win `%APPDATA%\Cursor\User\globalStorage`、mac `~/Library/Application Support/Cursor/...`、Linux `~/.config/Cursor/...`，三平台都在 `dirs::config_dir()` 下）的 `ItemTable`：
+凭证只有一个来源：本机 Cursor 客户端。没有手动粘贴通路，也不落钥匙串。`state.vscdb`（Win `%APPDATA%\Cursor\User\globalStorage`、mac `~/Library/Application Support/Cursor/...`、Linux `~/.config/Cursor/...`，三平台都在 `dirs::config_dir()` 下）的 `ItemTable`：
 
 - `cursorAuth/accessToken`：WorkOS JWT，`iss=https://authentication.cursor.sh`，`sub` 形如 `google-oauth|user_01J…`。value 列可能是 TEXT 也可能是 BLOB。
 - `cursorAuth/cachedEmail` / `cursorAuth/stripeMembershipType`：只用于设置页展示。

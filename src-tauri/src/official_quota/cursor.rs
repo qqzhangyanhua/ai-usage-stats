@@ -125,13 +125,7 @@ fn percent_from_used_limit(plan: &Value) -> Option<f64> {
 
 fn request_usage_summary(token: &str) -> Result<String, String> {
     let request = ureq::get(USAGE_SUMMARY_URL)
-        .set(
-            "Cookie",
-            &format!(
-                "WorkosCursorSessionToken={}",
-                cursor_account::normalize_token(token)
-            ),
-        )
+        .set("Cookie", &format!("WorkosCursorSessionToken={token}"))
         .set("Origin", "https://cursor.com");
     match request.call() {
         Ok(response) => response

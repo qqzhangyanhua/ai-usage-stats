@@ -35,7 +35,6 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 tauri-plugin-notification = "2.3.3"
 ureq = { version = "2", default-features = false, features = ["json", "tls"] }
-keyring = { version = "3", features = ["apple-native"] }
 
 [dev-dependencies]
 tempfile = "3"

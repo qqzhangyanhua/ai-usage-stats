@@ -663,10 +663,9 @@ async fn get_cursor_account_events_page(
 #[tauri::command]
 async fn refresh_cursor_account_usage(
     app: tauri::AppHandle,
-    token: Option<String>,
 ) -> Result<CursorAccountUsageDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let resolved = cursor_account::resolve_session_token(token)?;
+        let resolved = cursor_account::current_token()?;
         let state = app.state::<AppState>();
         let start_date_ms = {
             let conn = state.lock_read()?;
@@ -692,13 +691,6 @@ async fn get_cursor_account_usage(
     })
     .await
     .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn save_cursor_session_token(token: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || cursor_account::save_token(&token))
-        .await
-        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1112,7 +1104,6 @@ pub fn run() {
             refresh_cursor_account_usage,
             get_cursor_account_usage,
             get_cursor_account_events_page,
-            save_cursor_session_token,
             has_cursor_session_token,
             get_cursor_credential_status,
             clear_cursor_account_usage,
