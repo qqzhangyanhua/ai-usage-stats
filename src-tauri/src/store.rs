@@ -149,6 +149,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
             adapter_version INTEGER NOT NULL DEFAULT 0,
+            source_revision TEXT NOT NULL DEFAULT '',
             is_top_level INTEGER NOT NULL DEFAULT 1,
             -- Reconstructable relationship IDs only; conversation bodies remain in source files.
             agent_metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -166,7 +167,8 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
             adapter_version INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY(source, source_file)
+            source_revision TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY(source, session_id, source_file)
         );
         CREATE INDEX IF NOT EXISTS idx_conversation_session_files_session
             ON conversation_session_files(source, session_id);
@@ -228,6 +230,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     ensure_column(
         conn,
         "conversation_sessions",
+        "source_revision",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
         "is_top_level",
         "INTEGER NOT NULL DEFAULT 1",
     )?;
@@ -255,6 +263,13 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "adapter_version",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(
+        conn,
+        "conversation_session_files",
+        "source_revision",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    migrate_conversation_session_files_key(conn)?;
     ensure_column(
         conn,
         "cursor_sessions",
@@ -299,6 +314,61 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "#,
     )
     .map_err(|e| e.to_string())
+}
+
+fn migrate_conversation_session_files_key(conn: &Connection) -> Result<(), String> {
+    let session_id_pk = conn
+        .prepare("PRAGMA table_info(conversation_session_files)")
+        .map_err(|error| error.to_string())?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(5)?))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find_map(|(name, pk)| (name == "session_id").then_some(pk))
+        .unwrap_or(0);
+    if session_id_pk > 0 {
+        return Ok(());
+    }
+
+    let migration = conn.execute_batch(
+        r#"
+        SAVEPOINT migrate_conversation_session_files_key;
+        DROP INDEX IF EXISTS idx_conversation_session_files_session;
+        DROP TABLE IF EXISTS conversation_session_files_v2;
+        CREATE TABLE conversation_session_files_v2 (
+            source TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
+            source_file_size INTEGER NOT NULL DEFAULT 0,
+            adapter_version INTEGER NOT NULL DEFAULT 0,
+            source_revision TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY(source, session_id, source_file)
+        );
+        INSERT OR IGNORE INTO conversation_session_files_v2(
+            source, session_id, source_file, source_file_mtime_ns, source_file_size,
+            adapter_version, source_revision
+        )
+        SELECT source, session_id, source_file, source_file_mtime_ns, source_file_size,
+               adapter_version, source_revision
+        FROM conversation_session_files;
+        DROP TABLE conversation_session_files;
+        ALTER TABLE conversation_session_files_v2 RENAME TO conversation_session_files;
+        CREATE INDEX idx_conversation_session_files_session
+            ON conversation_session_files(source, session_id);
+        RELEASE migrate_conversation_session_files_key;
+        "#,
+    );
+    if let Err(error) = migration {
+        let _ = conn.execute_batch(
+            "ROLLBACK TO migrate_conversation_session_files_key; RELEASE migrate_conversation_session_files_key;",
+        );
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 fn ensure_column(

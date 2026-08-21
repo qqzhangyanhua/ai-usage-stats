@@ -24,6 +24,7 @@ use crate::ingest;
 
 mod claude;
 mod gemini;
+mod opencode;
 mod pi;
 
 const DEFAULT_PAGE_SIZE: u32 = 20;
@@ -32,15 +33,20 @@ const TITLE_MAX_CHARS: usize = 80;
 const CAPABILITY_MESSAGES: &str = "messages";
 const CAPABILITY_EVENTS: &str = "events";
 const CAPABILITY_USAGE: &str = "usage";
-pub(crate) const CONVERSATION_SOURCES: &[Source] =
-    &[Source::Codex, Source::Claude, Source::Pi, Source::Gemini];
+pub(crate) const CONVERSATION_SOURCES: &[Source] = &[
+    Source::Codex,
+    Source::Claude,
+    Source::Pi,
+    Source::Gemini,
+    Source::Opencode,
+];
 const EXPERIMENTAL: &str = "experimental";
 const DETAIL_READ_ATTEMPTS: usize = 3;
 const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
-pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 1;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -55,6 +61,7 @@ struct CachedConversationFingerprint {
     source_file_mtime_ns: i64,
     source_file_size: i64,
     adapter_version: i64,
+    source_revision: String,
 }
 
 struct ParsedConversation {
@@ -64,49 +71,71 @@ struct ParsedConversation {
     is_top_level: bool,
 }
 
-type ConversationParseFn = fn(&Path, bool) -> Result<ParsedConversation, String>;
+struct ConversationIndexBatch {
+    conversations: Vec<ParsedConversation>,
+    diagnostics: Vec<ConversationIndexIssue>,
+}
+
+type ConversationDiscoverFn = fn(&[PathBuf]) -> Result<Vec<PathBuf>, String>;
+type ConversationIndexFn = fn(&Path) -> Result<ConversationIndexBatch, ConversationIndexIssue>;
+type ConversationDetailFn = fn(&Path, &str, bool) -> Result<ParsedConversation, String>;
+type ConversationRevisionFn = fn(&Path) -> Result<String, String>;
 
 struct ConversationAdapter {
     source: Source,
-    extension: &'static str,
-    accepts_path: fn(&Path) -> bool,
-    parse: ConversationParseFn,
-}
-
-fn accepts_any_path(_: &Path) -> bool {
-    true
-}
-
-fn accepts_gemini_session(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("session-"))
+    discover: ConversationDiscoverFn,
+    index: ConversationIndexFn,
+    detail: ConversationDetailFn,
+    revision: ConversationRevisionFn,
+    raw_extension: Option<&'static str>,
+    reuse_unchanged_index: bool,
 }
 
 const CONVERSATION_ADAPTERS: &[ConversationAdapter] = &[
     ConversationAdapter {
         source: Source::Codex,
-        extension: "jsonl",
-        accepts_path: accepts_any_path,
-        parse: parse_codex_file,
+        discover: discover_jsonl,
+        index: index_codex,
+        detail: detail_codex,
+        revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
     },
     ConversationAdapter {
         source: Source::Claude,
-        extension: "jsonl",
-        accepts_path: accepts_any_path,
-        parse: claude::parse,
+        discover: discover_jsonl,
+        index: index_claude,
+        detail: detail_claude,
+        revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
     },
     ConversationAdapter {
         source: Source::Pi,
-        extension: "jsonl",
-        accepts_path: accepts_any_path,
-        parse: pi::parse,
+        discover: discover_jsonl,
+        index: index_pi,
+        detail: detail_pi,
+        revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
     },
     ConversationAdapter {
         source: Source::Gemini,
-        extension: "json",
-        accepts_path: accepts_gemini_session,
-        parse: gemini::parse,
+        discover: discover_gemini,
+        index: index_gemini,
+        detail: detail_gemini,
+        revision: regular_source_revision,
+        raw_extension: Some("json"),
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
+        source: Source::Opencode,
+        discover: discover_opencode,
+        index: opencode::index,
+        detail: opencode::detail,
+        revision: opencode::source_revision,
+        raw_extension: None,
+        reuse_unchanged_index: false,
     },
 ];
 
@@ -115,6 +144,127 @@ fn conversation_adapter(source: Source) -> Result<&'static ConversationAdapter, 
         .iter()
         .find(|adapter| adapter.source == source)
         .ok_or_else(|| "该来源尚未支持对话详情".to_string())
+}
+
+fn discover_extension(roots: &[PathBuf], extension: &str) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for root in roots {
+        paths.extend(ingest::walk_files(root, extension)?);
+    }
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+fn discover_jsonl(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    discover_extension(roots, "jsonl")
+}
+
+fn discover_gemini(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    Ok(discover_extension(roots, "json")?
+        .into_iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("session-"))
+        })
+        .collect())
+}
+
+fn discover_opencode(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    Ok(roots
+        .iter()
+        .filter(|path| path.is_file())
+        .cloned()
+        .collect())
+}
+
+fn regular_source_revision(path: &Path) -> Result<String, String> {
+    fs::metadata(path)
+        .map(|metadata| metadata_revision(&metadata))
+        .map_err(|error| format!("读取原始文件元数据失败：{error}"))
+}
+
+fn single_index(
+    path: &Path,
+    parse: fn(&Path, bool) -> Result<ParsedConversation, String>,
+) -> Result<ConversationIndexBatch, ConversationIndexIssue> {
+    parse(path, false)
+        .map(|conversation| ConversationIndexBatch {
+            conversations: vec![conversation],
+            diagnostics: Vec::new(),
+        })
+        .map_err(|message| ConversationIndexIssue {
+            path: path.to_string_lossy().to_string(),
+            message,
+            event_type: None,
+            line: None,
+        })
+}
+
+fn single_detail(
+    path: &Path,
+    session_id: &str,
+    include_deferred_content: bool,
+    parse: fn(&Path, bool) -> Result<ParsedConversation, String>,
+) -> Result<ParsedConversation, String> {
+    let parsed = parse(path, include_deferred_content)?;
+    if parsed.session.session_id == session_id {
+        Ok(parsed)
+    } else {
+        Err("原始文件中的会话 ID 与索引不一致".to_string())
+    }
+}
+
+fn index_codex(path: &Path) -> Result<ConversationIndexBatch, ConversationIndexIssue> {
+    parse_codex_file_mode(path, false, false).map(|conversation| ConversationIndexBatch {
+        conversations: vec![conversation],
+        diagnostics: Vec::new(),
+    })
+}
+
+fn detail_codex(
+    path: &Path,
+    session_id: &str,
+    include_deferred_content: bool,
+) -> Result<ParsedConversation, String> {
+    single_detail(path, session_id, include_deferred_content, parse_codex_file)
+}
+
+fn index_claude(path: &Path) -> Result<ConversationIndexBatch, ConversationIndexIssue> {
+    single_index(path, claude::parse)
+}
+
+fn detail_claude(
+    path: &Path,
+    session_id: &str,
+    include_deferred_content: bool,
+) -> Result<ParsedConversation, String> {
+    single_detail(path, session_id, include_deferred_content, claude::parse)
+}
+
+fn index_pi(path: &Path) -> Result<ConversationIndexBatch, ConversationIndexIssue> {
+    single_index(path, pi::parse)
+}
+
+fn detail_pi(
+    path: &Path,
+    session_id: &str,
+    include_deferred_content: bool,
+) -> Result<ParsedConversation, String> {
+    single_detail(path, session_id, include_deferred_content, pi::parse)
+}
+
+fn index_gemini(path: &Path) -> Result<ConversationIndexBatch, ConversationIndexIssue> {
+    single_index(path, gemini::parse)
+}
+
+fn detail_gemini(
+    path: &Path,
+    session_id: &str,
+    include_deferred_content: bool,
+) -> Result<ParsedConversation, String> {
+    single_detail(path, session_id, include_deferred_content, gemini::parse)
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -156,48 +306,82 @@ pub(crate) fn refresh_source_in_roots(
     source: Source,
     roots: &[PathBuf],
 ) -> Result<Vec<ConversationIndexIssue>, String> {
+    let adapter = conversation_adapter(source)?;
     let mut issues = Vec::new();
+    let mut blocking_issues = Vec::new();
     let mut grouped: BTreeMap<String, Vec<ParsedConversation>> = BTreeMap::new();
     let mut unchanged_paths: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     for path in conversation_source_paths(source, roots)? {
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => metadata,
             Err(error) => {
-                issues.push(ConversationIndexIssue {
+                let issue = ConversationIndexIssue {
                     path: path.to_string_lossy().to_string(),
                     message: format!("读取文件元数据失败：{error}"),
                     event_type: None,
                     line: None,
-                });
+                };
+                blocking_issues.push(issue.clone());
+                issues.push(issue);
                 continue;
             }
         };
         let mtime_ns = modified_nanos(&metadata);
         let size = metadata.len() as i64;
-        let cached = load_cached_fingerprints(conn, source, &path)?;
-        if let [cached] = cached.as_slice() {
-            if cached.source_file_mtime_ns == mtime_ns
-                && cached.source_file_size == size
-                && cached.adapter_version == CONVERSATION_ADAPTER_VERSION
-            {
-                unchanged_paths
-                    .entry(cached.session_id.clone())
-                    .or_default()
-                    .push(path);
+        let source_revision = match (adapter.revision)(&path) {
+            Ok(revision) => revision,
+            Err(message) => {
+                let issue = ConversationIndexIssue {
+                    path: path.to_string_lossy().to_string(),
+                    message,
+                    event_type: None,
+                    line: None,
+                };
+                blocking_issues.push(issue.clone());
+                issues.push(issue);
                 continue;
             }
+        };
+        let cached = if adapter.reuse_unchanged_index {
+            load_cached_fingerprints(conn, source, &path)?
+        } else {
+            Vec::new()
+        };
+        if !cached.is_empty()
+            && cached.iter().all(|cached| {
+                cached.source_file_mtime_ns == mtime_ns
+                    && cached.source_file_size == size
+                    && cached.adapter_version == CONVERSATION_ADAPTER_VERSION
+                    && cached.source_revision == source_revision
+            })
+        {
+            for cached in cached {
+                unchanged_paths
+                    .entry(cached.session_id)
+                    .or_default()
+                    .push(path.clone());
+            }
+            continue;
         }
-        match parse_conversation_file_for_index(source, &path) {
-            Ok(parsed) => grouped
-                .entry(parsed.session.session_id.clone())
-                .or_default()
-                .push(parsed),
-            Err(issue) => issues.push(issue),
+        match (adapter.index)(&path) {
+            Ok(batch) => {
+                issues.extend(batch.diagnostics);
+                for parsed in batch.conversations {
+                    grouped
+                        .entry(parsed.session.session_id.clone())
+                        .or_default()
+                        .push(parsed);
+                }
+            }
+            Err(issue) => {
+                blocking_issues.push(issue.clone());
+                issues.push(issue);
+            }
         }
     }
 
-    let failed_paths_by_session = failed_session_paths(conn, source, &issues)?;
-    let blocked_session_ids = failed_paths_by_session
+    let failed_paths_by_session = failed_session_paths(conn, source, &blocking_issues)?;
+    let mut blocked_session_ids = failed_paths_by_session
         .keys()
         .cloned()
         .collect::<BTreeSet<_>>();
@@ -244,9 +428,21 @@ pub(crate) fn refresh_source_in_roots(
         let indexed = indexed_paths.into_iter().collect::<BTreeSet<_>>();
         if grouped.contains_key(&session_id) || scanned != indexed {
             for path in paths {
-                match parse_conversation_file_for_index(source, &path) {
-                    Ok(parsed) => grouped.entry(session_id.clone()).or_default().push(parsed),
-                    Err(issue) => issues.push(issue),
+                match (adapter.index)(&path) {
+                    Ok(batch) => {
+                        issues.extend(batch.diagnostics);
+                        grouped.entry(session_id.clone()).or_default().extend(
+                            batch
+                                .conversations
+                                .into_iter()
+                                .filter(|parsed| parsed.session.session_id == session_id),
+                        );
+                    }
+                    Err(issue) => {
+                        blocked_session_ids.insert(session_id.clone());
+                        blocking_issues.push(issue.clone());
+                        issues.push(issue);
+                    }
                 }
             }
         } else {
@@ -272,6 +468,7 @@ pub(crate) fn refresh_source_in_roots(
         let agent_metadata = extract_agent_metadata(&merged.events);
         let representative_metadata = fs::metadata(&merged.session.source_file)
             .map_err(|error| format!("读取文件元数据失败：{error}"))?;
+        let representative_revision = (adapter.revision)(Path::new(&merged.session.source_file))?;
         upsert_session(
             conn,
             &merged.session,
@@ -279,28 +476,24 @@ pub(crate) fn refresh_source_in_roots(
             &agent_metadata,
             modified_nanos(&representative_metadata),
             representative_metadata.len() as i64,
+            &representative_revision,
         )?;
-        update_session_files(conn, source, &session_id, &source_files, issues.is_empty())?;
+        update_session_files(
+            conn,
+            source,
+            &session_id,
+            &source_files,
+            blocking_issues.is_empty(),
+        )?;
     }
-    if issues.is_empty() {
+    if blocking_issues.is_empty() {
         tombstone_missing_sessions(conn, source, &seen_session_ids)?;
     }
     Ok(issues)
 }
 
 fn conversation_source_paths(source: Source, roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
-    let adapter = conversation_adapter(source)?;
-    let mut paths = Vec::new();
-    for root in roots {
-        paths.extend(
-            ingest::walk_files(root, adapter.extension)?
-                .into_iter()
-                .filter(|path| (adapter.accepts_path)(path)),
-        );
-    }
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
+    (conversation_adapter(source)?.discover)(roots)
 }
 
 pub fn sessions_page(
@@ -405,7 +598,8 @@ pub(crate) fn load_prepared_detail(
         agent_relations,
     } = prepared;
     let paths = trusted_paths_for_session(home, source, &session)?;
-    let (parsed, revision) = parse_conversation_files_with_revision(source, &paths)?;
+    let (parsed, revision) =
+        parse_conversation_files_with_revision(source, &paths, &session.session_id)?;
     ensure_matching_session(&parsed, &session)?;
     session.file_available = true;
     session.source_files = parsed.session.source_files.clone();
@@ -434,7 +628,7 @@ pub fn detail_state(
         .ok_or_else(|| "未找到该对话记录".to_string())?;
     let roots = ingest::source_scan_dirs(home, source);
     let representative = PathBuf::from(&session.source_file);
-    let Some(_) = detail_file_revision(&representative, &roots)? else {
+    let Some(_) = detail_file_revision(source, &representative, &roots)? else {
         return Ok(ConversationDetailStateDto {
             revision: known_revision.to_string(),
             changed: false,
@@ -442,7 +636,7 @@ pub fn detail_state(
         });
     };
     let paths = session_source_paths(&session)?;
-    let Some(revision) = detail_files_revision(&paths, &roots)? else {
+    let Some(revision) = detail_files_revision(source, &paths, &roots)? else {
         return Ok(ConversationDetailStateDto {
             revision: known_revision.to_string(),
             changed: false,
@@ -459,10 +653,11 @@ pub fn detail_state(
 fn parse_conversation_files_with_revision(
     source: Source,
     paths: &[PathBuf],
+    session_id: &str,
 ) -> Result<(ParsedConversation, String), String> {
     read_consistent_snapshot(
-        || files_revision(paths),
-        || parse_conversation_files(source, paths, false),
+        || files_revision(source, paths),
+        || parse_conversation_files(source, paths, session_id, false),
     )
 }
 
@@ -490,7 +685,7 @@ pub fn load_event_content(
     event_id: &str,
 ) -> Result<ConversationEventContentDto, String> {
     let (source, session, paths) = load_trusted_session_files(conn, home, source, session_id)?;
-    let parsed = parse_conversation_files(source, &paths, true)?;
+    let parsed = parse_conversation_files(source, &paths, session_id, true)?;
     ensure_matching_session(&parsed, &session)?;
     let event = parsed
         .events
@@ -542,7 +737,7 @@ fn resolve_attachment(
     attachment_id: &str,
 ) -> Result<AttachmentCandidate, String> {
     let (source, session, paths) = load_trusted_session_files(conn, home, source, session_id)?;
-    let parsed = parse_conversation_files(source, &paths, true)?;
+    let parsed = parse_conversation_files(source, &paths, session_id, true)?;
     ensure_matching_session(&parsed, &session)?;
     let event = parsed
         .events
@@ -564,7 +759,7 @@ fn resolve_attachment(
         return Err("该附件不是可预览的图片".to_string());
     }
     let source_path = PathBuf::from(&event.source_file);
-    let source_fragment = parse_conversation_file(source, &source_path, true)?;
+    let source_fragment = parse_conversation_file(source, &source_path, session_id, true)?;
     let payload = read_source_payload(source, &source_path, event.source_sequence)?;
     let mut candidate = attachment_candidates(
         event.source_sequence,
@@ -587,21 +782,22 @@ pub fn build_export(
     format: ConversationExportFormat,
 ) -> Result<ConversationExportDto, String> {
     let (source, session, paths) = load_trusted_session_files(conn, home, source, session_id)?;
-    let parsed = parse_conversation_files(source, &paths, true)?;
+    let parsed = parse_conversation_files(source, &paths, session_id, true)?;
     ensure_matching_session(&parsed, &session)?;
     let base_name = safe_export_name(&parsed.session.title, &session.session_id);
     match format {
+        ConversationExportFormat::Json if conversation_adapter(source)?.raw_extension.is_none() => {
+            Err("该来源不支持导出单一原始对话文件".to_string())
+        }
         ConversationExportFormat::Json if paths.len() > 1 => {
             Err("该会话包含多个原始文件，无法导出为单一原始 JSONL".to_string())
         }
         ConversationExportFormat::Json => Ok(ConversationExportDto {
             default_name: format!(
                 "{base_name}.{}",
-                if source == Source::Gemini {
-                    "json"
-                } else {
-                    "jsonl"
-                }
+                conversation_adapter(source)?
+                    .raw_extension
+                    .unwrap_or("jsonl")
             ),
             content: fs::read(&paths[0]).map_err(|error| format!("读取原始文件失败：{error}"))?,
         }),
@@ -719,7 +915,7 @@ fn parse_codex_file(
     path: &Path,
     include_deferred_content: bool,
 ) -> Result<ParsedConversation, String> {
-    parse_codex_file_mode(path, false, include_deferred_content).map_err(|issue| issue.message)
+    parse_codex_file_mode(path, true, include_deferred_content).map_err(|issue| issue.message)
 }
 
 fn parse_codex_file_mode(
@@ -919,12 +1115,14 @@ fn assign_event_provenance(events: &mut [ConversationEvent], source_file: &str) 
     for event in events {
         let occurrence = occurrences.entry(event.source_sequence).or_default();
         event.source_file = source_file.to_string();
-        let base_id = event_id_for(source_file, event.source_sequence);
-        event.event_id = if *occurrence == 0 {
-            base_id
-        } else {
-            format!("{base_id}:{}", *occurrence)
-        };
+        if event.event_id.is_empty() {
+            let base_id = event_id_for(source_file, event.source_sequence);
+            event.event_id = if *occurrence == 0 {
+                base_id
+            } else {
+                format!("{base_id}:{}", *occurrence)
+            };
+        }
         *occurrence += 1;
         for (index, attachment) in event.attachments.iter_mut().enumerate() {
             attachment.id = format!("{}:{index}", event.event_id);
@@ -1082,47 +1280,25 @@ fn normalize_tool_result_details(item: &Value) -> Value {
 fn parse_conversation_file(
     source: Source,
     path: &Path,
+    session_id: &str,
     include_deferred_content: bool,
 ) -> Result<ParsedConversation, String> {
-    if source == Source::Codex {
-        return parse_codex_file_mode(path, true, include_deferred_content)
-            .map_err(|issue| issue.message);
-    }
-    (conversation_adapter(source)?.parse)(path, include_deferred_content)
-}
-
-fn parse_conversation_file_for_index(
-    source: Source,
-    path: &Path,
-) -> Result<ParsedConversation, ConversationIndexIssue> {
-    if source == Source::Codex {
-        return parse_codex_file_mode(path, false, false);
-    }
-    (conversation_adapter(source)
-        .map_err(|message| ConversationIndexIssue {
-            path: path.to_string_lossy().to_string(),
-            message,
-            event_type: None,
-            line: None,
-        })?
-        .parse)(path, false)
-    .map_err(|message| ConversationIndexIssue {
-        path: path.to_string_lossy().to_string(),
-        message,
-        event_type: None,
-        line: None,
-    })
+    (conversation_adapter(source)?.detail)(path, session_id, include_deferred_content)
 }
 
 fn parse_conversation_files(
     source: Source,
     paths: &[PathBuf],
+    session_id: &str,
     include_deferred_content: bool,
 ) -> Result<ParsedConversation, String> {
     let parsed = paths
         .iter()
-        .map(|path| parse_conversation_file(source, path, include_deferred_content))
+        .map(|path| parse_conversation_file(source, path, session_id, include_deferred_content))
         .collect::<Result<Vec<_>, _>>()?;
+    if parsed.is_empty() {
+        return Err("对话没有可读取的原始文件".to_string());
+    }
     Ok(merge_parsed_conversations(parsed))
 }
 
@@ -1996,6 +2172,7 @@ fn upsert_session(
     agent_metadata: &IndexedAgentMetadata,
     source_file_mtime_ns: i64,
     source_file_size: i64,
+    source_revision: &str,
 ) -> Result<(), String> {
     let capabilities = serde_json::to_string(&session.capabilities).map_err(|e| e.to_string())?;
     let agent_metadata = serde_json::to_string(agent_metadata).map_err(|e| e.to_string())?;
@@ -2004,9 +2181,9 @@ fn upsert_session(
         INSERT INTO conversation_sessions(
             source, session_id, title, project, model, started_at, ended_at,
             source_file, capabilities_json, support_status, file_available,
-            source_file_mtime_ns, source_file_size, adapter_version, is_top_level,
-            agent_metadata_json
-        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+            source_file_mtime_ns, source_file_size, adapter_version, source_revision,
+            is_top_level, agent_metadata_json
+        ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
         ON CONFLICT(source, session_id) DO UPDATE SET
             title = excluded.title,
             project = excluded.project,
@@ -2020,6 +2197,7 @@ fn upsert_session(
             source_file_mtime_ns = excluded.source_file_mtime_ns,
             source_file_size = excluded.source_file_size,
             adapter_version = excluded.adapter_version,
+            source_revision = excluded.source_revision,
             is_top_level = excluded.is_top_level,
             agent_metadata_json = excluded.agent_metadata_json
         "#,
@@ -2038,6 +2216,7 @@ fn upsert_session(
             source_file_mtime_ns,
             source_file_size,
             CONVERSATION_ADAPTER_VERSION,
+            source_revision,
             is_top_level,
             agent_metadata,
         ],
@@ -2061,13 +2240,14 @@ fn failed_session_paths(
         )
         .map_err(|error| error.to_string())?;
     for issue in issues {
-        if let Some(session_id) = statement
-            .query_row(params![source.as_str(), issue.path], |row| {
+        let session_ids = statement
+            .query_map(params![source.as_str(), issue.path], |row| {
                 row.get::<_, String>(0)
             })
-            .optional()
             .map_err(|error| error.to_string())?
-        {
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        for session_id in session_ids {
             paths_by_session
                 .entry(session_id)
                 .or_insert_with(BTreeSet::new)
@@ -2094,17 +2274,18 @@ fn update_session_files(
     for path in paths {
         let metadata =
             fs::metadata(path).map_err(|error| format!("读取文件元数据失败：{error}"))?;
+        let source_revision = (conversation_adapter(source)?.revision)(path)?;
         conn.execute(
             r#"
             INSERT INTO conversation_session_files(
                 source, session_id, source_file, source_file_mtime_ns, source_file_size,
-                adapter_version
-            ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
-            ON CONFLICT(source, source_file) DO UPDATE SET
-                session_id = excluded.session_id,
+                adapter_version, source_revision
+            ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(source, session_id, source_file) DO UPDATE SET
                 source_file_mtime_ns = excluded.source_file_mtime_ns,
                 source_file_size = excluded.source_file_size,
-                adapter_version = excluded.adapter_version
+                adapter_version = excluded.adapter_version,
+                source_revision = excluded.source_revision
             "#,
             params![
                 source.as_str(),
@@ -2113,6 +2294,7 @@ fn update_session_files(
                 modified_nanos(&metadata),
                 metadata.len() as i64,
                 CONVERSATION_ADAPTER_VERSION,
+                source_revision,
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -2559,20 +2741,21 @@ fn load_cached_fingerprints(
     let mut stmt = conn
         .prepare(
             r#"
-        SELECT DISTINCT session_id, source_file_mtime_ns, source_file_size, adapter_version
+        SELECT DISTINCT session_id, source_file_mtime_ns, source_file_size, adapter_version,
+                        source_revision
         FROM (
             SELECT files.session_id, files.source_file_mtime_ns, files.source_file_size,
-                   files.adapter_version
+                   files.adapter_version, files.source_revision
             FROM conversation_session_files AS files
             JOIN conversation_sessions AS sessions
               ON sessions.source = files.source AND sessions.session_id = files.session_id
             WHERE files.source = ?1 AND files.source_file = ?2 AND sessions.file_available = 1
             UNION ALL
-            SELECT session_id, source_file_mtime_ns, source_file_size, adapter_version
+            SELECT session_id, source_file_mtime_ns, source_file_size, adapter_version,
+                   source_revision
             FROM conversation_sessions
             WHERE source = ?1 AND source_file = ?2 AND file_available = 1
         )
-        LIMIT 2
         "#,
         )
         .map_err(|error| error.to_string())?;
@@ -2585,6 +2768,7 @@ fn load_cached_fingerprints(
                     source_file_mtime_ns: row.get(1)?,
                     source_file_size: row.get(2)?,
                     adapter_version: row.get(3)?,
+                    source_revision: row.get(4)?,
                 })
             },
         )
@@ -2664,18 +2848,12 @@ fn trusted_paths_for_session(
     Ok(paths)
 }
 
-fn files_revision(paths: &[PathBuf]) -> Result<String, String> {
+fn files_revision(source: Source, paths: &[PathBuf]) -> Result<String, String> {
+    let adapter = conversation_adapter(source)?;
     let revisions = paths
         .iter()
         .map(|path| {
-            fs::metadata(path)
-                .map(|metadata| {
-                    (
-                        path.to_string_lossy().to_string(),
-                        metadata_revision(&metadata),
-                    )
-                })
-                .map_err(|error| format!("读取原始文件元数据失败：{error}"))
+            (adapter.revision)(path).map(|revision| (path.to_string_lossy().to_string(), revision))
         })
         .collect::<Result<Vec<_>, _>>()?;
     if let [(_, revision)] = revisions.as_slice() {
@@ -2684,10 +2862,14 @@ fn files_revision(paths: &[PathBuf]) -> Result<String, String> {
     serde_json::to_string(&revisions).map_err(|error| error.to_string())
 }
 
-fn detail_files_revision(paths: &[PathBuf], roots: &[PathBuf]) -> Result<Option<String>, String> {
+fn detail_files_revision(
+    source: Source,
+    paths: &[PathBuf],
+    roots: &[PathBuf],
+) -> Result<Option<String>, String> {
     let mut revisions = Vec::with_capacity(paths.len());
     for path in paths {
-        let Some(revision) = detail_file_revision(path, roots)? else {
+        let Some(revision) = detail_file_revision(source, path, roots)? else {
             return Ok(None);
         };
         revisions.push((path.to_string_lossy().to_string(), revision));
@@ -2700,11 +2882,16 @@ fn detail_files_revision(paths: &[PathBuf], roots: &[PathBuf]) -> Result<Option<
         .map_err(|error| error.to_string())
 }
 
-fn detail_file_revision(path: &Path, roots: &[PathBuf]) -> Result<Option<String>, String> {
+fn detail_file_revision(
+    source: Source,
+    path: &Path,
+    roots: &[PathBuf],
+) -> Result<Option<String>, String> {
+    let revision = conversation_adapter(source)?.revision;
     checked_detail_file_revision(
         roots,
         || fs::canonicalize(path),
-        |canonical_path| fs::metadata(canonical_path).map(|metadata| metadata_revision(&metadata)),
+        |canonical_path| revision(canonical_path).map_err(std::io::Error::other),
     )
 }
 

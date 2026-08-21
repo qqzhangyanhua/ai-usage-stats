@@ -1060,7 +1060,7 @@ fn content_fingerprint(path: &Path) -> String {
     format!("{}:{hash:016x}", bytes.len())
 }
 
-fn metadata_fingerprint(path: &Path) -> String {
+pub(crate) fn metadata_fingerprint(path: &Path) -> String {
     let Ok(meta) = fs::metadata(path) else {
         return "missing".to_string();
     };
@@ -1081,7 +1081,17 @@ fn metadata_fingerprint(path: &Path) -> String {
             meta.ctime_nsec()
         )
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        format!(
+            "{}:{modified}:{}:{}",
+            meta.len(),
+            meta.creation_time(),
+            meta.file_attributes()
+        )
+    }
+    #[cfg(not(any(unix, windows)))]
     format!("{}:{modified}", meta.len())
 }
 
@@ -1135,13 +1145,14 @@ pub fn load_code_volume(home: &Path) -> Result<CodeVolumeSummary, String> {
     Ok(summarize_code_volume(&parsed))
 }
 
-fn open_readonly(path: &Path) -> Result<rusqlite::Connection, String> {
-    let uri = format!("file:{}?mode=ro", path.to_string_lossy());
-    rusqlite::Connection::open_with_flags(
-        uri,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
-    )
-    .map_err(|e| e.to_string())
+pub(crate) fn open_readonly(path: &Path) -> Result<rusqlite::Connection, String> {
+    let connection =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|error| error.to_string())?;
+    connection
+        .pragma_update(None, "query_only", true)
+        .map_err(|error| error.to_string())?;
+    Ok(connection)
 }
 
 pub(crate) fn walk_files(root: &Path, extension: &str) -> Result<Vec<PathBuf>, String> {

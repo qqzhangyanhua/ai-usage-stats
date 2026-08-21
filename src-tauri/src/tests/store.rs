@@ -63,6 +63,75 @@ fn opening_legacy_cache_adds_trusted_ingest_metadata() {
 }
 
 #[test]
+fn opening_legacy_cache_migrates_conversation_manifest_to_multi_session_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy-conversations.sqlite");
+    let legacy = rusqlite::Connection::open(&path).unwrap();
+    legacy
+        .execute_batch(
+            r#"
+            CREATE TABLE conversation_session_files (
+                source TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
+                source_file_size INTEGER NOT NULL DEFAULT 0,
+                adapter_version INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(source, source_file)
+            );
+            INSERT INTO conversation_session_files(
+                source, session_id, source_file, source_file_mtime_ns,
+                source_file_size, adapter_version
+            ) VALUES('opencode', 'session-one', '/opencode.db', 1, 2, 1);
+            "#,
+        )
+        .unwrap();
+    drop(legacy);
+
+    let conn = store::open_db(path.to_string_lossy().as_ref()).unwrap();
+    let primary_key = conn
+        .prepare("PRAGMA table_info(conversation_session_files)")
+        .unwrap()
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, i64>(5)?))
+        })
+        .unwrap()
+        .collect::<Result<std::collections::BTreeMap<_, _>, _>>()
+        .unwrap();
+    assert_eq!(primary_key["source"], 1);
+    assert_eq!(primary_key["session_id"], 2);
+    assert_eq!(primary_key["source_file"], 3);
+    assert_eq!(
+        conn.query_row(
+            "SELECT session_id FROM conversation_session_files WHERE source = 'opencode'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap(),
+        "session-one"
+    );
+    conn.execute(
+        r#"
+        INSERT INTO conversation_session_files(
+            source, session_id, source_file, source_file_mtime_ns,
+            source_file_size, adapter_version, source_revision
+        ) VALUES('opencode', 'session-two', '/opencode.db', 1, 2, 2, 'revision')
+        "#,
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM conversation_session_files WHERE source = 'opencode'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap(),
+        2
+    );
+}
+
+#[test]
 fn usage_records_source_file_operations_use_an_index() {
     let conn = store::open_memory().unwrap();
     for sql in [

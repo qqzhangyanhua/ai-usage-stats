@@ -9,6 +9,7 @@ mod ingest;
 mod instructions;
 mod misc;
 mod official_quota;
+mod opencode_conversation;
 mod overview;
 mod parity;
 mod query;
