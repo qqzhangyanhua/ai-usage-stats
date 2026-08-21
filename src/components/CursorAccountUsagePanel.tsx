@@ -12,7 +12,6 @@ import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
 import { KpiCard, LegendRow } from "./Kpi";
 import { Button } from "./ui/Button";
-import { Field } from "./ui/Field";
 
 function emptyUsage(): CursorAccountUsageDto {
   return {
@@ -34,7 +33,6 @@ function emptyUsage(): CursorAccountUsageDto {
 export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
   const [usage, setUsage] = useState<CursorAccountUsageDto | null>(null);
   const [hasToken, setHasToken] = useState(false);
-  const [tokenDraft, setTokenDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,37 +59,12 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
     };
   }, []);
 
-  async function handleSaveToken() {
-    const value = tokenDraft.trim();
-    if (!value) {
-      setError("请先粘贴 WorkosCursorSessionToken");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await invoke("save_cursor_session_token", { token: value });
-      setHasToken(true);
-      setTokenDraft("");
-    } catch (err: unknown) {
-      setError(humanStatus(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleRefresh() {
     setBusy(true);
     setError(null);
     try {
-      const token = tokenDraft.trim() || null;
-      const next = await invoke<CursorAccountUsageDto>("refresh_cursor_account_usage", {
-        token,
-      });
-      if (token) {
-        setHasToken(true);
-        setTokenDraft("");
-      }
+      const next = await invoke<CursorAccountUsageDto>("refresh_cursor_account_usage");
+      setHasToken(true);
       setUsage(next);
     } catch (err: unknown) {
       setError(humanStatus(err));
@@ -137,23 +110,6 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
             {busy ? "刷新中…" : "刷新"}
           </Button>
         </div>
-        <div className="token-row">
-          <Field
-            label="WorkosCursorSessionToken"
-            type="password"
-            autoComplete="off"
-            placeholder={hasToken ? "已保存在钥匙串，可覆盖" : "从 cursor.com 复制会话 cookie"}
-            value={tokenDraft}
-            onChange={(event) => setTokenDraft(event.target.value)}
-          />
-          <Button
-            variant="accent"
-            disabled={busy || !tokenDraft.trim()}
-            onClick={() => void handleSaveToken()}
-          >
-            保存到钥匙串
-          </Button>
-        </div>
         {error ? (
           <p className="panel-note snapshot-error" role="alert">
             {error}
@@ -167,13 +123,13 @@ export function CursorAccountUsagePanel({ theme }: { theme: ResolvedTheme }) {
             <EmptyState
               icon="cursor"
               title="尚未拉取 Cursor 账号用量"
-              hint="已保存会话 token。点刷新从云端拉取；离线时会继续展示上次成功结果。该数据是账号级用量，不会并入本机 token 总量。"
+              hint="已读到本机 Cursor 登录态。点刷新从云端拉取；离线时会继续展示上次成功结果。该数据是账号级用量，不会并入本机 token 总量。"
             />
           ) : (
             <EmptyState
               icon="cursor"
-              title="先粘贴 Cursor 会话 token"
-              hint="打开 cursor.com/dashboard/usage → 开发者工具 Application → Cookies → 复制 WorkosCursorSessionToken，在本页或设置页粘贴后点刷新。不会并入本机 token 总量。"
+              title="未找到 Cursor 登录态"
+              hint="请确认本机装了 Cursor 客户端并已登录，登录态会被自动读取，无需手动配置。该数据是账号级用量，不会并入本机 token 总量。"
             />
           )}
         </div>

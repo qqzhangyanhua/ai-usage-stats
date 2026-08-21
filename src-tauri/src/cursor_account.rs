@@ -3,48 +3,48 @@ use rusqlite::Connection;
 use crate::adapters::cursor_account::{
     parse_cursor_usage_events, parse_cursor_usage_page, summarize_cursor_usage,
 };
+use crate::cursor_credentials::{self, LocalCredential};
 use crate::domain::{CursorAccountUsageDto, CursorUsageEvent, Filter};
 use crate::store;
 
-const KEYRING_SERVICE: &str = "ai-usage-stats";
-const KEYRING_ACCOUNT: &str = "cursor-session-token";
 const USAGE_EVENTS_URL: &str = "https://cursor.com/api/dashboard/get-filtered-usage-events";
 const PAGE_SIZE: u32 = 100;
 
-pub fn normalize_token(raw: &str) -> String {
-    let trimmed = raw.trim();
-    trimmed
-        .strip_prefix("WorkosCursorSessionToken=")
-        .unwrap_or(trimmed)
-        .trim()
-        .to_string()
-}
-
-pub fn save_token(token: &str) -> Result<(), String> {
-    let token = normalize_token(token);
-    if token.is_empty() {
-        return Err("Cursor 会话 token 不能为空".to_string());
-    }
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .map_err(|e| format!("打开钥匙串失败：{e}"))?;
-    entry
-        .set_password(&token)
-        .map_err(|e| format!("写入钥匙串失败：{e}"))
-}
-
-pub fn load_token() -> Result<Option<String>, String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .map_err(|e| format!("打开钥匙串失败：{e}"))?;
-    match entry.get_password() {
-        Ok(value) if !value.is_empty() => Ok(Some(value)),
-        Ok(_) => Ok(None),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(error) => Err(format!("读取钥匙串失败：{error}")),
-    }
-}
-
 pub fn has_token() -> Result<bool, String> {
-    Ok(load_token()?.is_some())
+    Ok(credential_status()?.source == CREDENTIAL_SOURCE_LOCAL)
+}
+
+pub const CREDENTIAL_SOURCE_LOCAL: &str = "local";
+pub const CREDENTIAL_SOURCE_NONE: &str = "none";
+
+/// 设置页用：本机 Cursor 登录态是否可用。凭证只有这一个来源，没有手动粘贴通路。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CursorCredentialStatus {
+    /// `local` / `none`
+    pub source: String,
+    pub email: Option<String>,
+    pub expires_at: Option<String>,
+    /// 读到了本机登录态但已过期——提示语要说「去 Cursor 重新登录」而不是「没装 Cursor」。
+    pub local_expired: bool,
+}
+
+pub fn credential_status() -> Result<CursorCredentialStatus, String> {
+    let local = cursor_credentials::read_local_credential();
+    let local_expired = local.as_ref().is_some_and(LocalCredential::is_expired);
+    match local.filter(|value| !value.is_expired()) {
+        Some(credential) => Ok(CursorCredentialStatus {
+            source: CREDENTIAL_SOURCE_LOCAL.to_string(),
+            expires_at: credential.expires_at_rfc3339(),
+            email: credential.email,
+            local_expired: false,
+        }),
+        None => Ok(CursorCredentialStatus {
+            source: CREDENTIAL_SOURCE_NONE.to_string(),
+            email: None,
+            expires_at: None,
+            local_expired,
+        }),
+    }
 }
 
 pub fn incremental_start_ms(conn: &Connection) -> Result<i64, String> {
@@ -52,7 +52,11 @@ pub fn incremental_start_ms(conn: &Connection) -> Result<i64, String> {
 }
 
 pub fn auth_expired_error() -> String {
-    "Cursor 会话已过期，请重新粘贴 WorkosCursorSessionToken".to_string()
+    "Cursor 会话已过期，请在本机 Cursor 客户端重新登录".to_string()
+}
+
+pub fn missing_token_error() -> String {
+    "未找到 Cursor 登录态：请确认本机装了 Cursor 客户端并已登录".to_string()
 }
 
 pub fn network_failure_error() -> String {
@@ -89,10 +93,7 @@ pub fn fetch_usage_events_page(
         "startDate": start_date_ms
     });
     let request = ureq::post(USAGE_EVENTS_URL)
-        .set(
-            "Cookie",
-            &format!("WorkosCursorSessionToken={}", normalize_token(token)),
-        )
+        .set("Cookie", &format!("WorkosCursorSessionToken={token}"))
         .set("Origin", "https://cursor.com")
         .set("Content-Type", "application/json");
     match request.send_string(&body.to_string()) {
@@ -127,20 +128,13 @@ pub fn fetch_refresh_pages(token: &str, start_date_ms: i64) -> Result<Vec<String
     Ok(pages)
 }
 
-pub fn resolve_session_token(token: Option<String>) -> Result<String, String> {
-    match token
-        .as_deref()
-        .map(normalize_token)
-        .filter(|value| !value.is_empty())
-    {
-        Some(value) => {
-            save_token(&value)?;
-            Ok(value)
-        }
-        None => load_token()?.ok_or_else(|| {
-            "尚未配置 Cursor 会话 token，请先粘贴 WorkosCursorSessionToken".to_string()
-        }),
-    }
+/// 凭证只有一个来源：本机 Cursor 客户端的登录态。没有手动粘贴通路，
+/// 也不落钥匙串——Cursor 自己会续期并写回 `state.vscdb`。
+pub fn current_token() -> Result<String, String> {
+    cursor_credentials::read_local_credential()
+        .filter(|credential| !credential.is_expired())
+        .map(|credential| credential.session_token)
+        .ok_or_else(missing_token_error)
 }
 
 pub fn events_page(
