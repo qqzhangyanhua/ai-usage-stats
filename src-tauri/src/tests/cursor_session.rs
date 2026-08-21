@@ -223,6 +223,16 @@ fn cursor_session_parse_failure_keeps_last_good_cache() {
             .turn_count,
         2
     );
+
+    let mut unchanged_bad = crate::domain::IngestReport::default();
+    crate::cursor_session::ingest(&conn, home, &mut unchanged_bad);
+    assert_eq!(unchanged_bad.files_failed, 1);
+    assert_eq!(
+        crate::cursor_session::load_summary(&conn)
+            .unwrap()
+            .turn_count,
+        2
+    );
 }
 
 #[test]

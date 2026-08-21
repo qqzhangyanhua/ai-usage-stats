@@ -182,14 +182,11 @@ fn ingest_group(
     enrichments: Option<&BTreeMap<String, crate::adapters::cursor_session::SessionHashEnrichment>>,
     report: &mut IngestReport,
 ) -> bool {
-    for (path_key, mtime_ms, size) in metas {
-        if let Err(error) = store::upsert_cursor_session_file(conn, path_key, *mtime_ms, *size) {
-            record_issue(report, path_key, &error);
+    let Some(parent) = group.parent.as_ref() else {
+        if let Err(error) = persist_cursor_session_group(conn, None, metas) {
+            record_issue(report, &group.session_dir.to_string_lossy(), &error);
             return false;
         }
-    }
-
-    let Some(parent) = group.parent.as_ref() else {
         report.files_parsed += metas.len() as u64;
         return true;
     };
@@ -230,12 +227,39 @@ fn ingest_group(
         }
     }
 
-    if let Err(error) = store::upsert_cursor_session(conn, &record) {
+    if let Err(error) = persist_cursor_session_group(conn, Some(&record), metas) {
         record_issue(report, &parent_key, &error);
         return false;
     }
     report.files_parsed += metas.len() as u64;
     true
+}
+
+fn persist_cursor_session_group(
+    conn: &Connection,
+    record: Option<&crate::domain::CursorSessionRecord>,
+    metas: &[(String, i64, i64)],
+) -> Result<(), String> {
+    conn.execute_batch("SAVEPOINT cursor_session_group")
+        .map_err(|error| error.to_string())?;
+    let result = (|| {
+        if let Some(record) = record {
+            store::upsert_cursor_session(conn, record)?;
+        }
+        for (path, mtime_ms, size) in metas {
+            store::upsert_cursor_session_file(conn, path, *mtime_ms, *size)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = conn.execute_batch(
+            "ROLLBACK TO SAVEPOINT cursor_session_group; RELEASE SAVEPOINT cursor_session_group",
+        );
+        return Err(error);
+    }
+    conn.execute_batch("RELEASE SAVEPOINT cursor_session_group")
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn read_and_parse(

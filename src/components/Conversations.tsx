@@ -31,6 +31,7 @@ import {
   currentConversationFrame,
   type ConversationDetailTab,
   initialConversationNavigationState,
+  shouldRequestConversationDetail,
   transitionConversationNavigation,
 } from "../lib/conversationNavigation";
 import type {
@@ -120,6 +121,10 @@ const CAPABILITY_STATUS_LABELS: Record<ConversationEventCapabilityStatus, string
 
 function capabilityLabel(capability: string): string {
   return CAPABILITY_LABELS[capability] ?? capability;
+}
+
+function conversationApplicationLabel(source: string): string {
+  return source === "cursor_agent" ? "Cursor / Cursor Agent" : applicationLabel(source);
 }
 
 function actorLabel(actor: ConversationEventActor): string {
@@ -1014,13 +1019,16 @@ export function Conversations({
 
   const fetchDetail = useCallback(
     (session: ConversationSessionRow, followUpdates = false) => {
-      const needsRequest = session.file_available;
+      const shouldRequest = shouldRequestConversationDetail(session);
       const key = conversationKey(session);
       const gate = getDetailRequestGate(key);
-      const acquired = !needsRequest || gate.acquire();
+      const acquired = !shouldRequest || gate.acquire();
       const generation = (detailGenerations.current.get(key) ?? 0) + 1;
       detailGenerations.current.set(key, generation);
-      setFileAvailableByKey((current) => ({ ...current, [key]: needsRequest }));
+      setFileAvailableByKey((current) => ({
+        ...current,
+        [key]: session.file_available,
+      }));
       setDetailErrorsByKey((current) => {
         const next = { ...current };
         delete next[key];
@@ -1032,7 +1040,7 @@ export function Conversations({
         return next;
       });
 
-      if (!needsRequest) {
+      if (!shouldRequest) {
         gate.clearPending();
         setDetailLoadingByKey((current) => ({ ...current, [key]: false }));
         return;
@@ -1349,7 +1357,7 @@ export function Conversations({
                 {!detailFileAvailable ? (
                   <span className="conversation-file-unavailable">
                     <Icon name="alertTriangle" size={12} />
-                    原文件已删除
+                    {session.source === "cursor_agent" ? "缺少 transcript" : "原文件已删除"}
                   </span>
                 ) : null}
               </div>
@@ -1384,7 +1392,7 @@ export function Conversations({
             </div>
           </div>
           <div className="conversation-detail-title">
-            <span>{applicationLabel(session.source)}</span>
+            <span>{conversationApplicationLabel(session.source)}</span>
             <h2>{session.title}</h2>
           </div>
           <dl className="conversation-meta">
@@ -1451,11 +1459,17 @@ export function Conversations({
             <div className="conversation-detail-notice" role="status">
               <Icon name="alertTriangle" size={16} />
               <div>
-                <strong>原文件已删除，详情不可继续读取</strong>
+                <strong>
+                  {session.source === "cursor_agent"
+                    ? "缺少 Cursor transcript，对话正文不可读取"
+                    : "原文件已删除，详情不可继续读取"}
+                </strong>
                 <span>
-                  {detail
-                    ? "当前显示的是已加载快照；文件恢复后将自动更新。"
-                    : "仍可查看目录元数据；文件恢复后将自动读取详情。"}
+                  {session.source === "cursor_agent"
+                    ? "仍可查看确定性关联的用量与会话状态。"
+                    : detail
+                      ? "当前显示的是已加载快照；文件恢复后将自动更新。"
+                      : "仍可查看目录元数据；文件恢复后将自动读取详情。"}
                 </span>
               </div>
             </div>
@@ -1604,7 +1618,7 @@ export function Conversations({
                         <span className="mono">{row.session_id}</span>
                       </div>
                     </td>
-                    <td>{applicationLabel(row.source)}</td>
+                    <td>{conversationApplicationLabel(row.source)}</td>
                     <td title={row.project}>{projectLabel(row.project)}</td>
                     <td>{row.model || "未标注"}</td>
                     <td title={formatClock(time)}>{time ? relativeTime(time) : "—"}</td>
@@ -1627,7 +1641,7 @@ export function Conversations({
                         {!row.file_available ? (
                           <span className="conversation-file-unavailable">
                             <Icon name="alertTriangle" size={12} />
-                            原文件已删除
+                            {row.source === "cursor_agent" ? "缺少 transcript" : "原文件已删除"}
                           </span>
                         ) : null}
                       </div>

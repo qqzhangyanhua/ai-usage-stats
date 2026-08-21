@@ -431,6 +431,9 @@ pub fn rebuild_cache(
     match source {
         Some(source) => {
             ingest_source(&transaction, home, &overrides, source, &mut report)?;
+            if source == Source::CursorAgent {
+                cursor_session::ingest(&transaction, home, &mut report);
+            }
             refresh_conversation_catalog(
                 &transaction,
                 home,
@@ -441,6 +444,7 @@ pub fn rebuild_cache(
         }
         None => {
             ingest_all_sources(&transaction, home, &overrides, &mut report)?;
+            cursor_session::ingest(&transaction, home, &mut report);
             refresh_conversation_catalog(
                 &transaction,
                 home,
@@ -455,6 +459,18 @@ pub fn rebuild_cache(
     Ok(report)
 }
 
+fn conversation_source_dirs(
+    overrides: &PathOverrides,
+    home: &Path,
+    source: Source,
+) -> Vec<PathBuf> {
+    if source == Source::CursorAgent {
+        vec![home.join(".cursor/projects")]
+    } else {
+        source_scan_dirs_with(overrides, home, source)
+    }
+}
+
 fn refresh_conversation_catalog(
     conn: &Connection,
     home: &Path,
@@ -466,7 +482,7 @@ fn refresh_conversation_catalog(
         if !crate::conversation::CONVERSATION_SOURCES.contains(&source) {
             continue;
         }
-        let dirs = source_scan_dirs_with(overrides, home, source);
+        let dirs = conversation_source_dirs(overrides, home, source);
         match crate::conversation::refresh_source_in_roots(conn, source, &dirs) {
             Ok(issues) => report
                 .conversation_issues
@@ -499,6 +515,7 @@ fn ingest_all_inner(
 ) -> Result<IngestReport, String> {
     let mut report = IngestReport::default();
     ingest_all_sources(conn, home, overrides, &mut report)?;
+    cursor_session::ingest(conn, home, &mut report);
     refresh_conversation_catalog(
         conn,
         home,
@@ -506,7 +523,6 @@ fn ingest_all_inner(
         crate::conversation::CONVERSATION_SOURCES,
         &mut report,
     );
-    cursor_session::ingest(conn, home, &mut report);
     report.partial_success = report.partial_success || !report.conversation_issues.is_empty();
     Ok(report)
 }

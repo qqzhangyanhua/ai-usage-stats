@@ -34,6 +34,10 @@ export const initialConversationNavigationState: ConversationNavigationState = {
   focus_relationship_id: null,
 };
 
+export function shouldRequestConversationDetail(session: ConversationSessionRow): boolean {
+  return session.file_available || session.source === "cursor_agent";
+}
+
 function newFrame(
   session: ConversationSessionRow,
   enteredFromRelationshipId: string | null,

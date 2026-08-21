@@ -3,6 +3,7 @@ import type { ConversationSessionRow } from "../types";
 import {
   currentConversationFrame,
   initialConversationNavigationState,
+  shouldRequestConversationDetail,
   transitionConversationNavigation,
 } from "./conversationNavigation";
 
@@ -24,6 +25,15 @@ function session(session_id: string): ConversationSessionRow {
 }
 
 describe("conversation navigation", () => {
+  it("requests status-only detail for unavailable Cursor sessions", () => {
+    const cursor = { ...session("cursor"), source: "cursor_agent", file_available: false };
+    const missingCodex = { ...session("codex"), file_available: false };
+
+    expect(shouldRequestConversationDetail(cursor)).toBe(true);
+    expect(shouldRequestConversationDetail(missingCodex)).toBe(false);
+    expect(shouldRequestConversationDetail(session("available"))).toBe(true);
+  });
+
   it("restores the parent tab, expansion, scroll, and relationship focus after child detail", () => {
     let state = transitionConversationNavigation(initialConversationNavigationState, {
       type: "open_root",

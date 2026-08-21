@@ -4,6 +4,7 @@ mod adapters;
 mod billing;
 mod conversation;
 mod cursor_account;
+mod cursor_conversation;
 mod cursor_session;
 mod ingest;
 mod instructions;

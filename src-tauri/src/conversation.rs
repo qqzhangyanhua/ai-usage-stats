@@ -17,12 +17,13 @@ use crate::domain::{
     ConversationEventActor as EventActor, ConversationEventCapabilityStatus as EventStatus,
     ConversationEventContentDto, ConversationEventContentStatus as ContentStatus,
     ConversationEventKind as EventKind, ConversationExportDto, ConversationExportFormat,
-    ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow, Source,
-    UsageRecord,
+    ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow,
+    CursorSessionRecord, Source, UsageRecord,
 };
 use crate::ingest;
 
 mod claude;
+mod cursor;
 mod gemini;
 mod opencode;
 mod pi;
@@ -36,6 +37,7 @@ const CAPABILITY_USAGE: &str = "usage";
 pub(crate) const CONVERSATION_SOURCES: &[Source] = &[
     Source::Codex,
     Source::Claude,
+    Source::CursorAgent,
     Source::Pi,
     Source::Gemini,
     Source::Opencode,
@@ -46,7 +48,7 @@ const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
-pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 2;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -106,6 +108,15 @@ const CONVERSATION_ADAPTERS: &[ConversationAdapter] = &[
         discover: discover_jsonl,
         index: index_claude,
         detail: detail_claude,
+        revision: regular_source_revision,
+        raw_extension: Some("jsonl"),
+        reuse_unchanged_index: true,
+    },
+    ConversationAdapter {
+        source: Source::CursorAgent,
+        discover: cursor::discover,
+        index: cursor::index,
+        detail: cursor::detail,
         revision: regular_source_revision,
         raw_extension: Some("jsonl"),
         reuse_unchanged_index: true,
@@ -291,6 +302,7 @@ pub(crate) struct PreparedConversationDetail {
     session: ConversationSessionRow,
     usage_records: Vec<UsageRecord>,
     agent_relations: ConversationAgentRelations,
+    cursor_session_stats: Option<CursorSessionRecord>,
 }
 
 pub fn refresh_codex(
@@ -489,6 +501,9 @@ pub(crate) fn refresh_source_in_roots(
     if blocking_issues.is_empty() {
         tombstone_missing_sessions(conn, source, &seen_session_ids)?;
     }
+    if source == Source::CursorAgent {
+        sync_cursor_usage_only_sessions(conn)?;
+    }
     Ok(issues)
 }
 
@@ -579,11 +594,17 @@ pub(crate) fn prepare_detail(
         .ok_or_else(|| "未找到该对话记录".to_string())?;
     let usage_records = load_usage_records(conn, source, session_id)?;
     let agent_relations = load_agent_relations(conn, source, session_id, &[])?;
+    let cursor_session_stats = if source == Source::CursorAgent {
+        load_exact_cursor_session(conn, session_id)?
+    } else {
+        None
+    };
     Ok(PreparedConversationDetail {
         source,
         session,
         usage_records,
         agent_relations,
+        cursor_session_stats,
     })
 }
 
@@ -596,21 +617,138 @@ pub(crate) fn load_prepared_detail(
         mut session,
         usage_records,
         agent_relations,
+        cursor_session_stats,
     } = prepared;
+    let source_path = Path::new(&session.source_file);
+    if source == Source::CursorAgent
+        && (!cursor::is_native_transcript(source_path) || !source_path.is_file())
+    {
+        session.file_available = false;
+        let events = cursor_supplemental_events(&session, cursor_session_stats.as_ref(), true);
+        return Ok(ConversationDetailDto {
+            revision: cursor_metadata_revision(&usage_records, cursor_session_stats.as_ref()),
+            session,
+            messages: Vec::new(),
+            events,
+            usage_records,
+            agent_relations,
+        });
+    }
     let paths = trusted_paths_for_session(home, source, &session)?;
     let (parsed, revision) =
         parse_conversation_files_with_revision(source, &paths, &session.session_id)?;
     ensure_matching_session(&parsed, &session)?;
     session.file_available = true;
     session.source_files = parsed.session.source_files.clone();
+    let mut events = parsed.events;
+    events.extend(cursor_supplemental_events(
+        &session,
+        cursor_session_stats.as_ref(),
+        false,
+    ));
+    events.sort_by(compare_event_order);
+    for (sequence, event) in events.iter_mut().enumerate() {
+        event.sequence = sequence as u32;
+    }
     Ok(ConversationDetailDto {
         revision,
         session,
         messages: parsed.messages,
-        events: parsed.events,
+        events,
         usage_records,
         agent_relations,
     })
+}
+
+fn load_exact_cursor_session(
+    conn: &Connection,
+    session_id: &str,
+) -> Result<Option<CursorSessionRecord>, String> {
+    let matches = crate::store::load_cursor_sessions(conn)?
+        .into_iter()
+        .filter(|record| record.session_id == session_id)
+        .collect::<Vec<_>>();
+    match matches.len() {
+        0 => Ok(None),
+        1 => Ok(matches.into_iter().next()),
+        _ => Err(format!(
+            "Cursor 会话 ID {session_id} 对应多个行为记录，无法确定性关联"
+        )),
+    }
+}
+
+fn cursor_supplemental_events(
+    session: &ConversationSessionRow,
+    stats: Option<&CursorSessionRecord>,
+    transcript_missing: bool,
+) -> Vec<ConversationEvent> {
+    let mut events = Vec::new();
+    if transcript_missing {
+        let mut event = semantic_event(
+            0,
+            EventKind::SystemStatus,
+            &session.ended_at,
+            None,
+            Some("transcript_missing".to_string()),
+            Some("Cursor transcript 不可读取；仅展示确定性关联的用量与状态".to_string()),
+            serde_json::json!({"session_id": session.session_id}),
+        );
+        event.event_id = format!("cursor-transcript-missing:{}", session.session_id);
+        event.source_file = session.source_file.clone();
+        events.push(event);
+    }
+    if let Some(stats) = stats {
+        let mut event = semantic_event(
+            events.len(),
+            EventKind::SystemStatus,
+            stats
+                .last_seen_at
+                .as_deref()
+                .or(stats.first_seen_at.as_deref())
+                .unwrap_or(""),
+            None,
+            Some("cursor_session_stats".to_string()),
+            None,
+            serde_json::json!({
+                "session_id": stats.session_id,
+                "turn_count": stats.turn_count,
+                "success_count": stats.success_count,
+                "error_count": stats.error_count,
+                "aborted_count": stats.aborted_count,
+                "user_prompt_count": stats.user_prompt_count,
+                "subagent_count": stats.subagent_count,
+                "tool_calls": serde_json::from_str::<Value>(&stats.tool_calls_json)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+                "files_touched": stats.files_touched,
+            }),
+        );
+        event.event_id = format!("cursor-session-stats:{}", session.session_id);
+        event.source_file = stats.source_file.clone();
+        events.push(event);
+    }
+    events
+}
+
+fn cursor_metadata_revision(
+    usage_records: &[UsageRecord],
+    stats: Option<&CursorSessionRecord>,
+) -> String {
+    serde_json::to_string(&(
+        usage_records
+            .iter()
+            .map(usage_record_identity)
+            .collect::<Vec<_>>(),
+        stats,
+    ))
+    .unwrap_or_default()
+}
+
+fn conversation_source_roots(home: &Path, source: Source) -> Vec<PathBuf> {
+    if source == Source::CursorAgent {
+        vec![home.join(".cursor/projects")]
+    } else {
+        ingest::source_scan_dirs(home, source)
+    }
 }
 
 pub fn detail_state(
@@ -626,8 +764,20 @@ pub fn detail_state(
     };
     let session = load_session(conn, source.as_str(), session_id)?
         .ok_or_else(|| "未找到该对话记录".to_string())?;
-    let roots = ingest::source_scan_dirs(home, source);
     let representative = PathBuf::from(&session.source_file);
+    if source == Source::CursorAgent
+        && (!cursor::is_native_transcript(&representative) || !representative.is_file())
+    {
+        let usage_records = load_usage_records(conn, source, session_id)?;
+        let stats = load_exact_cursor_session(conn, session_id)?;
+        let revision = cursor_metadata_revision(&usage_records, stats.as_ref());
+        return Ok(ConversationDetailStateDto {
+            changed: revision != known_revision,
+            revision,
+            file_available: false,
+        });
+    }
+    let roots = conversation_source_roots(home, source);
     let Some(_) = detail_file_revision(source, &representative, &roots)? else {
         return Ok(ConversationDetailStateDto {
             revision: known_revision.to_string(),
@@ -2519,6 +2669,110 @@ fn agent_path_exists(
     false
 }
 
+fn sync_cursor_usage_only_sessions(conn: &Connection) -> Result<(), String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT DISTINCT session_id FROM usage_records WHERE source = ?1 AND session_id != ''",
+        )
+        .map_err(|error| error.to_string())?;
+    let session_ids = statement
+        .query_map(params![Source::CursorAgent.as_str()], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let current_session_ids = session_ids.iter().cloned().collect::<BTreeSet<_>>();
+    for session_id in session_ids {
+        let existing = load_session(conn, Source::CursorAgent.as_str(), &session_id)?;
+        let records = load_usage_records(conn, Source::CursorAgent, &session_id)?;
+        let Some(first) = records.first() else {
+            continue;
+        };
+        let last = records.last().unwrap_or(first);
+        let model = records
+            .iter()
+            .rev()
+            .find_map(|record| (!record.model.is_empty()).then(|| record.model.clone()))
+            .unwrap_or_default();
+        let project = records
+            .iter()
+            .rev()
+            .find_map(|record| (!record.project.is_empty()).then(|| record.project.clone()))
+            .unwrap_or_default();
+        if existing
+            .as_ref()
+            .is_some_and(|existing| cursor::is_native_transcript(Path::new(&existing.source_file)))
+        {
+            conn.execute(
+                r#"
+                UPDATE conversation_sessions SET
+                    model = CASE WHEN model = '' THEN ?3 ELSE model END,
+                    project = CASE WHEN project = '' THEN ?4 ELSE project END,
+                    started_at = CASE WHEN started_at = '' THEN ?5 ELSE started_at END,
+                    ended_at = CASE WHEN ended_at = '' THEN ?6 ELSE ended_at END
+                WHERE source = ?1 AND session_id = ?2
+                "#,
+                params![
+                    Source::CursorAgent.as_str(),
+                    session_id,
+                    model,
+                    project,
+                    first.occurred_at,
+                    last.occurred_at,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+            continue;
+        }
+        let session = ConversationSessionRow {
+            source: Source::CursorAgent.as_str().to_string(),
+            session_id: session_id.clone(),
+            title: session_id,
+            project,
+            model,
+            started_at: first.occurred_at.clone(),
+            ended_at: last.occurred_at.clone(),
+            source_file: first.source_file.clone(),
+            source_files: vec![first.source_file.clone()],
+            capabilities: vec![CAPABILITY_EVENTS.to_string(), CAPABILITY_USAGE.to_string()],
+            support_status: EXPERIMENTAL.to_string(),
+            file_available: false,
+        };
+        upsert_session(
+            conn,
+            &session,
+            true,
+            &IndexedAgentMetadata::default(),
+            0,
+            0,
+            "usage-only",
+        )?;
+    }
+    let mut synthetic = conn
+        .prepare(
+            "SELECT session_id FROM conversation_sessions WHERE source = ?1 AND source_revision = 'usage-only'",
+        )
+        .map_err(|error| error.to_string())?;
+    let stale_session_ids = synthetic
+        .query_map(params![Source::CursorAgent.as_str()], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    for session_id in stale_session_ids {
+        if !current_session_ids.contains(&session_id) {
+            conn.execute(
+                "DELETE FROM conversation_sessions WHERE source = ?1 AND session_id = ?2",
+                params![Source::CursorAgent.as_str(), session_id],
+            )
+            .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 fn load_usage_records(
     conn: &Connection,
     source: Source,
@@ -2647,7 +2901,7 @@ fn load_trusted_session_files(
     };
     let session = load_session(conn, source.as_str(), session_id)?
         .ok_or_else(|| "未找到该对话记录".to_string())?;
-    let roots = ingest::source_scan_dirs(home, source);
+    let roots = conversation_source_roots(home, source);
     let representative = PathBuf::from(&session.source_file);
     if !representative.exists() {
         return Err("原始文件已不存在，无法读取对话详情".to_string());
@@ -2832,7 +3086,7 @@ fn trusted_paths_for_session(
     source: Source,
     session: &ConversationSessionRow,
 ) -> Result<Vec<PathBuf>, String> {
-    let roots = ingest::source_scan_dirs(home, source);
+    let roots = conversation_source_roots(home, source);
     let representative = PathBuf::from(&session.source_file);
     if !representative.exists() {
         return Err("原文件已删除，详情不可读取".to_string());
