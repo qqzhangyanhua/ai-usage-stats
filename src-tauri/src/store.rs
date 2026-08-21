@@ -146,6 +146,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             support_status TEXT NOT NULL DEFAULT 'experimental',
             file_available INTEGER NOT NULL DEFAULT 1,
             source_file_mtime_ms INTEGER NOT NULL DEFAULT 0,
+            source_file_mtime_ns INTEGER NOT NULL DEFAULT 0,
             source_file_size INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY(source, session_id)
         );
@@ -188,6 +189,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         conn,
         "conversation_sessions",
         "source_file_mtime_ms",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "source_file_mtime_ns",
         "INTEGER NOT NULL DEFAULT 0",
     )?;
     ensure_column(

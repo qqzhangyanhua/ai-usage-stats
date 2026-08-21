@@ -33,7 +33,7 @@ pub struct ConversationIndexIssue {
 
 struct CachedConversationFingerprint {
     session_id: String,
-    source_file_mtime_ms: i64,
+    source_file_mtime_ns: i64,
     source_file_size: i64,
 }
 
@@ -84,11 +84,11 @@ pub(crate) fn refresh_codex_in_roots(
                     continue;
                 }
             };
-            let mtime_ms = modified_millis(&metadata);
+            let mtime_ns = modified_nanos(&metadata);
             let size = metadata.len() as i64;
             let cached = load_cached_fingerprints(conn, &path)?;
             if let [cached] = cached.as_slice() {
-                if cached.source_file_mtime_ms == mtime_ms && cached.source_file_size == size {
+                if cached.source_file_mtime_ns == mtime_ns && cached.source_file_size == size {
                     seen_session_ids.insert(cached.session_id.clone());
                     continue;
                 }
@@ -96,7 +96,7 @@ pub(crate) fn refresh_codex_in_roots(
             match parse_codex_file(&path) {
                 Ok(parsed) => {
                     seen_session_ids.insert(parsed.session.session_id.clone());
-                    upsert_session(conn, &parsed.session, mtime_ms, size)?;
+                    upsert_session(conn, &parsed.session, mtime_ns, size)?;
                 }
                 Err(issue) => issues.push(issue),
             }
@@ -808,7 +808,7 @@ fn truncate_title(text: &str) -> String {
 fn upsert_session(
     conn: &Connection,
     session: &ConversationSessionRow,
-    source_file_mtime_ms: i64,
+    source_file_mtime_ns: i64,
     source_file_size: i64,
 ) -> Result<(), String> {
     let capabilities = serde_json::to_string(&session.capabilities).map_err(|e| e.to_string())?;
@@ -817,7 +817,7 @@ fn upsert_session(
         INSERT INTO conversation_sessions(
             source, session_id, title, project, model, started_at, ended_at,
             source_file, capabilities_json, support_status, file_available,
-            source_file_mtime_ms, source_file_size
+            source_file_mtime_ns, source_file_size
         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
         ON CONFLICT(source, session_id) DO UPDATE SET
             title = excluded.title,
@@ -829,7 +829,7 @@ fn upsert_session(
             capabilities_json = excluded.capabilities_json,
             support_status = excluded.support_status,
             file_available = excluded.file_available,
-            source_file_mtime_ms = excluded.source_file_mtime_ms,
+            source_file_mtime_ns = excluded.source_file_mtime_ns,
             source_file_size = excluded.source_file_size
         "#,
         params![
@@ -844,7 +844,7 @@ fn upsert_session(
             capabilities,
             session.support_status,
             session.file_available,
-            source_file_mtime_ms,
+            source_file_mtime_ns,
             source_file_size,
         ],
     )
@@ -961,7 +961,7 @@ fn load_cached_fingerprints(
     let mut stmt = conn
         .prepare(
             r#"
-        SELECT session_id, source_file_mtime_ms, source_file_size
+        SELECT session_id, source_file_mtime_ns, source_file_size
         FROM conversation_sessions
         WHERE source = ?1 AND source_file = ?2 AND file_available = 1
         LIMIT 2
@@ -974,7 +974,7 @@ fn load_cached_fingerprints(
             |row| {
                 Ok(CachedConversationFingerprint {
                     session_id: row.get(0)?,
-                    source_file_mtime_ms: row.get(1)?,
+                    source_file_mtime_ns: row.get(1)?,
                     source_file_size: row.get(2)?,
                 })
             },
@@ -984,12 +984,12 @@ fn load_cached_fingerprints(
         .map_err(|error| error.to_string())
 }
 
-fn modified_millis(metadata: &fs::Metadata) -> i64 {
+fn modified_nanos(metadata: &fs::Metadata) -> i64 {
     metadata
         .modified()
         .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| duration.as_millis() as i64)
+        .and_then(|duration| i64::try_from(duration.as_nanos()).ok())
         .unwrap_or(0)
 }
 

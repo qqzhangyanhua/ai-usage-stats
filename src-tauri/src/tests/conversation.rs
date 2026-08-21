@@ -681,6 +681,34 @@ fn codex_conversation_refresh_skips_unchanged_available_files() {
 }
 
 #[test]
+fn codex_conversation_refresh_reparses_same_millisecond_nanosecond_change() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_conversation(home);
+    let conn = store::open_memory().unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+    conn.execute_batch(
+        r#"
+        UPDATE conversation_sessions
+        SET title = 'cached-title',
+            source_file_mtime_ns =
+                (source_file_mtime_ns / 1000000) * 1000000
+                + CASE source_file_mtime_ns % 1000000 WHEN 1 THEN 2 ELSE 1 END
+        WHERE source = 'codex' AND session_id = 'conv-1';
+        "#,
+    )
+    .unwrap();
+
+    assert!(crate::conversation::refresh_codex(&conn, home)
+        .unwrap()
+        .is_empty());
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(page.rows[0].title, "发布 Tray 客户端版本支持图片编辑透传");
+}
+
+#[test]
 fn codex_conversation_refresh_reparses_when_file_size_changes() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
@@ -853,12 +881,19 @@ fn conversation_schema_migrates_lifecycle_columns_for_old_caches() {
     let conn = store::open_db(db_path.to_str().unwrap()).unwrap();
     let lifecycle = conn
         .query_row(
-            "SELECT file_available, source_file_mtime_ms, source_file_size FROM conversation_sessions WHERE session_id = 'legacy'",
+            "SELECT file_available, source_file_mtime_ms, source_file_mtime_ns, source_file_size FROM conversation_sessions WHERE session_id = 'legacy'",
             [],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
         )
         .unwrap();
-    assert_eq!(lifecycle, (1, 0, 0));
+    assert_eq!(lifecycle, (1, 0, 0, 0));
     let indexes: Vec<String> = conn
         .prepare("PRAGMA index_list(conversation_sessions)")
         .unwrap()
