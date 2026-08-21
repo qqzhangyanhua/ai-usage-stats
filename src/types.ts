@@ -370,6 +370,7 @@ export type ConversationSessionRow = {
   started_at: string;
   ended_at: string;
   source_file: string;
+  source_files: string[];
   capabilities: string[];
   support_status: string;
 };
@@ -420,7 +421,10 @@ export type ConversationAttachment = {
 };
 
 export type ConversationEvent = {
+  event_id: string;
   sequence: number;
+  source_file: string;
+  source_sequence: number;
   kind: ConversationEventKind;
   occurred_at: string | null;
   actor: ConversationEventActor | null;
@@ -433,7 +437,7 @@ export type ConversationEvent = {
 };
 
 export type ConversationEventContentDto = {
-  sequence: number;
+  event_id: string;
   text: string | null;
   details: unknown;
 };
@@ -460,11 +464,35 @@ export type ConversationUsageRecord = {
   native_cost: number | null;
 };
 
+export type ConversationAgentLinkStatus =
+  | "linked"
+  | "missing_source"
+  | "unresolved"
+  | "conflict"
+  | "cycle";
+
+export type ConversationAgentCapabilityStatus = "complete" | "partial" | "unavailable";
+
+export type ConversationAgentLink = {
+  relationship_id: string;
+  session_id: string | null;
+  launch_event_id: string | null;
+  status: ConversationAgentLinkStatus;
+  session: ConversationSessionRow | null;
+};
+
+export type ConversationAgentRelations = {
+  capability_status: ConversationAgentCapabilityStatus;
+  parent: ConversationAgentLink | null;
+  children: ConversationAgentLink[];
+};
+
 export type ConversationDetailDto = {
   session: ConversationSessionRow;
   messages: ConversationMessage[];
   events: ConversationEvent[];
   usage_records: ConversationUsageRecord[];
+  agent_relations: ConversationAgentRelations;
 };
 
 export type CostSource = "native" | "user" | "snapshot" | "none";

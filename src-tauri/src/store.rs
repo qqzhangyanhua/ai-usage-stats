@@ -144,10 +144,21 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             source_file TEXT NOT NULL,
             capabilities_json TEXT NOT NULL DEFAULT '[]',
             support_status TEXT NOT NULL DEFAULT 'experimental',
+            -- Reconstructable relationship IDs only; conversation bodies remain in source files.
+            agent_metadata_json TEXT NOT NULL DEFAULT '{}',
             PRIMARY KEY(source, session_id)
         );
         CREATE INDEX IF NOT EXISTS idx_conversation_sessions_ended
             ON conversation_sessions(ended_at DESC);
+
+        CREATE TABLE IF NOT EXISTS conversation_session_files (
+            source TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            PRIMARY KEY(source, source_file)
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_session_files_session
+            ON conversation_session_files(source, session_id);
 
         CREATE TABLE IF NOT EXISTS official_quota (
             provider TEXT PRIMARY KEY,
@@ -173,6 +184,12 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     )?;
     // 源文件被工具自身清理后不再物理删除历史记录，只打时间戳归档（ADR 0004）。
     ensure_column(conn, "usage_records", "archived_at", "TEXT")?;
+    ensure_column(
+        conn,
+        "conversation_sessions",
+        "agent_metadata_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )?;
     ensure_column(
         conn,
         "cursor_sessions",

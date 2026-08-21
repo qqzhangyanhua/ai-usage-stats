@@ -10,8 +10,15 @@ import {
   relativeTime,
 } from "../lib/format";
 import { ConversationMarkdown } from "../lib/conversationMarkdown";
+import {
+  currentConversationFrame,
+  type ConversationDetailTab,
+  initialConversationNavigationState,
+  transitionConversationNavigation,
+} from "../lib/conversationNavigation";
 import type {
   ConversationAttachment,
+  ConversationAgentLink,
   ConversationAttachmentContentDto,
   ConversationDetailDto,
   ConversationEvent,
@@ -35,12 +42,27 @@ import { ModelLabel } from "./VendorIcon";
 
 const PAGE_SIZE = 20;
 
-type DetailTab = "events" | "usage";
-
 const DETAIL_TABS = [
   { value: "events", label: "完整事件" },
   { value: "usage", label: "用量明细" },
 ] as const;
+
+const AGENT_LINK_LABELS = {
+  linked: "已关联",
+  missing_source: "子会话源不可用",
+  unresolved: "无法确定子会话",
+  conflict: "关联冲突",
+  cycle: "循环关联",
+} as const;
+
+const AGENT_CAPABILITY_MESSAGES = {
+  partial: "部分子代理关系可确定，其余会话保持分离。",
+  unavailable: "无法确定子代理关系，相关会话保持独立。",
+} as const;
+
+function conversationKey(session: Pick<ConversationSessionRow, "source" | "session_id">) {
+  return `${session.source}\u{1f}${session.session_id}`;
+}
 
 const EVENT_LABELS: Record<ConversationEventKind, string> = {
   message: "消息",
@@ -289,19 +311,39 @@ function ImageDialog({
   );
 }
 
+type EventTimelineProps = {
+  events: ConversationEvent[];
+  source: string;
+  sessionId: string;
+  agentLinks: ConversationAgentLink[];
+  expandedRelationshipIds: string[];
+  childDetails: Record<string, ConversationDetailDto>;
+  childLoading: Record<string, boolean>;
+  depth?: number;
+  onToggleChild: (link: ConversationAgentLink) => void;
+  onOpenChild: (link: ConversationAgentLink) => void;
+  onEventContentLoaded: (
+    source: string,
+    sessionId: string,
+    content: ConversationEventContentDto,
+  ) => void;
+};
+
 function EventTimeline({
   events,
   source,
   sessionId,
+  agentLinks,
+  expandedRelationshipIds,
+  childDetails,
+  childLoading,
+  depth = 0,
+  onToggleChild,
+  onOpenChild,
   onEventContentLoaded,
-}: {
-  events: ConversationEvent[];
-  source: string;
-  sessionId: string;
-  onEventContentLoaded: (content: ConversationEventContentDto) => void;
-}) {
+}: EventTimelineProps) {
   const { states: eventLoads, errors: eventErrors, run: runEventLoad } =
-    useKeyedAsyncLoad<number>();
+    useKeyedAsyncLoad<string>();
   const { states: thumbnailLoads, errors: thumbnailErrors, run: runThumbnailLoad } =
     useKeyedAsyncLoad<string>();
   const { states: imageLoads, errors: imageErrors, run: runImageLoad } =
@@ -326,16 +368,16 @@ function EventTimeline({
     attachmentSignatures.current = currentAttachmentSignatures;
   }, [currentAttachmentSignatures]);
 
-  async function loadFullEvent(sequence: number) {
+  async function loadFullEvent(eventId: string) {
     await runEventLoad(
-      sequence,
+      eventId,
       () =>
         invoke<ConversationEventContentDto>("get_conversation_event_content", {
           source,
           sessionId,
-          sequence,
+          eventId,
         }),
-      onEventContentLoaded,
+      (content) => onEventContentLoaded(source, sessionId, content),
     );
   }
 
@@ -410,7 +452,85 @@ function EventTimeline({
     );
   }
 
-  if (events.length === 0) {
+  const eventIds = new Set(events.map((event) => event.event_id));
+  const linksForEvent = (eventId: string) =>
+    agentLinks.filter((link) => link.launch_event_id === eventId);
+  const trailingLinks = agentLinks.filter(
+    (link) => link.launch_event_id === null || !eventIds.has(link.launch_event_id),
+  );
+
+  function renderAgentLinks(links: ConversationAgentLink[]) {
+    return links.map((link) => {
+      const linkedSession = link.status === "linked" ? link.session : null;
+      const expanded = expandedRelationshipIds.includes(link.relationship_id);
+      const nestedDetail = linkedSession ? childDetails[conversationKey(linkedSession)] : null;
+      const nestedLoading = linkedSession ? childLoading[conversationKey(linkedSession)] : false;
+      const controlsId = `agent-timeline-${link.relationship_id.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}`;
+      return (
+        <section
+          className={`conversation-agent-link depth-${Math.min(depth, 3)} status-${link.status}`}
+          key={link.relationship_id}
+        >
+          <div className="conversation-agent-link-head">
+            <Button
+              variant="icon"
+              size="sm"
+              onClick={() => onToggleChild(link)}
+              disabled={!linkedSession}
+              aria-label={expanded ? "收起子代理时间线" : "展开子代理时间线"}
+              aria-expanded={expanded}
+              aria-controls={controlsId}
+              title={expanded ? "收起子代理时间线" : "展开子代理时间线"}
+            >
+              <Icon name="chevron" size={13} />
+            </Button>
+            <div className="conversation-agent-link-title">
+              <strong>{linkedSession?.title || link.session_id || "未解析的子代理"}</strong>
+              <span>{AGENT_LINK_LABELS[link.status]}</span>
+              {link.session_id ? <code>{link.session_id}</code> : null}
+            </div>
+            {linkedSession ? (
+              <Button
+                variant="text"
+                size="sm"
+                onClick={() => onOpenChild(link)}
+                data-relationship-id={link.relationship_id}
+              >
+                打开详情
+              </Button>
+            ) : null}
+          </div>
+          {expanded && linkedSession ? (
+            <div className="conversation-agent-link-body" id={controlsId}>
+              {nestedLoading && !nestedDetail ? (
+                <div className="conversation-agent-loading">
+                  <Spinner size={14} />
+                </div>
+              ) : nestedDetail ? (
+                <EventTimeline
+                  events={nestedDetail.events}
+                  source={nestedDetail.session.source}
+                  sessionId={nestedDetail.session.session_id}
+                  agentLinks={nestedDetail.agent_relations.children}
+                  expandedRelationshipIds={expandedRelationshipIds}
+                  childDetails={childDetails}
+                  childLoading={childLoading}
+                  depth={depth + 1}
+                  onToggleChild={onToggleChild}
+                  onOpenChild={onOpenChild}
+                  onEventContentLoaded={onEventContentLoaded}
+                />
+              ) : (
+                <span className="conversation-inline-error">子会话内容不可用</span>
+              )}
+            </div>
+          ) : null}
+        </section>
+      );
+    });
+  }
+
+  if (events.length === 0 && agentLinks.length === 0) {
     return (
       <EmptyState
         icon="chat"
@@ -442,10 +562,10 @@ function EventTimeline({
             event.kind === "tool_result";
           const isDeferred = event.content_status === "deferred";
           return (
-            <article
-              className={`conversation-event event-${event.kind.replaceAll("_", "-")}`}
-              key={event.sequence}
-            >
+            <div className="conversation-event-group" key={event.event_id}>
+              <article
+                className={`conversation-event event-${event.kind.replaceAll("_", "-")}`}
+              >
               <header className="conversation-event-meta">
                 <strong>{label}</strong>
                 {event.occurred_at ? (
@@ -480,15 +600,15 @@ function EventTimeline({
                     <span>仅显示前部内容</span>
                     <Button
                       variant="text"
-                      onClick={() => void loadFullEvent(event.sequence)}
-                      disabled={eventLoads[event.sequence] === "loading"}
+                      onClick={() => void loadFullEvent(event.event_id)}
+                      disabled={eventLoads[event.event_id] === "loading"}
                     >
-                      {eventLoads[event.sequence] === "loading" ? <Spinner size={12} /> : null}
+                      {eventLoads[event.event_id] === "loading" ? <Spinner size={12} /> : null}
                       加载全文
                     </Button>
-                    {eventLoads[event.sequence] === "error" ? (
+                    {eventLoads[event.event_id] === "error" ? (
                       <span className="conversation-inline-error" role="alert">
-                        {eventErrors[event.sequence]}
+                        {eventErrors[event.event_id]}
                       </span>
                     ) : null}
                   </div>
@@ -591,8 +711,11 @@ function EventTimeline({
                 ) : null}
               </div>
             </article>
+            {renderAgentLinks(linksForEvent(event.event_id))}
+          </div>
           );
         })}
+        {renderAgentLinks(trailingLinks)}
       </div>
       {openImage ? (
         <ImageDialog
@@ -666,21 +789,42 @@ export function Conversations({
   const [pageData, setPageData] = useState<ConversationPage>({ rows: [], total: 0 });
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<ConversationSessionRow | null>(null);
-  const [detail, setDetail] = useState<ConversationDetailDto | null>(null);
-  const [detailTab, setDetailTab] = useState<DetailTab>("events");
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  const [navigation, setNavigation] = useState(initialConversationNavigationState);
+  const [details, setDetails] = useState<Record<string, ConversationDetailDto>>({});
+  const [detailLoadingByKey, setDetailLoadingByKey] = useState<Record<string, boolean>>({});
+  const [detailErrorsByKey, setDetailErrorsByKey] = useState<Record<string, string>>({});
+  const currentFrame = currentConversationFrame(navigation);
+  const selected = currentFrame?.session ?? null;
+  const selectedKey = selected ? conversationKey(selected) : null;
+  const detail = selectedKey ? details[selectedKey] ?? null : null;
+  const detailTab: ConversationDetailTab = currentFrame?.tab ?? "events";
+  const detailLoading = selectedKey ? Boolean(detailLoadingByKey[selectedKey]) : false;
+  const detailError = selectedKey ? detailErrorsByKey[selectedKey] ?? null : null;
   const [exportFormat, setExportFormat] = useState<"markdown" | "json" | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportError, setExportError] = useState(false);
   const catalogGeneration = useRef(0);
-  const detailGeneration = useRef(0);
+  const detailGenerations = useRef(new Map<string, number>());
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
+
+  useEffect(() => {
+    if (!navigation.focus_relationship_id) return;
+    const relationshipId = navigation.focus_relationship_id;
+    const frame = window.requestAnimationFrame(() => {
+      const target = [...document.querySelectorAll<HTMLElement>("[data-relationship-id]")].find(
+        (element) => element.dataset.relationshipId === relationshipId,
+      );
+      target?.focus();
+      setNavigation((current) =>
+        transitionConversationNavigation(current, { type: "focus_restored" }),
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [navigation.focus_relationship_id]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 搜索条件变化后分页必须回到第一页
@@ -717,51 +861,105 @@ export function Conversations({
       });
   }, [revision, search, page, onError]);
 
-  const loadDetail = useCallback(
+  const fetchDetail = useCallback(
     (session: ConversationSessionRow) => {
-      const generation = ++detailGeneration.current;
-      setSelected(session);
-      setDetailTab("events");
-      setDetail(null);
-      setDetailError(null);
-      setExportFormat(null);
-      setExportStatus(null);
-      setExportError(false);
-      setDetailLoading(true);
+      const key = conversationKey(session);
+      const generation = (detailGenerations.current.get(key) ?? 0) + 1;
+      detailGenerations.current.set(key, generation);
+      setDetailErrorsByKey((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      setDetailLoadingByKey((current) => ({ ...current, [key]: true }));
       invoke<ConversationDetailDto>("get_conversation_detail", {
         source: session.source,
         sessionId: session.session_id,
       })
         .then((result) => {
-          if (generation === detailGeneration.current) {
-            setDetail(result);
+          if (detailGenerations.current.get(key) === generation) {
+            setDetails((current) => ({ ...current, [key]: result }));
           }
         })
         .catch((error) => {
-          if (generation === detailGeneration.current) {
-            setDetailError(humanStatus(error));
+          if (detailGenerations.current.get(key) === generation) {
+            setDetailErrorsByKey((current) => ({ ...current, [key]: humanStatus(error) }));
             onError?.(error);
           }
         })
         .finally(() => {
-          if (generation === detailGeneration.current) {
-            setDetailLoading(false);
+          if (detailGenerations.current.get(key) === generation) {
+            setDetailLoadingByKey((current) => ({ ...current, [key]: false }));
           }
         });
     },
     [onError],
   );
 
+  const loadDetail = useCallback(
+    (session: ConversationSessionRow) => {
+      setNavigation((current) =>
+        transitionConversationNavigation(current, { type: "open_root", session }),
+      );
+      setExportFormat(null);
+      setExportStatus(null);
+      setExportError(false);
+      fetchDetail(session);
+    },
+    [fetchDetail],
+  );
+
   function closeDetail() {
-    detailGeneration.current += 1;
-    setSelected(null);
-    setDetailTab("events");
-    setDetail(null);
-    setDetailError(null);
-    setDetailLoading(false);
+    setNavigation((current) =>
+      transitionConversationNavigation(current, { type: "close" }),
+    );
+    detailGenerations.current.clear();
+    setDetails({});
+    setDetailLoadingByKey({});
+    setDetailErrorsByKey({});
     setExportFormat(null);
     setExportStatus(null);
     setExportError(false);
+  }
+
+  function backToParent() {
+    const scrollTop = navigation.frames.at(-2)?.scroll_top ?? 0;
+    setNavigation((current) =>
+      transitionConversationNavigation(current, { type: "back" }),
+    );
+    window.requestAnimationFrame(() => window.scrollTo({ top: scrollTop }));
+  }
+
+  function setDetailTab(tab: ConversationDetailTab) {
+    setNavigation((current) =>
+      transitionConversationNavigation(current, { type: "set_tab", tab }),
+    );
+  }
+
+  function toggleChild(link: ConversationAgentLink) {
+    const isExpanded = currentFrame?.expanded_relationship_ids.includes(link.relationship_id);
+    setNavigation((current) =>
+      transitionConversationNavigation(current, {
+        type: "toggle_child",
+        relationship_id: link.relationship_id,
+      }),
+    );
+    if (!isExpanded && link.session && !details[conversationKey(link.session)]) {
+      fetchDetail(link.session);
+    }
+  }
+
+  function openChild(link: ConversationAgentLink) {
+    if (!link.session) return;
+    setNavigation((current) =>
+      transitionConversationNavigation(current, {
+        type: "enter_child",
+        session: link.session!,
+        relationship_id: link.relationship_id,
+        parent_scroll_top: window.scrollY,
+      }),
+    );
+    fetchDetail(link.session);
   }
 
   async function exportConversation(format: "markdown" | "json") {
@@ -786,24 +984,32 @@ export function Conversations({
     }
   }
 
-  function updateEventContent(content: ConversationEventContentDto) {
-    setDetail((current) =>
-      current
-        ? {
-            ...current,
-            events: current.events.map((event) =>
-              event.sequence === content.sequence
-                ? {
-                    ...event,
-                    text: content.text,
-                    details: content.details,
-                    content_status: "complete",
-                  }
-                : event,
-            ),
-          }
-        : current,
-    );
+  function updateEventContent(
+    source: string,
+    sessionId: string,
+    content: ConversationEventContentDto,
+  ) {
+    const key = conversationKey({ source, session_id: sessionId });
+    setDetails((current) => {
+      const currentDetail = current[key];
+      if (!currentDetail) return current;
+      return {
+        ...current,
+        [key]: {
+          ...currentDetail,
+          events: currentDetail.events.map((event) =>
+            event.event_id === content.event_id
+              ? {
+                  ...event,
+                  text: content.text,
+                  details: content.details,
+                  content_status: "complete",
+                }
+              : event,
+          ),
+        },
+      };
+    });
   }
 
   if (selected) {
@@ -813,10 +1019,18 @@ export function Conversations({
         <section className="panel conversation-detail-head">
           <div className="conversation-detail-actions">
             <div className="conversation-detail-navigation">
-              <Button onClick={closeDetail} size="sm">
+              <Button
+                onClick={navigation.frames.length > 1 ? backToParent : closeDetail}
+                size="sm"
+              >
                 <Icon name="chevron" size={13} />
-                返回目录
+                {navigation.frames.length > 1 ? "返回父会话" : "返回目录"}
               </Button>
+              {navigation.frames.length > 1 ? (
+                <span className="conversation-breadcrumb">
+                  {navigation.frames.map((frame) => frame.session.title).join(" / ")}
+                </span>
+              ) : null}
               <span className={`conversation-status status-${session.support_status}`}>
                 {statusLabel(session.support_status)}
               </span>
@@ -887,7 +1101,11 @@ export function Conversations({
             </div>
             <div className="conversation-source-file">
               <dt>原始文件</dt>
-              <dd className="mono">{session.source_file}</dd>
+              <dd className="mono conversation-source-files">
+                {session.source_files.map((sourceFile) => (
+                  <span key={sourceFile}>{sourceFile}</span>
+                ))}
+              </dd>
             </div>
           </dl>
           <SessionResumeCommand source={session.source} sessionId={session.session_id} />
@@ -920,17 +1138,36 @@ export function Conversations({
                 title="无法读取对话详情"
                 hint={detailError}
               />
-              <Button onClick={() => loadDetail(selected)}>重新读取</Button>
+              <Button onClick={() => fetchDetail(selected)}>重新读取</Button>
             </div>
           ) : detail ? (
             detailTab === "events" ? (
-              <EventTimeline
-                key={`${session.source}:${session.session_id}`}
-                events={detail.events}
-                source={session.source}
-                sessionId={session.session_id}
-                onEventContentLoaded={updateEventContent}
-              />
+              <>
+                {detail.agent_relations.capability_status !== "complete" ? (
+                  <div
+                    className={`conversation-agent-capability status-${detail.agent_relations.capability_status}`}
+                    role="status"
+                  >
+                    <Icon name="alertTriangle" size={14} />
+                    <span>
+                      {AGENT_CAPABILITY_MESSAGES[detail.agent_relations.capability_status]}
+                    </span>
+                  </div>
+                ) : null}
+                <EventTimeline
+                  key={`${session.source}:${session.session_id}`}
+                  events={detail.events}
+                  source={session.source}
+                  sessionId={session.session_id}
+                  agentLinks={detail.agent_relations.children}
+                  expandedRelationshipIds={currentFrame?.expanded_relationship_ids ?? []}
+                  childDetails={details}
+                  childLoading={detailLoadingByKey}
+                  onToggleChild={toggleChild}
+                  onOpenChild={openChild}
+                  onEventContentLoaded={updateEventContent}
+                />
+              </>
             ) : (
               <UsageRecordsTable records={detail.usage_records} />
             )
