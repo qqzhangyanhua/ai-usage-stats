@@ -2,7 +2,7 @@ import type { OfficialQuotaProviderId } from "./type";
 
 export type { OfficialQuotaProviderId };
 
-export const OVERVIEW_LAYOUT_STORAGE_KEY = "ai-usage-stats:overview-layout";
+export const OVERVIEW_LAYOUT_STORAGE_KEY = "mabiao:overview-layout";
 
 export const OVERVIEW_MODULE_IDS = [
   "kpi",

@@ -23,6 +23,7 @@ mod official_quota;
 mod opencode_conversation;
 mod overview;
 mod parity;
+mod paths;
 mod query;
 mod quota_alerts;
 mod qwen_copilot_conversation;

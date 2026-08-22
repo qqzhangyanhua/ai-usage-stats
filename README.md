@@ -1,4 +1,4 @@
-# 本机 AI 用量统计 (AI Usage Stats)
+# 码表 (Mabiao)
 
 扫描本机各 AI 编程 CLI 的会话数据，归一成「消耗记录」并展示 token 消耗与可选费用。
 
@@ -16,7 +16,7 @@
 当前构建**未做代码签名**。macOS 首次打开若提示无法验证开发者，在访达中右键 → 打开，或：
 
 ```bash
-xattr -cr "/Applications/AI Usage Stats.app"
+xattr -cr "/Applications/Mabiao.app"
 ```
 
 Windows 可能被 SmartScreen 拦截，选择「仍要运行」即可。发版步骤与产物说明见 [`docs/platforms.md`](docs/platforms.md)。
@@ -61,7 +61,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-开发时会弹出原生窗口，标题为「本机 AI 用量统计」。本地打包：
+开发时会弹出原生窗口，标题为「码表」。本地打包：
 
 ```bash
 pnpm tauri build

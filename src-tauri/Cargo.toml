@@ -1,13 +1,13 @@
 [package]
-name = "ai-usage-stats"
+name = "mabiao"
 version = "0.1.0"
-description = "本机 AI 用量统计"
+description = "码表：本机 AI 用量统计"
 authors = ["zhangyanhua"]
 edition = "2021"
-default-run = "ai-usage-stats"
+default-run = "mabiao"
 
 [lib]
-name = "ai_usage_stats_lib"
+name = "mabiao_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]

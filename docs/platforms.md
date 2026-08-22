@@ -1,6 +1,6 @@
 # 跨平台构建与运行
 
-本机 AI 用量统计基于 **Tauri 2**，核心逻辑跨平台；菜单栏托盘与钥匙串以 **macOS** 为一等公民。安装包由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 GitHub Actions 上打好，挂到 [Releases](https://github.com/qqzhangyanhua/ai-usage-stats/releases)。
+码表基于 **Tauri 2**，核心逻辑跨平台；菜单栏托盘与钥匙串以 **macOS** 为一等公民。安装包由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 GitHub Actions 上打好，挂到 [Releases](https://github.com/qqzhangyanhua/ai-usage-stats/releases)。
 
 ## 支持矩阵
 
@@ -60,7 +60,7 @@ pnpm tauri build
 2. 推送 tag：`git tag v0.1.0 && git push origin v0.1.0`
 3. 或在 GitHub **Actions → Release → Run workflow** 手动跑（会按配置里的 version 建 `v__VERSION__` tag）
 
-产物写入 **draft** Release「本机 AI 用量统计 vX.Y.Z」，同时上传 Actions artifact（保留 14 天）。核对 dmg / deb / exe 无误后再在 Releases 页点 Publish。
+产物写入 **draft** Release「码表 vX.Y.Z」，同时上传 Actions artifact（保留 14 天）。核对 dmg / deb / exe 无误后再在 Releases 页点 Publish。
 
 **仓库设置**
 

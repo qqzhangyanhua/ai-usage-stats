@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI Usage Stats",
+  "productName": "Mabiao",
   "version": "0.1.0",
-  "identifier": "com.zhangyanhua.aiusagestats",
+  "identifier": "com.zhangyanhua.mabiao",
   "build": {
     "beforeDevCommand": "pnpm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "本机 AI 用量统计",
+        "title": "码表",
         "width": 1080,
         "height": 700,
         "minWidth": 880,

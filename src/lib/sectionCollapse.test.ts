@@ -36,7 +36,7 @@ function installMemoryStorage() {
 
 describe("sectionStorageKey", () => {
   it("prefixes the overview section id", () => {
-    expect(sectionStorageKey("billing")).toBe("ai-usage-stats:overview-section:billing");
+    expect(sectionStorageKey("billing")).toBe("mabiao:overview-section:billing");
   });
 });
 

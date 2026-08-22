@@ -1,4 +1,4 @@
-# 本机 AI 用量统计 (Local AI Usage Statistics)
+# 码表 (Mabiao)
 
 一个在本机运行的图形界面工具，扫描各类 AI 编程 CLI 工具留在本地的会话数据，聚合并展示 token 消耗（及可选费用）的明细。
 

@@ -7,11 +7,11 @@
 //!   > src-tauri/assets/litellm_prices.json
 //! ```
 //! 也可传入本地文件路径作为第一个参数；`--as-of YYYY-MM-DD` 可覆盖抓取日期。
-//! 与设置页的「可选刷新」共用同一套 [`ai_usage_stats_lib::litellm::parse_litellm_raw`]，保证内置与刷新口径一致。
+//! 与设置页的「可选刷新」共用同一套 [`mabiao_lib::litellm::parse_litellm_raw`]，保证内置与刷新口径一致。
 
 use std::io::Read;
 
-use ai_usage_stats_lib::litellm;
+use mabiao_lib::litellm;
 
 fn main() {
     let mut input_path: Option<String> = None;

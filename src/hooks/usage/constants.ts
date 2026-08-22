@@ -1,6 +1,6 @@
 import type { Filter } from "../../types";
 
-export const AUTO_REFRESH_STORAGE_KEY = "ai-usage-stats:auto-refresh";
+export const AUTO_REFRESH_STORAGE_KEY = "mabiao:auto-refresh";
 
 export const AUTO_REFRESH_OPTIONS: { value: string; label: string }[] = [
   { value: "off", label: "关闭" },

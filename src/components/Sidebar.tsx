@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Icon, type IconName } from "../icons";
 import type { View } from "../types";
 
-const SIDEBAR_COLLAPSED_KEY = "ai-usage-stats:sidebar-collapsed";
+const SIDEBAR_COLLAPSED_KEY = "mabiao:sidebar-collapsed";
 
 function loadCollapsed(): boolean {
   try {

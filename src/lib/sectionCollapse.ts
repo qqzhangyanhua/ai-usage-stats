@@ -1,4 +1,4 @@
-export const SECTION_STORAGE_PREFIX = "ai-usage-stats:overview-section:";
+export const SECTION_STORAGE_PREFIX = "mabiao:overview-section:";
 
 export function sectionStorageKey(sectionId: string): string {
   return `${SECTION_STORAGE_PREFIX}${sectionId}`;

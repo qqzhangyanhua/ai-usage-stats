@@ -81,7 +81,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: 本机 AI 用量统计 v__VERSION__
+          releaseName: 码表 v__VERSION__
           releaseBody: |
             从下方 Assets 下载对应平台安装包。
 

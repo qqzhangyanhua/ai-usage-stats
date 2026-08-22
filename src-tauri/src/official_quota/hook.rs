@@ -23,7 +23,7 @@ pub fn default_settings_path() -> PathBuf {
 }
 
 pub fn hook_command() -> String {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ai-usage-stats"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("mabiao"));
     format!("\"{}\" statusline", exe.display())
 }
 

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
 
-const STORAGE_KEY = "ai-usage-stats:theme-mode";
+const STORAGE_KEY = "mabiao:theme-mode";
 
 function systemPrefersLight(): boolean {
   return window.matchMedia("(prefers-color-scheme: light)").matches;

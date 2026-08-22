@@ -859,7 +859,7 @@ async fn backup_data(app: tauri::AppHandle) -> Result<bool, String> {
             return Ok(false);
         };
         let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-        let dest = base.join(format!("ai-usage-stats-{stamp}"));
+        let dest = base.join(format!("mabiao-{stamp}"));
         let state = app.state::<AppState>();
         let conn = state.lock_write()?;
         backup::backup_to(&conn, &dest, &app_data_paths(&state))?;

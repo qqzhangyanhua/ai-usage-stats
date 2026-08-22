@@ -132,8 +132,8 @@ fn read_rate_limits(mut stdin: impl Write, stdout: impl std::io::Read) -> Result
             "id": 1,
             "params": {
                 "clientInfo": {
-                    "name": "ai_usage_stats",
-                    "title": "本机 AI 用量统计",
+                    "name": "mabiao",
+                    "title": "码表",
                     "version": "0.1.0"
                 }
             }
