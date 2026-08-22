@@ -1,0 +1,21 @@
+README.md
+  s_520ad44ffdc1ac::t_2a9c78bb19988f 7
+docs/platforms.md
+  s_520ad44ffdc1ac::t_981640b6c205f7 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "e013d200876211c13ff5a6e200221dbaf09e6646",
+  "prompts": {},
+  "sessions": {
+    "s_520ad44ffdc1ac": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a02743-9c34-7482-9c6b-f1acc4cc2810",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
