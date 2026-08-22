@@ -31,6 +31,7 @@ mod parity;
 mod paths;
 mod query;
 mod quota_alerts;
+mod quota_backoff;
 mod qwen_copilot_conversation;
 mod store;
 mod work_timeline;

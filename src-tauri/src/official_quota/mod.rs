@@ -1,4 +1,5 @@
 pub mod antigravity;
+pub mod backoff;
 pub mod claude;
 pub mod claude_usage;
 pub mod codex;
@@ -211,11 +212,51 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
 
 /// 先取数再交给调用方加锁写入，避免在持锁期间打网络。
 pub fn fetch_all_providers() -> Vec<(OfficialQuotaProvider, ProviderFetch)> {
-    OfficialQuotaProvider::ALL
+    let now = Utc::now();
+    let mut state = backoff::load_state(&backoff::state_path());
+    let results: Vec<_> = OfficialQuotaProvider::ALL
         .into_iter()
         .filter(|provider| detect::has_local_credentials(*provider))
+        .filter(|provider| backoff::cooldown_remaining(&state, *provider, now).is_none())
         .map(|provider| (provider, fetch_provider(provider)))
-        .collect()
+        .collect();
+    record_backoff(&mut state, &results, now);
+    results
+}
+
+/// 单个 provider 的手动刷新。限流期间也拦——「多点几次」正是让限流恢复更慢的原因，
+/// 但要明确告诉用户还要等多久，而不是让按钮看起来没反应。
+pub fn fetch_provider_throttled(provider: OfficialQuotaProvider) -> ProviderFetch {
+    let now = Utc::now();
+    let mut state = backoff::load_state(&backoff::state_path());
+    if let Some(message) = backoff::cooldown_message(&state, provider, now) {
+        return Err(message);
+    }
+    let result = fetch_provider(provider);
+    record_backoff(
+        &mut state,
+        std::slice::from_ref(&(provider, result.clone())),
+        now,
+    );
+    result
+}
+
+fn record_backoff(
+    state: &mut backoff::BackoffState,
+    results: &[(OfficialQuotaProvider, ProviderFetch)],
+    now: DateTime<Utc>,
+) {
+    if results.is_empty() {
+        return;
+    }
+    for (provider, result) in results {
+        match result {
+            Ok(_) => backoff::record_success(state, *provider),
+            Err(error) => backoff::record_failure(state, *provider, error, now),
+        }
+    }
+    // 状态写不下去不该让刷新失败，最多是下次少歇一会儿。
+    let _ = backoff::save_state(&backoff::state_path(), state);
 }
 
 /// 打开总览或手动刷新时尝试更新各路；取数在调用方锁外完成，写入彼此隔离。

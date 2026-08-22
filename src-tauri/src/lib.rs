@@ -806,7 +806,10 @@ async fn refresh_official_quota_provider(
 ) -> Result<OfficialQuotaDto, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let parsed = official_quota::parse_provider(&provider)?;
-        persist_official_quota_fetches(&app, [(parsed, official_quota::fetch_provider(parsed))])
+        persist_official_quota_fetches(
+            &app,
+            [(parsed, official_quota::fetch_provider_throttled(parsed))],
+        )
     })
     .await
     .map_err(|e| e.to_string())?
