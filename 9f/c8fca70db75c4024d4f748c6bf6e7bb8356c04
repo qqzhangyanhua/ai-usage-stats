@@ -1,0 +1,79 @@
+src-tauri/src/tests/cursor_conversation.rs
+  s_81dde7ba9dfdd4::t_4b6b953fdcd598 226-251
+  s_81dde7ba9dfdd4::t_870f36eea51a8a 220
+  s_81dde7ba9dfdd4::t_723aa69cc4fca1 199
+  s_81dde7ba9dfdd4::t_7654d205f9d42d 153,157-169
+src/components/Conversations.tsx
+  s_81dde7ba9dfdd4::t_df3cc7666ab5ef 1656
+  s_81dde7ba9dfdd4::t_70b8a5d425c18d 1535-1537,1539
+  s_81dde7ba9dfdd4::t_2b0f189826babd 1488-1490,1505,1538
+  s_81dde7ba9dfdd4::t_d6ea1cd9b0ae99 54,73,76-80
+  s_81dde7ba9dfdd4::t_03beb3dd8959f0 1479
+src/lib/conversationNavigation.test.ts
+  s_81dde7ba9dfdd4::t_7a4802fd84482d 40-51
+src/components/CursorSessionDetail.tsx
+  s_81dde7ba9dfdd4::t_03beb3dd8959f0 60-64,93-97,100-101,111-115
+  s_81dde7ba9dfdd4::t_09274ae6796d54 15,22,30,32-37,143
+src-tauri/src/cursor_session_detail.rs
+  s_81dde7ba9dfdd4::t_07ad87e63bb9e8 25-26,28,30-31,33-34,40
+CONTEXT.md
+  s_81dde7ba9dfdd4::t_ebeb33b08dfeec 32,35-37
+  s_a00075f49b3bf4::t_9ad2406ccd6a30 38
+src/lib/conversationNavigation.ts
+  s_81dde7ba9dfdd4::t_b2b8692e180d20 3
+src/components/type.ts
+  s_81dde7ba9dfdd4::t_8cf06365c152ab 52-57
+  s_81dde7ba9dfdd4::t_3018ac08b219d4 5-9,58-62
+  s_a00075f49b3bf4::t_7f8d3f9477c09f 63
+src/types.ts
+  s_81dde7ba9dfdd4::t_2d81aeb82de0a9 484
+  s_81dde7ba9dfdd4::t_e1966052d76cab 477,485
+src/components/CursorSessionPanel.tsx
+  s_81dde7ba9dfdd4::t_93473041d71460 70,200-201,205
+  s_81dde7ba9dfdd4::t_1e61fca3d1a82b 23,77
+  s_81dde7ba9dfdd4::t_03beb3dd8959f0 111
+src-tauri/src/conversation/cursor_test.rs
+  s_81dde7ba9dfdd4::t_d47e921e256ef7 92-134
+  s_81dde7ba9dfdd4::t_b90dc6272ca59a 135-138
+docs/adr/0007-cursor-session-local-ingest.md
+  s_81dde7ba9dfdd4::t_65b8dfae3288d3 25
+src/App.tsx
+  s_81dde7ba9dfdd4::t_4b086e193f95ac 162
+src-tauri/src/conversation/cursor.rs
+  s_81dde7ba9dfdd4::t_5fb0d0a73307d4 1,3,5,183-192,357-358,360-437
+src-tauri/src/domain.rs
+  s_81dde7ba9dfdd4::t_ab3a9a60d95e9b 863-865
+src/components/CursorSessionTable.tsx
+  s_81dde7ba9dfdd4::t_656e0a90f360e6 16,101,273-282
+  s_81dde7ba9dfdd4::t_03beb3dd8959f0 217-220,256-260
+src-tauri/src/conversation.rs
+  s_81dde7ba9dfdd4::t_a4288baccc3c52 64,645,651-654,663,672,704,714-720,722-728,2594-2614
+  s_81dde7ba9dfdd4::t_530b5f9a6b24d3 1404-1405,1642-1643
+  s_81dde7ba9dfdd4::t_0fb4766278eb30 21,825,838,859,880-881,883-899,2615
+  s_81dde7ba9dfdd4::t_bde926cc8b3653 830
+  s_81dde7ba9dfdd4::t_699afad6d32215 2616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "9fc8fca70db75c4024d4f748c6bf6e7bb8356c04",
+  "prompts": {},
+  "sessions": {
+    "s_81dde7ba9dfdd4": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0287a-493b-7570-9cba-9881095ff5ca",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    },
+    "s_a00075f49b3bf4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "621e73d4-1d0c-454e-bece-e8ec0ba3d6c2",
+        "model": "claude-opus-5"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
