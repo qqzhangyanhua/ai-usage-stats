@@ -1,0 +1,63 @@
+package.json
+  s_520ad44ffdc1ac::t_2fb5dddd22748d 2
+index.html
+  s_520ad44ffdc1ac::t_3bbbdad41a6258 6
+src-tauri/src/official_quota/hook.rs
+  s_520ad44ffdc1ac::t_0694097f96c2ce 26
+src-tauri/src/tests/mod.rs
+  s_520ad44ffdc1ac::t_302d63cf19d986 25
+src-tauri/src/tests/paths.rs
+  s_520ad44ffdc1ac::t_2808292a413473 1-40
+.github/workflows/release.yml
+  s_520ad44ffdc1ac::t_247b429d91344b 84
+src/lib/overviewLayout.ts
+  s_520ad44ffdc1ac::t_54418a4363b43e 5
+src/components/Sidebar.tsx
+  s_520ad44ffdc1ac::t_a7c6f05e8401f4 5
+src/hooks/useTheme.ts
+  s_520ad44ffdc1ac::t_9efb01a1b58388 6
+src-tauri/src/lib.rs
+  s_520ad44ffdc1ac::t_5911ef2dcc27de 862
+src/lib/sectionCollapse.test.ts
+  s_520ad44ffdc1ac::t_11332ecc646733 39
+README.md
+  s_520ad44ffdc1ac::t_b8d3080a9c9c94 1,19,64
+CONTEXT.md
+  s_520ad44ffdc1ac::t_4c1723695d8c7f 1
+docs/platforms.md
+  s_520ad44ffdc1ac::t_685b51835509d1 3,63
+src/hooks/usage/constants.ts
+  s_520ad44ffdc1ac::t_d0ca568bc83988 3
+src/lib/sectionCollapse.ts
+  s_520ad44ffdc1ac::t_f2367504e62fa7 1
+src-tauri/src/paths.rs
+  s_520ad44ffdc1ac::t_663c1de814bdfa 2-5,9-20
+src-tauri/src/main.rs
+  s_520ad44ffdc1ac::t_1e0191414a9249 5,11
+src-tauri/tauri.conf.json
+  s_520ad44ffdc1ac::t_31199c23352958 3,5,15
+src-tauri/src/bin/litellm_snapshot.rs
+  s_520ad44ffdc1ac::t_6d1c991aa6b1f0 10,14
+src-tauri/src/official_quota/codex.rs
+  s_520ad44ffdc1ac::t_b99970e95abc6a 135-136
+src-tauri/Cargo.toml
+  s_520ad44ffdc1ac::t_7f64f71eb447d3 2,4,7,10
+src-tauri/Cargo.lock
+  s_520ad44ffdc1ac::t_24033634eb7f7d 2131-2152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "366767be472560f636c048cf6fe8d5282570b87a",
+  "prompts": {},
+  "sessions": {
+    "s_520ad44ffdc1ac": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a02743-9c34-7482-9c6b-f1acc4cc2810",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
