@@ -134,7 +134,7 @@ fn read_rate_limits(mut stdin: impl Write, stdout: impl std::io::Read) -> Result
                 "clientInfo": {
                     "name": "mabiao",
                     "title": "码表",
-                    "version": "0.1.0"
+                    "version": "0.1.1"
                 }
             }
         })
