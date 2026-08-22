@@ -281,8 +281,10 @@ export const sourceTone: Record<string, string> = {
   gemini: "tone-gemini",
   qwen: "tone-qwen",
   factory: "tone-factory",
+  droid: "tone-factory",
   dsh: "tone-dsh",
   cursor: "tone-cursor",
   cursor_agent: "tone-cursor",
   copilot: "tone-copilot",
+  antigravity: "tone-gemini",
 };

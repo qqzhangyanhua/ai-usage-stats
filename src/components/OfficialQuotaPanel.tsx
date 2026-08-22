@@ -53,7 +53,7 @@ export const OfficialQuotaPanel = memo(function OfficialQuotaPanel({
           title={data ? "所选账号均已隐藏" : "正在读取官方额度…"}
           hint={
             data
-              ? "在「配置显示」里打开 Codex / Claude Code / Cursor / Grok"
+              ? "在「配置显示」里打开要看的账号"
               : "先显示上次缓存，再后台刷新"
           }
         />

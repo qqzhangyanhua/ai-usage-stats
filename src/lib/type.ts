@@ -9,7 +9,7 @@ export type SettingsTab = {
   anchors: readonly string[];
 };
 
-export type OfficialQuotaProviderId = "claude" | "codex" | "cursor" | "grok";
+export type { OfficialQuotaProviderId } from "./overviewLayout";
 
 export type SourceIconId =
   | "claude"

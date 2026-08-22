@@ -120,6 +120,8 @@ describe("applicationLabel", () => {
     expect(applicationLabel("cursor")).toBe("Cursor");
     expect(applicationLabel("factory")).toBe("Droid");
     expect(applicationLabel("droid")).toBe("Droid");
+    expect(applicationLabel("antigravity")).toBe("Antigravity");
+    expect(applicationLabel("devin")).toBe("Devin");
   });
 
   it("labels cursor weekly rows as events", () => {

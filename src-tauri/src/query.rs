@@ -1102,32 +1102,56 @@ pub fn work_timeline(conn: &Connection, day: &str) -> Result<WorkTimelineDto, St
     Ok(crate::work_timeline::build(&records, day))
 }
 
+/// 取某列的全部不同值（升序），用递归 CTE 做 loose index scan。
+///
+/// `SELECT DISTINCT col` 即便有索引，SQLite 也是把整条索引从头扫到尾：348 万行的库上
+/// 实测 2.1s，只为取回 26 个值，而且随行数线性变慢。递归写法每步「跳到下一个更大的值」，
+/// 索引查找次数等于不同值的个数——同一个库上 6ms，且几乎不随数据量增长。
+///
+/// 结果天然升序（种子取 MIN，之后每次取严格更大的 MIN），不必再排序。
+/// `column` 只接受下面几个写死的列名，不来自外部输入。
+fn distinct_values(
+    conn: &Connection,
+    column: &str,
+    skip_empty: bool,
+) -> Result<Vec<String>, String> {
+    let seed_where = if skip_empty {
+        format!(" WHERE {column} != ''")
+    } else {
+        String::new()
+    };
+    let step_and = if skip_empty {
+        format!(" AND {column} != ''")
+    } else {
+        String::new()
+    };
+    let sql = format!(
+        "WITH RECURSIVE distinct_scan(value) AS (
+            SELECT MIN({column}) FROM usage_records{seed_where}
+            UNION ALL
+            SELECT (
+                SELECT MIN({column}) FROM usage_records
+                WHERE {column} > distinct_scan.value{step_and}
+            )
+            FROM distinct_scan WHERE distinct_scan.value IS NOT NULL
+         )
+         SELECT value FROM distinct_scan WHERE value IS NOT NULL"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn filter_options(conn: &Connection) -> Result<FilterOptions, String> {
-    fn distinct(conn: &Connection, sql: &str) -> Result<Vec<String>, String> {
-        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())
-    }
     Ok(FilterOptions {
-        sources: distinct(
-            conn,
-            "SELECT DISTINCT source FROM usage_records ORDER BY source",
-        )?,
-        models: distinct(
-            conn,
-            "SELECT DISTINCT model FROM usage_records WHERE model != '' ORDER BY model",
-        )?,
-        projects: distinct(
-            conn,
-            "SELECT DISTINCT project FROM usage_records WHERE project != '' ORDER BY project",
-        )?,
-        providers: distinct(
-            conn,
-            "SELECT DISTINCT provider FROM usage_records WHERE provider != '' ORDER BY provider",
-        )?,
+        // source 不过滤空串：它是枚举落库，不该有空值，真出现了也要能在筛选里看见。
+        sources: distinct_values(conn, "source", false)?,
+        models: distinct_values(conn, "model", true)?,
+        projects: distinct_values(conn, "project", true)?,
+        providers: distinct_values(conn, "provider", true)?,
     })
 }
 

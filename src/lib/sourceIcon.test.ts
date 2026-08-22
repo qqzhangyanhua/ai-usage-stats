@@ -43,6 +43,10 @@ describe("resolveSourceIconId", () => {
     expect(resolveSourceIconId("droid")).toBe("factory");
   });
 
+  it("uses the Gemini face for Antigravity official quota", () => {
+    expect(resolveSourceIconId("antigravity")).toBe("gemini");
+  });
+
   it("falls back to the generic mark instead of a first letter", () => {
     expect(resolveSourceIconId("some_new_source")).toBe("unknown");
     expect(resolveSourceIconId("")).toBe("unknown");

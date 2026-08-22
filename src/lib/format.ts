@@ -92,6 +92,8 @@ const applicationNames: Record<string, string> = {
   cursor: "Cursor",
   cursor_agent: "Cursor Agent",
   copilot: "GitHub Copilot CLI",
+  antigravity: "Antigravity",
+  devin: "Devin",
 };
 
 export function weeklyCountLabel(source: string, count: number): string {

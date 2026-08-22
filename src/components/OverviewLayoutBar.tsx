@@ -3,7 +3,7 @@ import { Icon } from "../icons";
 import { applicationLabel } from "../lib/format";
 import {
   defaultOverviewLayout,
-  OFFICIAL_QUOTA_PROVIDER_LABELS,
+  officialQuotaProviderLabel,
   OVERVIEW_MODULE_LABELS,
   summarizeOverviewLayout,
   type OverviewLayout,
@@ -83,7 +83,7 @@ function formatLayoutSummary(layout: OverviewLayout, presentSources: string[]): 
   }
   if (hiddenOfficialProviders.length > 0) {
     parts.push(
-      `官方额度未显示 ${hiddenOfficialProviders.map((id) => OFFICIAL_QUOTA_PROVIDER_LABELS[id]).join("、")}`,
+      `官方额度未显示 ${hiddenOfficialProviders.map((id) => officialQuotaProviderLabel(id)).join("、")}`,
     );
   }
   if (hiddenPresentSources.length > 0) {
