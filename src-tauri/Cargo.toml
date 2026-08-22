@@ -11,6 +11,10 @@ name = "mabiao_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
+name = "mabiao-quota"
+path = "src/bin/quota.rs"
+
+[[bin]]
 name = "probe"
 path = "src/bin/probe.rs"
 

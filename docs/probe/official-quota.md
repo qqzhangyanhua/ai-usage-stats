@@ -223,3 +223,18 @@ REST `?format=credits` 对部分账号会 500（`Failed to serialize billing res
 - 冷却期间不覆盖已存的行，界面继续显示上次成功的结果。
 
 限流判定目前靠错误字符串里的标记（provider 的错误还是纯 `String`）。新增 provider 时，限流提示里要带「限流」或 HTTP 码。
+
+## 一次性 CLI
+
+`mabiao-quota` 输出上面这些额度的稳定 JSON，给 agent / 脚本用。
+
+```
+mabiao-quota            # 读缓存，不联网
+mabiao-quota --refresh  # 先取一次再输出（受退避与按需启用约束）
+```
+
+- **默认不联网**：额度接口大多限流很紧，脚本轮询应该打我们已缓存的结果。要新鲜数据才显式 `--refresh`。
+- 输出就是 `OfficialQuotaDto`：`rows[]`（provider / windows / freshness / captured_at / error）+ `undetected[]`。
+- 读应用同一个 sqlite，只读连接（WAL 下不阻塞正在写的应用）。
+- 应用没跑过、库还不存在时输出**形状正确的空结果**而不是报错——脚本不该因为「还没用过」就挂。
+- 退出码：0 正常，1 出错，2 参数不认识。
