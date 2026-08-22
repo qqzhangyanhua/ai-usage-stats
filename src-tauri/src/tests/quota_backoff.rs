@@ -145,3 +145,48 @@ fn backoff_state_round_trips_through_disk() {
     std::fs::write(&path, "{not json").unwrap();
     assert_eq!(backoff::load_state(&path), BackoffState::default());
 }
+
+#[test]
+fn parallel_fetch_runs_concurrently_and_keeps_order() {
+    use std::time::Instant;
+
+    // 故意让靠前的那家最慢：串行的话总耗时是求和，且慢的会拖住后面的。
+    let targets = vec![
+        OfficialQuotaProvider::Cursor,
+        OfficialQuotaProvider::Grok,
+        OfficialQuotaProvider::Droid,
+    ];
+    let started = Instant::now();
+    let results = crate::official_quota::fetch_in_parallel(targets, |provider| {
+        let nap = if provider == OfficialQuotaProvider::Cursor {
+            300
+        } else {
+            50
+        };
+        std::thread::sleep(std::time::Duration::from_millis(nap));
+        Ok((Vec::new(), provider.as_str().to_string()))
+    });
+    let elapsed = started.elapsed();
+
+    // 顺序必须保持传入顺序：托盘菜单和 CLI 输出都依赖它，抖动会让界面每次刷新都跳。
+    let order: Vec<&str> = results.iter().map(|(p, _)| p.as_str()).collect();
+    assert_eq!(order, ["cursor", "grok", "droid"]);
+    // 真并发的话总耗时接近最慢那家，而不是三家之和（400ms）。
+    assert!(
+        elapsed < std::time::Duration::from_millis(350),
+        "看起来是串行的：{elapsed:?}"
+    );
+}
+
+#[test]
+fn parallel_fetch_survives_one_provider_panicking() {
+    let targets = vec![OfficialQuotaProvider::Cursor, OfficialQuotaProvider::Grok];
+    let results = crate::official_quota::fetch_in_parallel(targets, |provider| {
+        assert!(provider != OfficialQuotaProvider::Cursor, "故意 panic");
+        Ok((Vec::new(), String::new()))
+    });
+    // 一家炸了，另一家的结果照常拿到。
+    assert_eq!(results.len(), 2);
+    assert!(results[0].1.as_ref().unwrap_err().contains("异常退出"));
+    assert!(results[1].1.is_ok());
+}

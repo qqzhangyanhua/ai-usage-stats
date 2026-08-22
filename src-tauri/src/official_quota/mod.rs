@@ -211,17 +211,51 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
 }
 
 /// 先取数再交给调用方加锁写入，避免在持锁期间打网络。
+/// 各家并发取数：串行的话总耗时是求和，实测 5 家 7.2 秒，而单家超时上限是 12~20 秒，
+/// 网络一差就能拖到分钟级——而这整段跑在一个阻塞线程里，托盘定时刷新也走这条路。
+/// 并发之后总耗时变成取最大值。
+///
+/// 用作用域线程而不是引 async 运行时：每家之间没有共享状态，退避状态在开始前读、
+/// 结束后写，不进线程。结果按 `ALL` 的顺序 join，保证输出稳定。
 pub fn fetch_all_providers() -> Vec<(OfficialQuotaProvider, ProviderFetch)> {
     let now = Utc::now();
     let mut state = backoff::load_state(&backoff::state_path());
-    let results: Vec<_> = OfficialQuotaProvider::ALL
+    let targets: Vec<OfficialQuotaProvider> = OfficialQuotaProvider::ALL
         .into_iter()
         .filter(|provider| detect::has_local_credentials(*provider))
         .filter(|provider| backoff::cooldown_remaining(&state, *provider, now).is_none())
-        .map(|provider| (provider, fetch_provider(provider)))
         .collect();
+
+    let results = fetch_in_parallel(targets, fetch_provider);
     record_backoff(&mut state, &results, now);
     results
+}
+
+/// 并发跑各家、按传入顺序返回。取数函数作为参数传入，这样调度本身可以脱网测试。
+pub fn fetch_in_parallel<F>(
+    targets: Vec<OfficialQuotaProvider>,
+    fetch: F,
+) -> Vec<(OfficialQuotaProvider, ProviderFetch)>
+where
+    F: Fn(OfficialQuotaProvider) -> ProviderFetch + Sync,
+{
+    std::thread::scope(|scope| {
+        let fetch = &fetch;
+        let handles: Vec<_> = targets
+            .into_iter()
+            .map(|provider| (provider, scope.spawn(move || fetch(provider))))
+            .collect();
+        handles
+            .into_iter()
+            .map(|(provider, handle)| {
+                // 某一家 panic 不该带走整次刷新，其余结果照常写入。
+                let result = handle.join().unwrap_or_else(|_| {
+                    Err(format!("{} 取数线程异常退出", provider.display_name()))
+                });
+                (provider, result)
+            })
+            .collect()
+    })
 }
 
 /// 单个 provider 的手动刷新。限流期间也拦——「多点几次」正是让限流恢复更慢的原因，
