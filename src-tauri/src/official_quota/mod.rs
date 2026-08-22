@@ -1,3 +1,4 @@
+pub mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod cursor;
@@ -148,6 +149,7 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
         OfficialQuotaProvider::Cursor => cursor::fetch_usage_summary(),
         OfficialQuotaProvider::Grok => grok::fetch_rate_limits(),
         OfficialQuotaProvider::Droid => droid::fetch_rate_limits(),
+        OfficialQuotaProvider::Antigravity => antigravity::fetch_rate_limits(),
     }
 }
 

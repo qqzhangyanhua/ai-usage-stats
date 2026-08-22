@@ -7,16 +7,16 @@
 //! cursor.com 的接口要的是 cookie 值 `<userId>%3A%3A<jwt>`，userId 是 JWT
 //! `sub`（形如 `google-oauth|user_01J…`）里 `|` 之后那段。
 //!
-//! 只读，不写 Cursor 的任何文件；读不到就静默返回 None，由钥匙串兜底。
+//! 只读，不写 Cursor 的任何文件；读不到就静默返回 None。
 
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
-use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const STATE_DB: &str = "state.vscdb";
+use crate::vscode_state;
+
 const ACCESS_TOKEN_KEY: &str = "cursorAuth/accessToken";
 const EMAIL_KEY: &str = "cursorAuth/cachedEmail";
 const MEMBERSHIP_KEY: &str = "cursorAuth/stripeMembershipType";
@@ -52,10 +52,8 @@ impl LocalCredential {
     }
 }
 
-/// Win `%APPDATA%\Cursor\...`、mac `~/Library/Application Support/Cursor\...`、
-/// Linux `~/.config/Cursor/...` —— 三个平台都正好落在 `dirs::config_dir()` 下。
 pub fn global_storage_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|dir| dir.join("Cursor").join("User").join("globalStorage"))
+    vscode_state::global_storage_dir("Cursor")
 }
 
 /// 读本机登录态。任何一步失败都返回 None：这是「有就用」的加分项，不是必需路径。
@@ -64,48 +62,22 @@ pub fn read_local_credential() -> Option<LocalCredential> {
 }
 
 pub fn read_credential_at(global_storage: &Path) -> Result<Option<LocalCredential>, String> {
-    let db = global_storage.join(STATE_DB);
-    if !db.exists() {
-        return Ok(None);
-    }
-    let conn = open_read_only(&db)?;
-    let Some(access_token) = read_item(&conn, ACCESS_TOKEN_KEY) else {
+    let Some(conn) = vscode_state::open_read_only(global_storage)? else {
         return Ok(None);
     };
-    let access_token = access_token.trim().to_string();
+    let Some(access_token) = vscode_state::read_item(&conn, ACCESS_TOKEN_KEY) else {
+        return Ok(None);
+    };
     if access_token.is_empty() {
         return Ok(None);
     }
     Ok(Some(LocalCredential {
         session_token: build_session_token(&access_token)?,
-        email: read_item(&conn, EMAIL_KEY).filter(|value| !value.is_empty()),
-        membership: read_item(&conn, MEMBERSHIP_KEY).filter(|value| !value.is_empty()),
+        email: vscode_state::read_item(&conn, EMAIL_KEY).filter(|value| !value.is_empty()),
+        membership: vscode_state::read_item(&conn, MEMBERSHIP_KEY)
+            .filter(|value| !value.is_empty()),
         expires_at_ms: expires_at_ms(&access_token),
     }))
-}
-
-/// `state.vscdb` 有几百 MB 且 Cursor 常驻占用，不能复制。WAL 下只读连接不阻塞写者，
-/// 直接原地只读打开即可；失败就交给钥匙串兜底，不做 `immutable=1` 之类可能读到陈旧值的降级。
-fn open_read_only(db: &Path) -> Result<Connection, String> {
-    Connection::open_with_flags(
-        db,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| format!("打开本机 Cursor 登录态失败：{error}"))
-}
-
-/// value 列在不同 Cursor 版本里可能是 TEXT 也可能是 BLOB，两种都要认。
-fn read_item(conn: &Connection, key: &str) -> Option<String> {
-    conn.query_row("SELECT value FROM ItemTable WHERE key = ?1", [key], |row| {
-        row.get::<_, rusqlite::types::Value>(0)
-    })
-    .ok()
-    .and_then(|value| match value {
-        rusqlite::types::Value::Text(text) => Some(text),
-        rusqlite::types::Value::Blob(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
-        _ => None,
-    })
-    .map(|value| value.trim().to_string())
 }
 
 /// `<userId>%3A%3A<jwt>` —— cursor.com 认的就是这个形状。

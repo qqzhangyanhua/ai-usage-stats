@@ -1,6 +1,7 @@
 // Rust integration tests split by domain.
 
 mod adapters;
+mod antigravity_quota;
 mod billing;
 mod claude_quota;
 mod codex_quota;
