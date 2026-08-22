@@ -2,6 +2,28 @@
 
 只记账号级限额字段位置，不写会话正文。
 
+## Claude
+
+首选 `GET https://api.anthropic.com/api/oauth/usage`（零配置），失败才回落下面的 statusline 捕获。
+
+请求头缺一不可：`Authorization: Bearer <accessToken>`、`anthropic-beta: oauth-2025-04-20`、`User-Agent: claude-code/<版本>`、`Accept`/`Content-Type: application/json`。
+
+凭证读 `~/.claude/.credentials.json` 的 `claudeAiOauth`：
+
+- `accessToken` + `expiresAt`（毫秒）。**`expiresAt` 为 0 或缺失不当成过期**——第三方代理会写 0，交给接口判。
+- 必须有 `user:profile` scope；`claude setup-token` 生成的纯推理 token 没有，接口会拒，先本地筛掉。
+- 只读不刷新：刷新会把新 token 写回第三方文件，违反 ADR 0010。过期就提示打开一次 Claude Code。
+- macOS 上 Claude Code 以钥匙串为准、文件为镜像；当前只读文件。
+
+响应：
+
+- `five_hour` / `seven_day` / `seven_day_sonnet` → `utilization`（0–100）+ `resets_at`
+- `limits[]` 里 `kind == "weekly_scoped"` 的条目 → `percent` + `scope.model.display_name`，按模型拆的周窗口。老的 `seven_day_<model>` 顶层键现在返回 null，模型名不写死。
+- `resets_at` 既可能是 ISO 字符串也可能是 epoch 秒
+- `extra_usage.{is_enabled,used_credits,monthly_limit}`（分），当前不采
+
+429 限流较紧，提示里要劝阻手动狂刷。
+
 ## Claude statusline stdin
 
 Claude Code 2.1.80+ 在 statusline 命令的 stdin JSON 里提供：

@@ -4,6 +4,7 @@ mod adapters;
 mod antigravity_quota;
 mod billing;
 mod claude_quota;
+mod claude_usage;
 mod codex_quota;
 mod conversation;
 mod cursor_account;

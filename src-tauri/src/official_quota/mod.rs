@@ -1,5 +1,6 @@
 pub mod antigravity;
 pub mod claude;
+pub mod claude_usage;
 pub mod codex;
 pub mod cursor;
 pub mod droid;
@@ -142,9 +143,27 @@ pub fn parse_provider(value: &str) -> Result<OfficialQuotaProvider, String> {
 
 pub type ProviderFetch = Result<(Vec<OfficialQuotaWindow>, String), String>;
 
+/// 先问官方用量接口（零配置），读不到再回落到 statusline 捕获文件——后者是老路径，
+/// 装了 hook 的用户和走第三方代理的用户都还得靠它。两条都没有才报错，
+/// 错误信息取自动接口那条，因为那是多数人应该走的路。
+fn fetch_claude() -> ProviderFetch {
+    match claude_usage::fetch_usage() {
+        Ok(result) => Ok(result),
+        Err(error) => claude::refresh_from_capture(&capture_path()).map_err(|capture_error| {
+            if capture_error.contains("尚未捕获") {
+                // 两条路都没有：多数是第三方代理用户，官方登录态是空的，
+                // 提示里把 statusline 这条兜底也说出来，否则只能看到一句读不懂的报错。
+                format!("{error}。若使用第三方代理，可在设置页写入 statusline hook 后重试")
+            } else {
+                capture_error
+            }
+        }),
+    }
+}
+
 pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
     match provider {
-        OfficialQuotaProvider::Claude => claude::refresh_from_capture(&capture_path()),
+        OfficialQuotaProvider::Claude => fetch_claude(),
         OfficialQuotaProvider::Codex => codex::fetch_rate_limits(),
         OfficialQuotaProvider::Cursor => cursor::fetch_usage_summary(),
         OfficialQuotaProvider::Grok => grok::fetch_rate_limits(),
