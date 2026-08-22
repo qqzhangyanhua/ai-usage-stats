@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import type { OfficialQuotaDto, OfficialQuotaHookDto } from "../types";
+import { SourceLabel } from "./SourceIcon";
 import { Button } from "./ui/Button";
 
 export function OfficialQuotaSettingsPanel({
@@ -81,7 +82,9 @@ export function OfficialQuotaSettingsPanel({
         <ul className="official-quota-status">
           {quota.rows.map((row) => (
             <li key={row.provider}>
-              <strong>{row.application}</strong>
+              <strong>
+                <SourceLabel source={row.provider} fallback={row.application} size={14} />
+              </strong>
               <span>
                 {row.freshness === "official"
                   ? "官方"

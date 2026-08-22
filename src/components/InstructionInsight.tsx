@@ -1,5 +1,6 @@
 import { formatBytes, formatClock, formatCompact } from "../lib/format";
 import type { InstructionImbalance, InstructionInvestment } from "../types";
+import { SourceLabel } from "./SourceIcon";
 
 export function InstructionInsight({
   investments,
@@ -17,7 +18,9 @@ export function InstructionInsight({
       <ul className="instruction-insight-list">
         {investments.map((row) => (
           <li key={row.source} className="instruction-insight-row">
-            <strong>{row.application}</strong>
+            <strong>
+              <SourceLabel source={row.source} fallback={row.application} size={14} />
+            </strong>
             <span>{formatBytes(row.loaded_bytes)}</span>
             <span>{formatClock(row.modified_at)}</span>
             <span>{formatCompact(row.total_tokens)} tok</span>

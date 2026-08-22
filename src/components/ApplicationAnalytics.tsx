@@ -8,6 +8,7 @@ import type { ApplicationAnalyticsDto, Grain } from "../types";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { ExportableChart } from "./ExportableChart";
+import { SourceLabel } from "./SourceIcon";
 import { GrainSwitch } from "./ui/GrainSwitch";
 
 function formatPercent(value: number | null): string {
@@ -127,7 +128,9 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
               {data.by_application.map((row) => (
                 <tr key={row.source}>
                   <td>
-                    <strong>{row.application}</strong>
+                    <strong>
+                      <SourceLabel source={row.source} fallback={row.application} />
+                    </strong>
                   </td>
                   <td>{formatTokens(row.metrics.total_tokens)}</td>
                   <td>{formatTokens(row.metrics.session_count)}</td>
@@ -168,7 +171,13 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
               <tr>
                 <th className="sticky-col">项目</th>
                 {data.by_application.map((application) => (
-                  <th key={application.source}>{application.application}</th>
+                  <th key={application.source}>
+                    <SourceLabel
+                      source={application.source}
+                      fallback={application.application}
+                      size={14}
+                    />
+                  </th>
                 ))}
                 <th>总计</th>
               </tr>

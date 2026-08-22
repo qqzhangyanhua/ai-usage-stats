@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { sourceTone } from "../icons";
 import { chartPalette, donutOption } from "../lib/chartTheme";
 import { applicationLabel, formatCompact, projectLabel, relativeTime } from "../lib/format";
 import type { ResolvedTheme } from "../hooks/useTheme";
@@ -7,6 +6,7 @@ import type { NamedAmount, OverviewDto, SessionRow } from "../types";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
 import { LegendRow } from "./Kpi";
+import { SourceIcon } from "./SourceIcon";
 import { Button } from "./ui/Button";
 import { ModelLabel } from "./VendorIcon";
 
@@ -115,9 +115,7 @@ export function OverviewDetail({
                 className="sess-open"
                 onClick={() => onSessionClick?.({ id: row.session_id, source: row.source })}
               >
-                <span className={`src-ico ${sourceTone[row.source] ?? "tone-other"}`}>
-                  {applicationLabel(row.source).slice(0, 1).toUpperCase()}
-                </span>
+                <SourceIcon source={row.source} size={16} />
                 <div className="sess-main">
                   <div className="sess-title">{projectLabel(row.project)}</div>
                   <div className="sess-sub">

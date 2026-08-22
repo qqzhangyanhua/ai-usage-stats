@@ -19,6 +19,7 @@ import {
   setQuotaSourceVisible,
   type OverviewLayout,
 } from "../lib/overviewLayout";
+import { SourceIcon } from "./SourceIcon";
 import { Button } from "./ui/Button";
 
 export function OverviewLayoutControls({
@@ -94,10 +95,13 @@ export function OverviewLayoutControls({
         {OFFICIAL_QUOTA_PROVIDER_IDS.map((id) => (
           <ToggleChip
             key={id}
+            icon={<SourceIcon source={id} size={14} />}
             label={OFFICIAL_QUOTA_PROVIDER_LABELS[id]}
             pressed={isOfficialProviderVisible(layout, id)}
             onToggle={() =>
-              onChange(setOfficialProviderVisible(layout, id, !isOfficialProviderVisible(layout, id)))
+              onChange(
+                setOfficialProviderVisible(layout, id, !isOfficialProviderVisible(layout, id)),
+              )
             }
           />
         ))}
@@ -142,6 +146,7 @@ export function OverviewLayoutControls({
         {sourceIds.map((id) => (
           <ToggleChip
             key={id}
+            icon={<SourceIcon source={id} size={14} />}
             label={applicationLabel(id)}
             pressed={isQuotaSourceVisible(layout, id)}
             badge={detected.has(id) ? "已检测" : undefined}
@@ -193,11 +198,13 @@ function ToggleGroup({
 
 function ToggleChip({
   label,
+  icon,
   pressed,
   badge,
   onToggle,
 }: {
   label: string;
+  icon?: ReactNode;
   pressed: boolean;
   badge?: string;
   onToggle: () => void;
@@ -209,6 +216,7 @@ function ToggleChip({
       aria-pressed={pressed}
       onClick={onToggle}
     >
+      {icon}
       <span>{label}</span>
       {badge ? <em>{badge}</em> : null}
     </button>

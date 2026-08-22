@@ -81,6 +81,7 @@ const applicationNames: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
   factory: "Droid",
+  droid: "Droid",
   pi: "Pi",
   opencode: "OpenCode",
   kimi: "Kimi CLI",
@@ -254,7 +255,13 @@ export function customRangeFilter(
 }
 
 export function previousFilter(filter: Filter, preset: string): Filter | null {
-  if (preset !== "7" && preset !== "30" && preset !== "custom" && preset !== "today" && preset !== "month") {
+  if (
+    preset !== "7" &&
+    preset !== "30" &&
+    preset !== "custom" &&
+    preset !== "today" &&
+    preset !== "month"
+  ) {
     return null;
   }
   if (!filter.from || !filter.to) {

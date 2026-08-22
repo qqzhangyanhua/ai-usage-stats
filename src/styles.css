@@ -1035,11 +1035,9 @@ input[type="checkbox"] {
   border-top: 1px solid var(--line);
 }
 
-.billing-row .src-ico {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  font-size: 10px;
+.billing-row .source-ico {
+  width: 16px;
+  height: 16px;
 }
 
 .billing-row strong {
@@ -1115,9 +1113,13 @@ input[type="checkbox"] {
 
 .weekly-list li {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: start;
   gap: 8px;
+}
+
+.weekly-list .source-ico {
+  margin-top: 2px;
 }
 
 .weekly-list-main {
@@ -2323,7 +2325,7 @@ button.legend-row:hover {
 
 .sess-open {
   display: grid;
-  grid-template-columns: 28px 1fr auto auto;
+  grid-template-columns: 16px 1fr auto auto;
   gap: 8px;
   align-items: center;
   width: 100%;
@@ -2340,22 +2342,11 @@ button.legend-row:hover {
   background: var(--overlay-2);
 }
 
-.src-ico,
-.src-pill {
+.source-ico {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.src-pill {
-  width: auto;
-  padding: 2px 8px;
-  font-weight: 500;
-  white-space: nowrap;
+  flex: 0 0 auto;
+  border-radius: 5px;
 }
 
 .session-id-cell {
@@ -2604,7 +2595,8 @@ tr.session-detail-row td {
   --vendor-fg: var(--tone-other-fg);
 }
 
-.model-label {
+.model-label,
+.source-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2613,7 +2605,8 @@ tr.session-detail-row td {
   vertical-align: middle;
 }
 
-.model-label-text {
+.model-label-text,
+.source-label-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3303,9 +3296,13 @@ td.row-actions {
 
 .ingest-issues li {
   display: grid;
-  grid-template-columns: 100px minmax(160px, 1fr) minmax(180px, 1.2fr);
+  grid-template-columns: minmax(140px, 0.8fr) minmax(160px, 1fr) minmax(180px, 1.2fr);
   gap: 8px;
   align-items: center;
+}
+
+.ingest-issues .source-label {
+  max-width: 100%;
 }
 
 .ingest-issues code,
@@ -5252,6 +5249,10 @@ td.row-actions {
   font-size: 14px;
 }
 
+.instruction-source h3 .source-label {
+  max-width: 100%;
+}
+
 .instruction-list {
   list-style: none;
   margin: 0;
@@ -5585,7 +5586,7 @@ td.row-actions {
   display: grid;
   grid-template-columns: minmax(72px, 1fr) auto auto auto;
   gap: 8px 12px;
-  align-items: baseline;
+  align-items: center;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 10px;

@@ -1,8 +1,8 @@
 import { memo } from "react";
-import { sourceTone } from "../icons";
-import { applicationLabel, formatCompact, formatUsd, weeklyCountLabel } from "../lib/format";
+import { formatCompact, formatUsd, weeklyCountLabel } from "../lib/format";
 import type { WeeklyWindowDto } from "../types";
 import { EmptyState } from "./EmptyState";
+import { SourceIcon } from "./SourceIcon";
 
 export const WeeklyWindows = memo(function WeeklyWindows({
   windows,
@@ -36,9 +36,7 @@ function WeeklyRow({ window, maxTokens }: { window: WeeklyWindowDto; maxTokens: 
 
   return (
     <li>
-      <span className={`src-ico ${sourceTone[window.source] ?? "tone-other"}`}>
-        {applicationLabel(window.source).slice(0, 1)}
-      </span>
+      <SourceIcon source={window.source} size={16} />
       <div className="weekly-list-main">
         <div className="weekly-list-head">
           <strong>{window.application}</strong>

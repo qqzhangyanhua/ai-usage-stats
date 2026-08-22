@@ -8,6 +8,7 @@ import {
   conversationStatusLabel,
 } from "../lib/conversationDisplay";
 import { formatCost, formatTokens, projectLabel } from "../lib/format";
+import { SourceLabel } from "./SourceIcon";
 import type { ConversationCatalogRowProps } from "./type";
 
 export function ConversationCatalogRow({ row, maxTotal, onOpen }: ConversationCatalogRowProps) {
@@ -31,7 +32,9 @@ export function ConversationCatalogRow({ row, maxTotal, onOpen }: ConversationCa
           <span className="mono">{row.session_id}</span>
         </div>
       </td>
-      <td>{conversationApplicationLabel(row.source)}</td>
+      <td>
+        <SourceLabel source={row.source} fallback={conversationApplicationLabel(row.source)} />
+      </td>
       <td title={row.project}>{projectLabel(row.project)}</td>
       <td>{row.model || "未标注"}</td>
       <td>

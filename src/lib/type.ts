@@ -1,13 +1,7 @@
 import type { SeriesPoint } from "../types";
 
 export type SettingsTabId =
-  | "general"
-  | "sources"
-  | "display"
-  | "budget"
-  | "backup"
-  | "cursor"
-  | "pricing";
+  "general" | "sources" | "display" | "budget" | "backup" | "cursor" | "pricing";
 
 export type SettingsTab = {
   id: SettingsTabId;
@@ -16,6 +10,21 @@ export type SettingsTab = {
 };
 
 export type OfficialQuotaProviderId = "claude" | "codex" | "cursor" | "grok";
+
+export type SourceIconId =
+  | "claude"
+  | "codex"
+  | "grok"
+  | "gemini"
+  | "kimi"
+  | "qwen"
+  | "copilot"
+  | "opencode"
+  | "factory"
+  | "pi"
+  | "dsh"
+  | "cursor"
+  | "unknown";
 
 export type TrendStats = {
   totalTokens: number;
@@ -34,4 +43,3 @@ export type TrendTableRow = {
   shareOfTotal: number;
   periodDelta: number | null;
 };
-

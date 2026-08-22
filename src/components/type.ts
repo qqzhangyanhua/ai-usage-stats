@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import type { ThemeMode } from "../hooks/useTheme";
 import type { IconName } from "../icons";
 import type { SettingsTabId } from "../lib/type";
@@ -20,6 +21,22 @@ export type ConversationJumpBarProps = {
   unseenCount: number;
   onJumpTop: () => void;
   onJumpBottom: () => void;
+};
+
+export type SourceMark = {
+  viewBox: string;
+  body: ReactElement;
+};
+
+export type SourceIconProps = {
+  source: string;
+  size?: number;
+};
+
+export type SourceLabelProps = {
+  source: string;
+  fallback?: string;
+  size?: number;
 };
 
 export type ConversationCatalogRowProps = {

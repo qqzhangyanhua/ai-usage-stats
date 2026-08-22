@@ -21,6 +21,7 @@ import { RangeBackButton } from "./RangeBackButton";
 import { Button } from "./ui/Button";
 import { DatePicker } from "./ui/DatePicker";
 import { Select } from "./ui/Select";
+import { SourceIcon } from "./SourceIcon";
 import { VendorIcon } from "./VendorIcon";
 
 const RANGE_OPTIONS = [
@@ -184,6 +185,7 @@ export function Topbar({
               options={options.sources}
               selected={filter.sources}
               renderLabel={applicationLabel}
+              renderIcon={(source) => <SourceIcon source={source} size={14} />}
               disabled={disabled}
               onChange={(sources) => onChange({ ...filter, sources })}
             />
@@ -221,11 +223,16 @@ export function Topbar({
               title={`移除 ${chipLabel(chip)}`}
               onClick={() => onChange(removeFilterChip(filter, chip))}
             >
+              {chip.kind === "source" ? <SourceIcon source={chip.value} size={14} /> : null}
               <span>{chipLabel(chip)}</span>
               <Icon name="close" size={11} />
             </button>
           ))}
-          <Button variant="text" disabled={disabled} onClick={() => onChange(clearDimensionFilters(filter))}>
+          <Button
+            variant="text"
+            disabled={disabled}
+            onClick={() => onChange(clearDimensionFilters(filter))}
+          >
             清空筛选
           </Button>
         </div>

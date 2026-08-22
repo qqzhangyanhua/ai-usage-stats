@@ -1,5 +1,6 @@
 import { applicationLabel, formatTokens } from "../lib/format";
 import type { IngestIssue, IngestReport, SourceDiagnostic } from "../types";
+import { SourceLabel } from "./SourceIcon";
 import { Button } from "./ui/Button";
 
 function IngestIssueList({ title, issues }: { title: string; issues: IngestIssue[] }) {
@@ -12,7 +13,7 @@ function IngestIssueList({ title, issues }: { title: string; issues: IngestIssue
       <ul>
         {issues.slice(0, 8).map((issue, index) => (
           <li key={`${issue.source}-${issue.path}-${index}`}>
-            <span>{applicationLabel(issue.source)}</span>
+            <SourceLabel source={issue.source} size={14} />
             <code title={issue.path}>{issue.path}</code>
             <em>{issue.message}</em>
           </li>
@@ -61,9 +62,7 @@ export function SourceDiagnosticsPanel({
               onClick={() => onPurgeArchived(null)}
               title="永久删除所有来源已归档的记录，此操作不可撤销"
             >
-              {purging === "all"
-                ? "正在清理…"
-                : `清理全部已归档（${formatTokens(totalArchived)}）`}
+              {purging === "all" ? "正在清理…" : `清理全部已归档（${formatTokens(totalArchived)}）`}
             </Button>
           ) : null}
           <Button disabled={operationBusy || rebuilding !== null} onClick={() => onRebuild(null)}>
@@ -90,7 +89,12 @@ export function SourceDiagnosticsPanel({
             {diagnostics.map((row) => (
               <tr key={row.source}>
                 <td>
-                  <strong>{row.application || applicationLabel(row.source)}</strong>
+                  <strong>
+                    <SourceLabel
+                      source={row.source}
+                      fallback={row.application || applicationLabel(row.source)}
+                    />
+                  </strong>
                 </td>
                 <td>
                   <span className={row.detected ? "health-state ok" : "health-state"}>

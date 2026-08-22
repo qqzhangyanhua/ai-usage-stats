@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
-import { sourceTone } from "../icons";
-import { applicationLabel, formatCompact, formatHoursMinutes, formatUsd } from "../lib/format";
+import { formatCompact, formatHoursMinutes, formatUsd } from "../lib/format";
 import type { BillingWindowDto, BillingWindowsDto } from "../types";
+import { SourceIcon } from "./SourceIcon";
 
 const TICK_MS = 60_000;
 
@@ -42,9 +42,7 @@ function WindowRow({ window, hours }: { window: BillingWindowDto; hours: number 
 
   return (
     <li className="billing-row">
-      <span className={`src-ico ${sourceTone[window.source] ?? "tone-other"}`}>
-        {applicationLabel(window.source).slice(0, 1)}
-      </span>
+      <SourceIcon source={window.source} size={16} />
       <strong>{window.application}</strong>
       <em>{remaining != null ? `剩余 ${formatHoursMinutes(remaining)}` : "已结束"}</em>
       <div className="billing-bar" aria-hidden="true">

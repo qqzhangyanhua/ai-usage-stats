@@ -4,6 +4,7 @@ import { Icon } from "../icons";
 import { formatClock } from "../lib/format";
 import type { OfficialQuotaDto, OfficialQuotaFreshness, OfficialQuotaRow } from "../types";
 import { EmptyState } from "./EmptyState";
+import { SourceLabel } from "./SourceIcon";
 import { Button } from "./ui/Button";
 
 const FRESHNESS_LABEL: Record<OfficialQuotaFreshness, string> = {
@@ -50,7 +51,9 @@ export const OfficialQuotaPanel = memo(function OfficialQuotaPanel({
           icon="clock"
           title={data ? "所选账号均已隐藏" : "正在读取官方额度…"}
           hint={
-            data ? "在「配置显示」里打开 Codex / Claude Code / Cursor / Grok" : "先显示上次缓存，再后台刷新"
+            data
+              ? "在「配置显示」里打开 Codex / Claude Code / Cursor / Grok"
+              : "先显示上次缓存，再后台刷新"
           }
         />
       ) : (
@@ -81,13 +84,14 @@ function QuotaRow({
   disabled: boolean;
   onRefresh: () => void;
 }) {
-  const tone =
-    row.freshness === "official" ? "ok" : row.freshness === "stale" ? "warn" : "idle";
+  const tone = row.freshness === "official" ? "ok" : row.freshness === "stale" ? "warn" : "idle";
   return (
     <li className={`official-quota-row tone-${tone}`}>
       <div className="official-quota-head">
         <div className="official-quota-title">
-          <strong>{row.application}</strong>
+          <strong>
+            <SourceLabel source={row.provider} fallback={row.application} />
+          </strong>
           <Button
             variant="icon"
             className={busy ? "official-quota-refresh is-busy" : "official-quota-refresh"}

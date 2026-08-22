@@ -18,6 +18,7 @@ import type { WorkSegment, WorkTimelineDto } from "../types";
 import { DatePicker } from "./ui/DatePicker";
 import { EmptyState } from "./EmptyState";
 import { KpiCard } from "./Kpi";
+import { SourceLabel } from "./SourceIcon";
 import { LoadingOverlay } from "./LoadingOverlay";
 
 const AXIS_HOURS = [0, 3, 6, 9, 12, 15, 18, 21, 24];
@@ -154,9 +155,7 @@ export function WorkTimeline({
             tone="cyan"
             label="并行强度"
             value={
-              data?.parallel_intensity != null
-                ? `${formatRatio(data.parallel_intensity)}x`
-                : "—"
+              data?.parallel_intensity != null ? `${formatRatio(data.parallel_intensity)}x` : "—"
             }
           />
         </div>
@@ -166,7 +165,11 @@ export function WorkTimeline({
         {error ? (
           <EmptyState icon="alertTriangle" tone="warn" title="加载失败" hint={error} />
         ) : segments.length === 0 && !loading ? (
-          <EmptyState icon="clock" title="这天没有工作记录" hint="换一天试试，或检查数据源是否已同步" />
+          <EmptyState
+            icon="clock"
+            title="这天没有工作记录"
+            hint="换一天试试，或检查数据源是否已同步"
+          />
         ) : (
           <div className="worktime-axis-wrap">
             <div className="worktime-axis">
@@ -221,13 +224,7 @@ export function WorkTimeline({
 /// 跟随鼠标的明细气泡。不复用 `useAnchoredPanel`——那个 hook 按触发器元素定位，
 /// 适合点击展开的浮层；这里需要跟随光标移动，且只在 hover 期间存在，不涉及
 /// 点击外部关闭或滚动重定位（鼠标离开横条即消失）。
-function SegmentTooltip({
-  segment,
-  pos,
-}: {
-  segment: WorkSegment;
-  pos: { x: number; y: number };
-}) {
+function SegmentTooltip({ segment, pos }: { segment: WorkSegment; pos: { x: number; y: number } }) {
   const duration = formatDuration(segment.start, segment.end);
   const label = segmentLabel(segment);
   // 气泡默认在鼠标右下方，靠近视口边缘时翻到对侧。
@@ -248,7 +245,9 @@ function SegmentTooltip({
         <dt>项目</dt>
         <dd>{projectLabel(segment.project)}</dd>
         <dt>来源</dt>
-        <dd>{applicationLabel(segment.source)}</dd>
+        <dd>
+          <SourceLabel source={segment.source} size={14} />
+        </dd>
         <dt>模型</dt>
         <dd>{segment.model || "—"}</dd>
         <dt>开始</dt>

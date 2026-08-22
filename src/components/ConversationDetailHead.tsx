@@ -9,6 +9,7 @@ import {
 import { formatClock, projectLabel } from "../lib/format";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { SessionResumeCommand } from "./SessionResumeCommand";
+import { SourceLabel } from "./SourceIcon";
 import { Spinner } from "./Spinner";
 import type { ConversationDetailHeadProps } from "./type";
 import { Button } from "./ui/Button";
@@ -79,7 +80,13 @@ export function ConversationDetailHead({
         title={session.title}
         defaultOpen={false}
         className="conversation-detail-meta-section"
-        extra={<span className="muted">{conversationApplicationLabel(session.source)}</span>}
+        extra={
+          <SourceLabel
+            source={session.source}
+            fallback={conversationApplicationLabel(session.source)}
+            size={14}
+          />
+        }
         collapsedSummary={conversationDetailSummary(session)}
       >
         <dl className="conversation-meta">

@@ -8,16 +8,13 @@ import type {
   InstructionLoadStatus,
 } from "../types";
 import { EmptyState } from "./EmptyState";
-import {
-  canEditInstruction,
-  canOpenInstruction,
-  showsLoadStatus,
-} from "../lib/instructionAccess";
+import { canEditInstruction, canOpenInstruction, showsLoadStatus } from "../lib/instructionAccess";
 import { InstructionCheckup } from "./InstructionCheckup";
 import { InstructionClaudeMemory } from "./InstructionClaudeMemory";
 import { InstructionEditor } from "./InstructionEditor";
 import { InstructionInsight } from "./InstructionInsight";
 import { InstructionOverlap } from "./InstructionOverlap";
+import { SourceLabel } from "./SourceIcon";
 import { Button } from "./ui/Button";
 
 const STATUS_LABEL: Record<InstructionLoadStatus, string> = {
@@ -142,7 +139,9 @@ export function GlobalInstructionPanel() {
       {data
         ? data.sources.map((row) => (
             <section className="instruction-source" key={row.source}>
-              <h3>{row.application}</h3>
+              <h3>
+                <SourceLabel source={row.source} fallback={row.application} />
+              </h3>
               <ul className="instruction-list">
                 {row.files.map((file) => {
                   const id = `${row.source}:${file.display_path}`;
@@ -153,9 +152,7 @@ export function GlobalInstructionPanel() {
                       draft={drafts[id] ?? file.content}
                       open={openPath === id}
                       onToggle={() => setOpenPath((current) => (current === id ? null : id))}
-                      onDraft={(value) =>
-                        setDrafts((current) => ({ ...current, [id]: value }))
-                      }
+                      onDraft={(value) => setDrafts((current) => ({ ...current, [id]: value }))}
                       onSaved={() => {
                         setDrafts((current) => {
                           const next = { ...current };
@@ -236,12 +233,7 @@ function InstructionRow({
             <p className="muted">该来源没有用户级全局指令机制，不必按路径去创建文件。</p>
           ) : null}
           {canEditInstruction(file) ? (
-            <InstructionEditor
-              file={file}
-              draft={draft}
-              onDraft={onDraft}
-              onSaved={onSaved}
-            />
+            <InstructionEditor file={file} draft={draft} onDraft={onDraft} onSaved={onSaved} />
           ) : null}
         </div>
       ) : null}
