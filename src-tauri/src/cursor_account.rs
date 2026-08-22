@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use rusqlite::Connection;
 
 use crate::adapters::cursor_account::{
@@ -9,6 +11,7 @@ use crate::store;
 
 const USAGE_EVENTS_URL: &str = "https://cursor.com/api/dashboard/get-filtered-usage-events";
 const PAGE_SIZE: u32 = 100;
+const TIMEOUT: Duration = Duration::from_secs(20);
 
 pub fn has_token() -> Result<bool, String> {
     Ok(credential_status()?.source == CREDENTIAL_SOURCE_LOCAL)
@@ -92,7 +95,8 @@ pub fn fetch_usage_events_page(
         "pageSize": PAGE_SIZE,
         "startDate": start_date_ms
     });
-    let request = ureq::post(USAGE_EVENTS_URL)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .post(USAGE_EVENTS_URL)
         .set("Cookie", &format!("WorkosCursorSessionToken={token}"))
         .set("Origin", "https://cursor.com")
         .set("Content-Type", "application/json");

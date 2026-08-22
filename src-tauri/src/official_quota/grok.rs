@@ -230,8 +230,8 @@ fn grok_home() -> PathBuf {
 }
 
 fn request_json(token: &str, user_id: Option<&str>, url: &str) -> Result<String, String> {
-    let mut request = ureq::get(url)
-        .timeout(TIMEOUT)
+    let mut request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(url)
         .set("Authorization", &format!("Bearer {token}"))
         .set("X-XAI-Token-Auth", TOKEN_AUTH)
         .set("x-grok-client-version", &grok_client_version())

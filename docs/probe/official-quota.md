@@ -198,3 +198,15 @@ REST `?format=credits` 对部分账号会 500（`Failed to serialize billing res
   - 缺 `used` 不当成 0%
 
 文件缺失、过期或结构变更：该行 `unavailable`，保留上次正确缓存。不把 token 或 billing 原文写入日志。
+
+## 出网与代理
+
+所有 provider 请求都走 `net::agent_with_timeout`，不要再直接 `ureq::get/post`——ureq 不会自己读 `HTTPS_PROXY` 之类的环境变量，裸调用等于让必须走代理的用户全线连不上。
+
+代理解析顺序：应用数据目录的 `network.json`（`{"proxy": "http://host:port"}`）> 环境变量 `HTTPS_PROXY` / `https_proxy` / `ALL_PROXY` / `all_proxy` / `HTTP_PROXY` / `http_proxy`。
+
+- 两者都要支持：桌面应用从图形界面启动，拿不到用户在 shell profile 里 export 的变量。
+- `network.json` 里 `proxy` 写空串 = **明确直连**，用来盖掉不想要的环境变量。
+- 支持 `socks5://`（ureq 的 `socks-proxy` feature）。
+- 代理串解析失败时退回直连，而不是让所有 provider 一起挂掉。
+- `NO_PROXY` 当前不支持。

@@ -170,8 +170,8 @@ fn used_percent(node: &Value) -> Option<f64> {
 }
 
 fn request_usage(token: &str) -> Result<String, String> {
-    let request = ureq::get(USAGE_URL)
-        .timeout(TIMEOUT)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(USAGE_URL)
         .set("Authorization", &format!("token {token}"))
         .set("Accept", "application/json")
         .set("Editor-Version", "vscode/1.96.2")

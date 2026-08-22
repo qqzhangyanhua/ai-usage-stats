@@ -138,8 +138,8 @@ fn request_user_status(api_key: &str) -> Result<String, String> {
             "locale": "en"
         }
     });
-    let request = ureq::post(&format!("{API_SERVER}/{SERVICE_PATH}"))
-        .timeout(TIMEOUT)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .post(&format!("{API_SERVER}/{SERVICE_PATH}"))
         .set("Content-Type", "application/json")
         .set("Connect-Protocol-Version", "1");
     match request.send_string(&body.to_string()) {

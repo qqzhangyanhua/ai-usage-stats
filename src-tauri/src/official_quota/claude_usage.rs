@@ -145,8 +145,8 @@ pub fn is_expired(oauth: &Value, now_ms: i64) -> bool {
 }
 
 fn request_usage(token: &str) -> Result<String, String> {
-    let request = ureq::get(USAGE_URL)
-        .timeout(TIMEOUT)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(USAGE_URL)
         .set("Authorization", &format!("Bearer {token}"))
         .set("Accept", "application/json")
         .set("Content-Type", "application/json")

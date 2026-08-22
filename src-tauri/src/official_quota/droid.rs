@@ -291,8 +291,8 @@ fn decrypt_gcm(key: &[u8], iv: &[u8], sealed: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn request_limits(token: &str) -> Result<String, String> {
-    let request = ureq::get(LIMITS_URL)
-        .timeout(TIMEOUT)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(LIMITS_URL)
         .set("Authorization", &format!("Bearer {token}"))
         .set("Accept", "application/json");
     match request.call() {

@@ -14,6 +14,7 @@ pub mod domain;
 pub mod ingest;
 pub mod instructions;
 pub mod litellm;
+pub mod net;
 pub mod official_quota;
 pub mod paths;
 pub mod query;

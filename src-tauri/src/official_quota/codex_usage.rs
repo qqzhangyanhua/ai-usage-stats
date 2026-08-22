@@ -150,8 +150,8 @@ fn resets_at(node: &Value, now_secs: i64) -> Option<String> {
 }
 
 fn request_usage(auth: &CodexAuth) -> Result<(String, Vec<(String, f64)>), String> {
-    let mut request = ureq::get(USAGE_URL)
-        .timeout(TIMEOUT)
+    let mut request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(USAGE_URL)
         .set("Authorization", &format!("Bearer {}", auth.access_token))
         .set("Accept", "application/json")
         .set("User-Agent", "ai-usage-stats");

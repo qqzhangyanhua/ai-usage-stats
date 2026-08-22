@@ -123,8 +123,8 @@ fn error_detail(body: &str) -> Option<String> {
 }
 
 fn request_usage(api_key: &str) -> Result<String, String> {
-    let request = ureq::get(USAGE_URL)
-        .timeout(TIMEOUT)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(USAGE_URL)
         .set("Authorization", &format!("Bearer {api_key}"))
         .set("Accept", "application/json");
     match request.call() {

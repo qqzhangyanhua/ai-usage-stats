@@ -63,8 +63,8 @@ fn request_credits(
     user_id: Option<&str>,
     client_version: &str,
 ) -> Result<Vec<u8>, String> {
-    let mut request = ureq::post(BILLING_GRPC_URL)
-        .timeout(TIMEOUT)
+    let mut request = crate::net::agent_with_timeout(TIMEOUT)
+        .post(BILLING_GRPC_URL)
         .set("Authorization", &format!("Bearer {token}"))
         .set("X-XAI-Token-Auth", TOKEN_AUTH)
         .set("Accept", "application/grpc-web+proto")

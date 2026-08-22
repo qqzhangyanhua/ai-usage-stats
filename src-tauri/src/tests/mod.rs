@@ -22,6 +22,7 @@ mod ingest;
 mod instructions;
 mod kimi_grok_conversation;
 mod misc;
+mod net;
 mod official_quota;
 mod opencode_conversation;
 mod opencode_quota;

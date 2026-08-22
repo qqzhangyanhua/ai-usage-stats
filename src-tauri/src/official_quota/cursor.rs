@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use chrono::Utc;
 use serde_json::Value;
 
@@ -6,6 +8,7 @@ use crate::domain::OfficialQuotaWindow;
 use crate::official_quota::{parse_resets_at, sanitize_percent};
 
 const USAGE_SUMMARY_URL: &str = "https://cursor.com/api/usage-summary";
+const TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn fetch_usage_summary() -> Result<(Vec<OfficialQuotaWindow>, String), String> {
     let token = cursor_account::current_token()?;
@@ -124,7 +127,8 @@ fn percent_from_used_limit(plan: &Value) -> Option<f64> {
 }
 
 fn request_usage_summary(token: &str) -> Result<String, String> {
-    let request = ureq::get(USAGE_SUMMARY_URL)
+    let request = crate::net::agent_with_timeout(TIMEOUT)
+        .get(USAGE_SUMMARY_URL)
         .set("Cookie", &format!("WorkosCursorSessionToken={token}"))
         .set("Origin", "https://cursor.com");
     match request.call() {

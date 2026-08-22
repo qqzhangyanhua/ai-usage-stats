@@ -340,12 +340,14 @@ fn refresh_access_token(refresh_token: &str) -> Result<String, String> {
     let clients = local_oauth_clients()?;
     let mut last = "Antigravity 登录已失效，请重新打开客户端登录".to_string();
     for (client_id, client_secret) in clients {
-        let response = ureq::post(TOKEN_URL).timeout(TIMEOUT).send_form(&[
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
-            ("refresh_token", refresh_token),
-            ("grant_type", "refresh_token"),
-        ]);
+        let response = crate::net::agent_with_timeout(TIMEOUT)
+            .post(TOKEN_URL)
+            .send_form(&[
+                ("client_id", client_id.as_str()),
+                ("client_secret", client_secret.as_str()),
+                ("refresh_token", refresh_token),
+                ("grant_type", "refresh_token"),
+            ]);
         match response {
             Ok(ok) => {
                 let body = ok
@@ -380,8 +382,8 @@ fn refresh_access_token(refresh_token: &str) -> Result<String, String> {
 fn request_summary(access_token: &str) -> Result<String, SummaryError> {
     let mut last = SummaryError::Other("无法连接 Antigravity 限额接口，请检查网络后重试".into());
     for url in SUMMARY_URLS {
-        let result = ureq::post(url)
-            .timeout(TIMEOUT)
+        let result = crate::net::agent_with_timeout(TIMEOUT)
+            .post(url)
             .set("Authorization", &format!("Bearer {access_token}"))
             .set("User-Agent", USER_AGENT)
             .set("Content-Type", "application/json")
