@@ -156,6 +156,10 @@ fn apply_fetch_results_isolates_provider_failures() {
                 crate::domain::OfficialQuotaProvider::Droid,
                 Err("尚未登录 Droid".into()),
             ),
+            (
+                crate::domain::OfficialQuotaProvider::Antigravity,
+                Err("尚未登录 Antigravity".into()),
+            ),
         ],
     )
     .unwrap();
@@ -181,4 +185,9 @@ fn apply_fetch_results_isolates_provider_failures() {
         .unwrap();
     assert_eq!(droid.2.as_deref(), Some("尚未登录 Droid"));
     assert!(droid.0.is_empty());
+    let antigravity = store::load_official_quota_row(&conn, "antigravity")
+        .unwrap()
+        .unwrap();
+    assert_eq!(antigravity.2.as_deref(), Some("尚未登录 Antigravity"));
+    assert!(antigravity.0.is_empty());
 }

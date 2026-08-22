@@ -20,6 +20,7 @@ pub mod query;
 pub mod store;
 pub mod tray;
 pub mod user_files;
+pub mod vscode_state;
 pub mod work_timeline;
 
 use std::fs;

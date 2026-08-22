@@ -47,6 +47,25 @@ Cursor 订阅限额是多档并行，不能只取总量：
 
 与账号用量事件接口 `get-filtered-usage-events` 分开。结构变更时保留上次正确缓存。
 
+## Antigravity
+
+凭证读本机 Antigravity 的 `state.vscdb`（和 Cursor 同样落在 `dirs::config_dir()` 下，Win 是 `%APPDATA%\Antigravity\User\globalStorage`）的 `ItemTable`：
+
+- `antigravityAuthStatus`：JSON，`apiKey` 是 Google OAuth access token（`ya29.`），只活约 1 小时，**基本总是过期，不能直接用**。
+- `antigravityUnifiedStateSync.oauthToken`：嵌套 protobuf（外层 base64 → protobuf → 内层 base64 → protobuf），内层含 access token、`Bearer`、**refresh token（`1//` 开头）**。字段号不稳定，按形状找；内层 base64 的 padding 未必齐，要按无 padding 解。
+- 刷新要用 Antigravity 自己的 OAuth 客户端。**不内嵌到本仓库**——那是 Google 发给 Antigravity 的凭证，GitHub 的 secret scanning 也会拦。改成运行时从本机安装的 `out/main.js` 里提取（先顺 PATH 上的 `antigravity` 启动器反查安装根目录，再退回各平台默认位置），拿去 `https://oauth2.googleapis.com/token` 换 access token。`main.js` 里 id 和 secret 各有多个且配对关系看不出来，全组合都试，错配会快速返回 `invalid_client`。
+- 先用 `antigravityAuthStatus.apiKey` 直接打，401 了才走上面的刷新，省一次往返。
+
+`POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`，body `{}`（有 project 就传 `{"project": pid}`）：
+
+- **RPC 名是 `retrieveUserQuotaSummary`，不是 `retrieveUserQuota`**；后者对消费级账号一律 403。
+- **`User-Agent` 必须带 `Antigravity/` 标记**，否则 403「no valid license」。实测 `vscode/1.X.X (Antigravity/4.3.0)`、`…(Antigravity/0.0.0)`、`Antigravity/4.3.0` 都通，`vscode/1.X.X` 和其它 UA 都 403 —— 只认标记，不认版本号。那个 403 是 UA 门禁，不是真的没 license。
+- 响应 `groups[].buckets[]`：`bucketId`（→ 窗口 kind，`-` 换 `_`）、`window`（`weekly` / `5h`）、`remainingFraction`（**剩余**，`(1-x)*100` 才是已用）、`resetTime`。
+- 桶的 `displayName` 是「Weekly Limit Remaining」这种剩余口径，直接展示会和已用读反，所以按 `window` 自己起名，group 的 `displayName` 做前缀。
+- 端点按 prod → daily → sandbox 兜底；401/403 不换环境直接结束。
+
+`v1internal:fetchAvailableModels` 也能拿到每个模型的 `quotaInfo.{remainingFraction, resetTime}`，是同一个 5h 桶的数字，当前不采。
+
 ## Droid (Factory)
 
 凭证读本机 `~/.factory`（`FACTORY_HOME_OVERRIDE` 可覆盖）：
