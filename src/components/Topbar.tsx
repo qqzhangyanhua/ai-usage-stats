@@ -12,7 +12,6 @@ import {
 import {
   clearDimensionFilters,
   filterChips,
-  hasDimensionFilters,
   removeFilterChip,
   type FilterChip,
 } from "../lib/filterChips";
@@ -70,13 +69,14 @@ export function Topbar({
   onRefresh: () => void;
 }) {
   const { title, subtitle } = viewTitle(view);
-  const hideFilters =
+  const hideAllFilters =
     view === "cursor" ||
     view === "cursor-sessions" ||
-    view === "conversations" ||
     view === "worktime" ||
     view === "instructions" ||
     view === "settings";
+  const showSharedDimensionFilters = !hideAllFilters;
+  const showUsageOnlyFilters = showSharedDimensionFilters && view !== "conversations";
   const committedFrom = (filter.from ?? "").slice(0, 10);
   const committedTo = (filter.to ?? "").slice(0, 10);
   const rangeKey = `${preset}:${filter.from ?? ""}:${filter.to ?? ""}`;
@@ -91,7 +91,9 @@ export function Topbar({
   const customOpen = preset === "custom";
   const customFrom = draft.key === rangeKey ? draft.from : committedFrom;
   const customTo = draft.key === rangeKey ? draft.to : committedTo;
-  const chips = filterChips(filter);
+  const chips = filterChips(filter).filter(
+    (chip) => showUsageOnlyFilters || chip.kind === "project" || chip.kind === "source",
+  );
 
   function selectPreset(value: string) {
     if (value === "custom") {
@@ -117,19 +119,23 @@ export function Topbar({
           <h1>{title}</h1>
           <p>{subtitle}</p>
         </div>
-        {!hideFilters ? (
+        {showSharedDimensionFilters ? (
           <div className="topbar-actions">
-            {onRangeBack ? <RangeBackButton disabled={disabled} onClick={onRangeBack} /> : null}
-            <Select
-              icon="calendar"
-              ariaLabel="时间范围"
-              disabled={disabled}
-              value={customOpen ? "custom" : preset}
-              displayLabel={customOpen ? "自定义区间" : formatRangeLabel(filter, preset)}
-              options={RANGE_OPTIONS}
-              onChange={selectPreset}
-            />
-            {customOpen ? (
+            {showUsageOnlyFilters && onRangeBack ? (
+              <RangeBackButton disabled={disabled} onClick={onRangeBack} />
+            ) : null}
+            {showUsageOnlyFilters ? (
+              <Select
+                icon="calendar"
+                ariaLabel="时间范围"
+                disabled={disabled}
+                value={customOpen ? "custom" : preset}
+                displayLabel={customOpen ? "自定义区间" : formatRangeLabel(filter, preset)}
+                options={RANGE_OPTIONS}
+                onChange={selectPreset}
+              />
+            ) : null}
+            {showUsageOnlyFilters && customOpen ? (
               <div className="custom-range">
                 <DatePicker
                   ariaLabel="开始日期"
@@ -181,26 +187,30 @@ export function Topbar({
               disabled={disabled}
               onChange={(sources) => onChange({ ...filter, sources })}
             />
-            <MultiSelect
-              label="全部模型"
-              options={options.models}
-              selected={filter.models}
-              disabled={disabled}
-              renderIcon={(model) => <VendorIcon name={model} size={14} />}
-              onChange={(models) => onChange({ ...filter, models })}
-            />
-            <MultiSelect
-              label="全部 Provider"
-              options={options.providers}
-              selected={filter.providers}
-              disabled={disabled}
-              renderLabel={(name) => `${name}（${providerChannel(name)}）`}
-              onChange={(providers) => onChange({ ...filter, providers })}
-            />
+            {showUsageOnlyFilters ? (
+              <MultiSelect
+                label="全部模型"
+                options={options.models}
+                selected={filter.models}
+                disabled={disabled}
+                renderIcon={(model) => <VendorIcon name={model} size={14} />}
+                onChange={(models) => onChange({ ...filter, models })}
+              />
+            ) : null}
+            {showUsageOnlyFilters ? (
+              <MultiSelect
+                label="全部 Provider"
+                options={options.providers}
+                selected={filter.providers}
+                disabled={disabled}
+                renderLabel={(name) => `${name}（${providerChannel(name)}）`}
+                onChange={(providers) => onChange({ ...filter, providers })}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
-      {!hideFilters && hasDimensionFilters(filter) ? (
+      {showSharedDimensionFilters && chips.length > 0 ? (
         <div className="filter-chips" aria-label="已选筛选">
           {chips.map((chip) => (
             <button

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use base64::prelude::*;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::domain::{
@@ -18,9 +18,10 @@ use crate::domain::{
     ConversationEventContentDto, ConversationEventContentStatus as ContentStatus,
     ConversationEventKind as EventKind, ConversationExportDto, ConversationExportFormat,
     ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow,
-    CursorSessionRecord, Source, UsageRecord,
+    CursorSessionRecord, PriceTable, Source, UsageRecord,
 };
 use crate::ingest;
+use crate::query;
 
 mod claude;
 mod copilot;
@@ -634,34 +635,80 @@ fn conversation_source_paths(source: Source, roots: &[PathBuf]) -> Result<Vec<Pa
     (conversation_adapter(source)?.discover)(roots)
 }
 
+fn sql_placeholders(count: usize) -> String {
+    std::iter::repeat_n("?", count)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn catalog_filter_sql(query: &ConversationQuery) -> (String, Vec<rusqlite::types::Value>) {
+    let mut clauses = vec!["is_top_level = 1".to_string()];
+    let mut params = Vec::new();
+    let search = query.search.as_deref().unwrap_or("").trim();
+    if !search.is_empty() {
+        let pattern = format!("%{}%", escape_like(search));
+        clauses.push(
+            "(title LIKE ? ESCAPE '\\' OR source LIKE ? ESCAPE '\\' \
+             OR project LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' \
+             OR session_id LIKE ? ESCAPE '\\' OR started_at LIKE ? ESCAPE '\\' \
+             OR ended_at LIKE ? ESCAPE '\\')"
+                .to_string(),
+        );
+        for _ in 0..7 {
+            params.push(rusqlite::types::Value::Text(pattern.clone()));
+        }
+    }
+    if !query.sources.is_empty() {
+        clauses.push(format!(
+            "source IN ({})",
+            sql_placeholders(query.sources.len())
+        ));
+        for source in &query.sources {
+            params.push(rusqlite::types::Value::Text(source.clone()));
+        }
+    }
+    if !query.projects.is_empty() {
+        clauses.push(format!(
+            "project IN ({})",
+            sql_placeholders(query.projects.len())
+        ));
+        for project in &query.projects {
+            params.push(rusqlite::types::Value::Text(project.clone()));
+        }
+    }
+    (clauses.join(" AND "), params)
+}
+
 pub fn sessions_page(
     conn: &Connection,
     query: &ConversationQuery,
 ) -> Result<ConversationPage, String> {
-    let search = query.search.as_deref().unwrap_or("").trim();
-    let pattern = format!("%{}%", escape_like(search));
+    sessions_page_with_prices(conn, query, &PriceTable::default())
+}
+
+pub fn sessions_page_with_prices(
+    conn: &Connection,
+    query: &ConversationQuery,
+    prices: &PriceTable,
+) -> Result<ConversationPage, String> {
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query
         .page_size
         .unwrap_or(DEFAULT_PAGE_SIZE)
         .clamp(1, MAX_PAGE_SIZE);
     let offset = i64::from((page - 1) * page_size);
+    let (predicate, mut params) = catalog_filter_sql(query);
 
-    let predicate = r#"
-        is_top_level = 1 AND
-        (?1 = '' OR title LIKE ?2 ESCAPE '\' OR source LIKE ?2 ESCAPE '\'
-         OR project LIKE ?2 ESCAPE '\' OR model LIKE ?2 ESCAPE '\'
-         OR session_id LIKE ?2 ESCAPE '\' OR started_at LIKE ?2 ESCAPE '\'
-         OR ended_at LIKE ?2 ESCAPE '\')
-    "#;
     let total = conn
         .query_row(
             &format!("SELECT COUNT(*) FROM conversation_sessions WHERE {predicate}"),
-            params![search, pattern],
+            params_from_iter(params.iter()),
             |row| row.get::<_, i64>(0),
         )
         .map_err(|e| e.to_string())? as u32;
 
+    params.push(rusqlite::types::Value::Integer(i64::from(page_size)));
+    params.push(rusqlite::types::Value::Integer(offset));
     let sql = format!(
         r#"
         SELECT source, session_id, title, project, model, started_at, ended_at,
@@ -669,15 +716,12 @@ pub fn sessions_page(
         FROM conversation_sessions
         WHERE {predicate}
         ORDER BY ended_at DESC, source ASC, session_id ASC
-        LIMIT ?3 OFFSET ?4
+        LIMIT ? OFFSET ?
         "#
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let mut rows = stmt
-        .query_map(
-            params![search, pattern, i64::from(page_size), offset],
-            row_from_sql,
-        )
+        .query_map(params_from_iter(params.iter()), row_from_sql)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -690,8 +734,33 @@ pub fn sessions_page(
                 .collect();
         }
     }
+    hydrate_catalog_usage(conn, prices, &mut rows)?;
 
     Ok(ConversationPage { rows, total })
+}
+
+fn hydrate_catalog_usage(
+    conn: &Connection,
+    prices: &PriceTable,
+    rows: &mut [ConversationSessionRow],
+) -> Result<(), String> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let keys = rows
+        .iter()
+        .map(|row| (row.source.clone(), row.session_id.clone()))
+        .collect::<Vec<_>>();
+    let totals = query::usage_rollups_for_sessions(conn, prices, &keys)?;
+    for row in rows {
+        let Some(usage) = totals.get(&(row.source.clone(), row.session_id.clone())) else {
+            continue;
+        };
+        row.total_tokens = usage.total_tokens;
+        row.cost = usage.cost;
+        row.unpriced = usage.unpriced;
+    }
+    Ok(())
 }
 
 pub fn load_detail(
@@ -1378,6 +1447,7 @@ fn parse_codex_file_mode(
         capabilities,
         support_status: EXPERIMENTAL.to_string(),
         file_available: true,
+        ..Default::default()
     };
     Ok(ParsedConversation {
         session,
@@ -1616,6 +1686,7 @@ fn finish_source_conversation(
             capabilities,
             support_status: EXPERIMENTAL.to_string(),
             file_available: true,
+            ..Default::default()
         },
         messages,
         events,
@@ -2973,6 +3044,7 @@ fn sync_cursor_usage_only_sessions(conn: &Connection) -> Result<(), String> {
             capabilities: vec![CAPABILITY_EVENTS.to_string(), CAPABILITY_USAGE.to_string()],
             support_status: EXPERIMENTAL.to_string(),
             file_available: false,
+            ..Default::default()
         };
         upsert_session(
             conn,
@@ -3219,6 +3291,7 @@ fn row_from_sql(row: &rusqlite::Row<'_>) -> rusqlite::Result<ConversationSession
         capabilities: serde_json::from_str(&capabilities_json).unwrap_or_default(),
         support_status: row.get(9)?,
         file_available: row.get(10)?,
+        ..Default::default()
     })
 }
 

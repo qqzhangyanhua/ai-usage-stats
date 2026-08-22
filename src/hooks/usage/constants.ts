@@ -27,5 +27,3 @@ export function loadAutoRefresh(): string {
     return "off";
   }
 }
-
-export type SelectedSession = { id: string; source: string };

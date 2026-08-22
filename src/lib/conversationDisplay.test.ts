@@ -5,6 +5,8 @@ import {
   conversationApplicationLabel,
   conversationDetailSummary,
   conversationFileUnavailableLabel,
+  conversationRangeLabel,
+  conversationRangeTitle,
   conversationSessionTime,
   conversationStatusLabel,
 } from "./conversationDisplay";
@@ -23,6 +25,9 @@ function session(overrides: Partial<ConversationSessionRow> = {}): ConversationS
     capabilities: ["messages", "events"],
     support_status: "experimental",
     file_available: true,
+    total_tokens: 0,
+    cost: null,
+    unpriced: false,
     ...overrides,
   };
 }
@@ -48,6 +53,20 @@ describe("conversation display labels", () => {
   it("prefers ended_at for the session clock", () => {
     expect(conversationSessionTime(session())).toBe("2026-08-21T00:01:00Z");
     expect(conversationSessionTime(session({ ended_at: "" }))).toBe("2026-08-21T00:00:00Z");
+  });
+});
+
+describe("conversation range", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders start and end as a relative range", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-21T10:01:00Z"));
+    expect(conversationRangeLabel(session())).toBe("10 小时前 → 10 小时前");
+    expect(conversationRangeTitle(session())).toContain("→");
+    expect(conversationRangeLabel(session({ started_at: "", ended_at: "" }))).toBe("—");
   });
 });
 

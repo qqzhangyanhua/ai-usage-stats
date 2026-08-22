@@ -72,7 +72,7 @@ export const Overview = memo(function Overview({
   live,
   theme,
   onGrain,
-  onOpenSessions,
+  onOpenConversations,
   onOpenCursor,
   onProjectClick,
   onSessionClick,
@@ -102,7 +102,7 @@ export const Overview = memo(function Overview({
   live: boolean;
   theme: ResolvedTheme;
   onGrain: (grain: Grain) => void;
-  onOpenSessions: () => void;
+  onOpenConversations: () => void;
   onOpenCursor: () => void;
   onProjectClick?: (project: string) => void;
   onSessionClick?: (session: { id: string; source: string }) => void;
@@ -335,7 +335,7 @@ export const Overview = memo(function Overview({
             projects={projects}
             sessions={sessions}
             theme={theme}
-            onOpenSessions={onOpenSessions}
+            onOpenConversations={onOpenConversations}
             onProjectClick={onProjectClick}
             onSessionClick={onSessionClick}
           />

@@ -18,7 +18,6 @@ const navGroups: { label: string; items: { id: View; label: string; icon: IconNa
     items: [
       { id: "overview", label: "概览", icon: "overview" },
       { id: "trend", label: "使用统计", icon: "trend" },
-      { id: "sessions", label: "会话管理", icon: "sessions" },
       { id: "model", label: "模型统计", icon: "model" },
       { id: "project", label: "项目统计", icon: "project" },
       { id: "application", label: "应用统计", icon: "source" },
@@ -145,8 +144,6 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
       return { title: "概览", subtitle: "全局 Token 使用概览" };
     case "trend":
       return { title: "使用统计", subtitle: "按时间查看 Token 消耗" };
-    case "sessions":
-      return { title: "会话管理", subtitle: "按会话下钻每轮明细" };
     case "conversations":
       return { title: "对话记录", subtitle: "本地会话正文，按需读取原始文件" };
     case "model":

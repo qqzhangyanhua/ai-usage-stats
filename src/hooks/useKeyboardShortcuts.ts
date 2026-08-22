@@ -4,7 +4,7 @@ import type { View } from "../types";
 const SHORTCUT_VIEWS: View[] = [
   "overview",
   "trend",
-  "sessions",
+  "conversations",
   "model",
   "project",
   "application",

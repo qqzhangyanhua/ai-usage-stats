@@ -21,7 +21,6 @@ export const LazyApplicationAnalytics = namedLazy(
   "ApplicationAnalytics",
 );
 export const LazyBreakdown = namedLazy(() => import("../components/Breakdown"), "Breakdown");
-export const LazySessions = namedLazy(() => import("../components/Sessions"), "Sessions");
 export const LazyConversations = namedLazy(
   () => import("../components/Conversations"),
   "Conversations",

@@ -1,5 +1,5 @@
 import type { ConversationSessionRow } from "../types";
-import { applicationLabel, projectLabel, relativeTime } from "./format";
+import { applicationLabel, formatClock, projectLabel, relativeTime } from "./format";
 
 const CAPABILITY_LABELS: Record<string, string> = {
   messages: "基础正文",
@@ -27,6 +27,28 @@ export function conversationSessionTime(
   session: Pick<ConversationSessionRow, "ended_at" | "started_at">,
 ): string {
   return session.ended_at || session.started_at;
+}
+
+export function conversationRangeLabel(
+  session: Pick<ConversationSessionRow, "ended_at" | "started_at">,
+): string {
+  const started = session.started_at || session.ended_at;
+  const ended = session.ended_at || session.started_at;
+  if (!started) {
+    return "—";
+  }
+  return `${relativeTime(started)} → ${relativeTime(ended)}`;
+}
+
+export function conversationRangeTitle(
+  session: Pick<ConversationSessionRow, "ended_at" | "started_at">,
+): string {
+  const started = session.started_at || session.ended_at;
+  const ended = session.ended_at || session.started_at;
+  if (!started) {
+    return "";
+  }
+  return `${formatClock(started)} → ${formatClock(ended)}`;
 }
 
 export function conversationDetailSummary(session: ConversationSessionRow): string {

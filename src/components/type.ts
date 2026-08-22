@@ -22,6 +22,12 @@ export type ConversationJumpBarProps = {
   onJumpBottom: () => void;
 };
 
+export type ConversationCatalogRowProps = {
+  row: ConversationSessionRow;
+  maxTotal: number;
+  onOpen: (row: ConversationSessionRow) => void;
+};
+
 export type ConversationDetailHeadProps = {
   session: ConversationSessionRow;
   fileAvailable: boolean;

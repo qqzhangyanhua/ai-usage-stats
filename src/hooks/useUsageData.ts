@@ -24,12 +24,14 @@ import type {
   SessionRow,
   SourceDiagnostic,
   View,
+  ConversationFocus,
 } from "../types";
 import {
   initialViewScopes,
   isViewFresh,
   reconcileLoadedStamps,
   scopesEqual,
+  syncSourceProjectFilters,
   viewFromHash,
   viewsWarmedBy,
   type ViewScope,
@@ -38,7 +40,6 @@ import { emptyFilter } from "./usage/constants";
 import { useAutoRefresh } from "./usage/useAutoRefresh";
 import { useIngestOperations } from "./usage/useIngestOperations";
 import { useRangeHistory } from "./usage/useRangeHistory";
-import { useSessionTurns } from "./usage/useSessionTurns";
 import { useViewRefresh } from "./usage/useViewRefresh";
 
 export { viewFromHash, views } from "./viewCache";
@@ -53,7 +54,6 @@ export function useUsageData() {
   const [view, setView] = useState<View>(viewFromHash);
   const [viewScopes, setViewScopes] = useState<Record<View, ViewScope>>(initialViewScopes);
   const { filter, preset } = viewScopes[view];
-  const sessionsFilter = viewScopes.sessions.filter;
   const {
     canGoBack,
     pushCurrent: pushRange,
@@ -87,7 +87,7 @@ export function useUsageData() {
   const [hydratedViews, setHydratedViews] = useState<Set<View>>(() => new Set());
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [sessionsRevision, setSessionsRevision] = useState(0);
-  const [sessionsVisited, setSessionsVisited] = useState(() => viewFromHash() === "sessions");
+  const [conversationFocus, setConversationFocus] = useState<ConversationFocus | null>(null);
   const [prices, setPrices] = useState<PriceTable>({ prices: [] });
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatusDto | null>(null);
   const [savingBudget, setSavingBudget] = useState(false);
@@ -109,11 +109,6 @@ export function useUsageData() {
   const reportError = useCallback((error: unknown) => {
     setStatus(humanStatus(error));
   }, []);
-
-  const { turns, turnsLoading, selectedSession, loadSessionTurns, selectSession } = useSessionTurns(
-    sessionsFilter,
-    reportError,
-  );
 
   const markHydrated = useCallback(
     (target: View, nextFilter: Filter, nextPreset: string, scopes: Record<View, ViewScope>) => {
@@ -154,9 +149,7 @@ export function useUsageData() {
     filter,
     preset,
     grain,
-    selectedSession,
     hydratedViews,
-    loadSessionTurns,
     requestGenerationRef: requestGeneration,
     dataEpochRef: dataEpoch,
     loadedStampsRef: loadedStamps,
@@ -269,14 +262,11 @@ export function useUsageData() {
       didMount.current = true;
       return;
     }
-    if (view === "sessions") {
-      return;
-    }
     if (isViewFresh(loadedStamps.current, view, filter, preset, grain, dataEpoch.current)) {
       return;
     }
     refreshViews().catch(reportError);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 热缓存命中则不重拉；会话页自己管列表
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 热缓存命中则不重拉
   }, [view]);
 
   const didMountGrain = useRef(false);
@@ -289,16 +279,19 @@ export function useUsageData() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只需在 grain 变化时触发
   }, [grain]);
 
-  const openSessions = useCallback(() => {
-    setSessionsVisited(true);
-    setView("sessions");
-    window.history.replaceState(null, "", "#sessions");
+  const openConversations = useCallback((session?: { id: string; source: string }) => {
+    setConversationFocus(
+      session ? { source: session.source, session_id: session.id } : null,
+    );
+    setView("conversations");
+    window.history.replaceState(null, "", "#conversations");
+  }, []);
+
+  const clearConversationFocus = useCallback(() => {
+    setConversationFocus(null);
   }, []);
 
   const navigate = useCallback((next: View) => {
-    if (next === "sessions") {
-      setSessionsVisited(true);
-    }
     setView(next);
     const current = window.location.hash.replace(/^#/, "");
     if (next === "settings" && (current === "settings" || current.startsWith("settings-"))) {
@@ -355,10 +348,16 @@ export function useUsageData() {
 
   const applyViewFilter = useCallback(
     (target: View, next: Filter) => {
-      setViewScopes((current) => ({
-        ...current,
-        [target]: { filter: next, preset: current[target].preset },
-      }));
+      setViewScopes((current) =>
+        syncSourceProjectFilters(
+          {
+            ...current,
+            [target]: { filter: next, preset: current[target].preset },
+          },
+          next.sources,
+          next.projects,
+        ),
+      );
       if (target === view) {
         refreshViews(next).catch(reportError);
       }
@@ -373,17 +372,9 @@ export function useUsageData() {
     [applyViewFilter, view],
   );
 
-  const applySessionsFilter = useCallback(
-    (next: Filter) => {
-      applyViewFilter("sessions", next);
-    },
-    [applyViewFilter],
-  );
-
   return {
     view,
     filter,
-    sessionsFilter,
     preset,
     options,
     overview,
@@ -404,11 +395,7 @@ export function useUsageData() {
     projects,
     sessions,
     sessionsRevision,
-    sessionsVisited,
-    turns,
-    turnsLoading,
-    selectedSession,
-    setSelectedSession: selectSession,
+    conversationFocus,
     prices,
     setPrices,
     budgetStatus,
@@ -437,8 +424,8 @@ export function useUsageData() {
     popRange,
     canGoBack,
     applyFilter,
-    applySessionsFilter,
-    openSessions,
+    openConversations,
+    clearConversationFocus,
     runIngest: runIngestWithCacheClear,
     runRebuild: runRebuildWithCacheClear,
     runPurgeArchived,

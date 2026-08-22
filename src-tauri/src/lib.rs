@@ -39,8 +39,8 @@ use crate::domain::{
     CursorSessionPage, CursorSessionQuery, CursorSessionSummaryDto, Filter, FilterOptions,
     GlobalInstructionDto, IngestReport, NamedAmount, OfficialQuotaConfig, OfficialQuotaDto,
     OfficialQuotaHookDto, OfficialQuotaProvider, OverviewDto, PriceSnapshot, PriceSnapshotMeta,
-    PriceTable, SeriesPoint, SessionPage, SessionQuery, SessionRow, Source, SourceDiagnostic,
-    TurnRow, WorkTimelineDto, WriteUserFileRequest, WriteUserFileResult,
+    PriceTable, SeriesPoint, SessionRow, Source, SourceDiagnostic, WorkTimelineDto,
+    WriteUserFileRequest, WriteUserFileResult,
 };
 
 pub struct AppState {
@@ -231,38 +231,6 @@ async fn get_top_sessions(
         let conn = state.lock_read()?;
         let prices = state.effective_prices();
         query::top_sessions(&conn, &filter, &prices, limit.unwrap_or(20))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn get_sessions_page(
-    app: tauri::AppHandle,
-    query: SessionQuery,
-) -> Result<SessionPage, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        let conn = state.lock_read()?;
-        let prices = state.effective_prices();
-        query::sessions_page(&conn, &prices, &query)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-async fn get_session_turns(
-    app: tauri::AppHandle,
-    session_id: String,
-    source: Option<String>,
-    filter: Filter,
-) -> Result<Vec<TurnRow>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        let conn = state.lock_read()?;
-        let prices = state.effective_prices();
-        query::session_turns(&conn, &session_id, source.as_deref(), &filter, &prices)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -499,7 +467,8 @@ async fn get_conversation_sessions_page(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.lock_read()?;
-        conversation::sessions_page(&conn, &query)
+        let prices = state.effective_prices();
+        conversation::sessions_page_with_prices(&conn, &query, &prices)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1065,8 +1034,6 @@ pub fn run() {
             get_application_analytics,
             get_breakdown,
             get_top_sessions,
-            get_sessions_page,
-            get_session_turns,
             get_work_timeline,
             get_filter_options,
             get_prices,

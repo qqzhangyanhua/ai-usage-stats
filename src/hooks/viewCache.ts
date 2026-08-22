@@ -8,7 +8,6 @@ export const views: View[] = [
   "model",
   "provider",
   "project",
-  "sessions",
   "conversations",
   "cursor",
   "cursor-sessions",
@@ -50,6 +49,31 @@ function sameItems(left: string[], right: string[]): boolean {
   return left.every((item) => other.has(item));
 }
 
+/** 项目 / 来源在各视图间共用；时间、模型、provider 仍按视图独立。 */
+export function syncSourceProjectFilters(
+  scopes: Record<View, ViewScope>,
+  sources: string[],
+  projects: string[],
+): Record<View, ViewScope> {
+  let changed = false;
+  const next = { ...scopes };
+  for (const view of views) {
+    const scope = next[view];
+    if (
+      sameItems(scope.filter.sources, sources) &&
+      sameItems(scope.filter.projects, projects)
+    ) {
+      continue;
+    }
+    changed = true;
+    next[view] = {
+      ...scope,
+      filter: { ...scope.filter, sources, projects },
+    };
+  }
+  return changed ? next : scopes;
+}
+
 export function filtersEqual(left: Filter, right: Filter): boolean {
   return (
     left.from === right.from &&
@@ -67,6 +91,9 @@ export function scopesEqual(left: ViewScope, right: ViewScope): boolean {
 
 export function parseViewHash(raw: string): View {
   const hash = raw.replace(/^#/, "");
+  if (hash === "sessions") {
+    return "conversations";
+  }
   if (hash === "source") {
     return "application";
   }

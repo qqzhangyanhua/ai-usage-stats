@@ -15,7 +15,7 @@ export function OverviewDetail({
   projects,
   sessions,
   theme,
-  onOpenSessions,
+  onOpenConversations,
   onProjectClick,
   onSessionClick,
 }: {
@@ -23,7 +23,7 @@ export function OverviewDetail({
   projects: NamedAmount[];
   sessions: SessionRow[];
   theme: ResolvedTheme;
-  onOpenSessions: () => void;
+  onOpenConversations: () => void;
   onProjectClick?: (project: string) => void;
   onSessionClick?: (session: { id: string; source: string }) => void;
 }) {
@@ -103,7 +103,7 @@ export function OverviewDetail({
       <article className="panel">
         <div className="panel-head">
           <h2>最近会话</h2>
-          <Button variant="text" onClick={onOpenSessions}>
+          <Button variant="text" onClick={onOpenConversations}>
             查看全部
           </Button>
         </div>

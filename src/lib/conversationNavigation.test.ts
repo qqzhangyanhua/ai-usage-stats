@@ -21,6 +21,9 @@ function session(session_id: string): ConversationSessionRow {
     capabilities: ["messages", "events", "usage"],
     support_status: "experimental",
     file_available: true,
+    total_tokens: 0,
+    cost: null,
+    unpriced: false,
   };
 }
 

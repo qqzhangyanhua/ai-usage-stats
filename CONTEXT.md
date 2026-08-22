@@ -30,7 +30,7 @@ _Avoid_: 把它叫成本机用量、消耗记录，或与代码量混称；不�
 
 **Cursor 会话 (Cursor Session)**：
 从本机 `~/.cursor/projects/*/agent-transcripts` jsonl 解析的行为统计（会话数、轮次、工具调用、失败率、提问数、工具分类等）。`subagents/` 子代理并入父会话，不单独计数。Cursor IDE Agent 与 `cursor-agent` CLI 写同一套目录，无法从路径区分来源；hash 的 `source` 可标 composer/cli。只存聚合、不含对话正文。点开会话可按需重读该 jsonl 看工具次数、读写 path 和 hash 文件列表，仍不索引正文。独立于消耗记录、代码量与账号用量；随 `ingest_all` 自动扫描，不进总览 token KPI。
-_Avoid_: 与消耗记录、会话管理（token 会话列表）、代码量混称；不要把 `~/.cursor-agent-usage` 当成官方会话目录；不要把子代理 jsonl 当成独立会话
+_Avoid_: 与消耗记录、对话记录、代码量混称；不要把 `~/.cursor-agent-usage` 当成官方会话目录；不要把子代理 jsonl 当成独立会话
 
 **官方额度 (Official Quota)**：
 Claude / Codex / Cursor / Grok 的账号级订阅限额（已用百分比与重置时间）。独立于消耗记录、本机 5 小时/7 天估计窗、Cursor 账号用量与代码量，不并入本机 token KPI。新鲜度分 official / stale / unavailable；取数失败保留上次正确缓存。Claude 来自 statusline 捕获，Codex 问本机 app-server，Cursor 用已有钥匙串打限额接口，Grok 读本机 `~/.grok/auth.json` 打 CLI 限额接口。

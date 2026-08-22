@@ -3667,7 +3667,7 @@ td.row-actions {
 }
 
 .conversation-table {
-  min-width: 1060px;
+  min-width: 1280px;
 }
 
 .conversation-table tr[tabindex]:focus-visible {

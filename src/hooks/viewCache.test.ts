@@ -7,6 +7,7 @@ import {
   isViewFresh,
   parseViewHash,
   reconcileLoadedStamps,
+  syncSourceProjectFilters,
   viewStamp,
   viewsInvalidatedBy,
   viewsWarmedBy,
@@ -25,7 +26,7 @@ const ranged: Filter = { ...filter, from: "2026-08-01", to: "2026-08-07" };
 
 describe("parseViewHash", () => {
   it("maps known view hashes", () => {
-    expect(parseViewHash("#sessions")).toBe("sessions");
+    expect(parseViewHash("#sessions")).toBe("conversations");
     expect(parseViewHash("#conversations")).toBe("conversations");
     expect(parseViewHash("source")).toBe("application");
     expect(parseViewHash("#instructions")).toBe("instructions");
@@ -69,6 +70,41 @@ describe("filtersEqual", () => {
   });
 });
 
+describe("syncSourceProjectFilters", () => {
+  it("copies source and project to every view without touching time or model", () => {
+    const scopes = initialViewScopes();
+    scopes.overview = {
+      filter: { ...filter, from: "2026-08-01", to: "2026-08-07", models: ["gpt-5"] },
+      preset: "7",
+    };
+    scopes.trend = {
+      filter: { ...filter, sources: ["old"], projects: ["/old"] },
+      preset: "all",
+    };
+
+    const next = syncSourceProjectFilters(scopes, ["claude"], ["/workspace/app"]);
+
+    expect(next.overview.filter).toEqual({
+      ...filter,
+      from: "2026-08-01",
+      to: "2026-08-07",
+      models: ["gpt-5"],
+      sources: ["claude"],
+      projects: ["/workspace/app"],
+    });
+    expect(next.overview.preset).toBe("7");
+    expect(next.trend.filter.sources).toEqual(["claude"]);
+    expect(next.trend.filter.projects).toEqual(["/workspace/app"]);
+    expect(next.conversations.filter.sources).toEqual(["claude"]);
+    expect(next.conversations.filter.projects).toEqual(["/workspace/app"]);
+  });
+
+  it("returns the same object when source and project already match", () => {
+    const scopes = initialViewScopes();
+    expect(syncSourceProjectFilters(scopes, [], [])).toBe(scopes);
+  });
+});
+
 describe("viewsWarmedBy", () => {
   it("marks trend/model/project warm after overview", () => {
     expect(viewsWarmedBy("overview")).toEqual(["overview", "trend", "model", "project"]);
@@ -79,7 +115,6 @@ describe("viewsWarmedBy", () => {
 describe("viewsInvalidatedBy", () => {
   it("invalidates shared datasets written by the current view", () => {
     expect(viewsInvalidatedBy("overview")).toEqual(["trend", "model", "project"]);
-    expect(viewsInvalidatedBy("sessions")).toEqual([]);
     expect(viewsInvalidatedBy("conversations")).toEqual([]);
     expect(viewsInvalidatedBy("trend")).toEqual(["overview"]);
   });

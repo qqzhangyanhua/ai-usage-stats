@@ -611,7 +611,8 @@ pub struct SessionPage {
     pub last_ended: Option<String>,
 }
 
-/// 独立“对话记录”目录的分页参数，不参与消耗记录筛选。
+/// 独立“对话记录”目录的分页参数。
+/// 来源 / 项目与用量筛选共用；时间、模型、provider 仍不参与。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ConversationQuery {
     #[serde(default)]
@@ -620,9 +621,13 @@ pub struct ConversationQuery {
     pub page: Option<u32>,
     #[serde(default)]
     pub page_size: Option<u32>,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    #[serde(default)]
+    pub projects: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ConversationSessionRow {
     pub source: String,
     pub session_id: String,
@@ -636,6 +641,13 @@ pub struct ConversationSessionRow {
     pub capabilities: Vec<String>,
     pub support_status: String,
     pub file_available: bool,
+    /// 用量侧按 `(source, session_id)` 聚合；无消耗记录时为 0。
+    #[serde(default)]
+    pub total_tokens: i64,
+    #[serde(default)]
+    pub cost: Option<f64>,
+    #[serde(default)]
+    pub unpriced: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

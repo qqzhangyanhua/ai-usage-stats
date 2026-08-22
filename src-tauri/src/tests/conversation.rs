@@ -1299,6 +1299,70 @@ fn codex_conversation_detail_links_existing_usage_by_exact_source_and_session_id
 }
 
 #[test]
+fn conversation_catalog_attaches_usage_totals_by_exact_source_and_session_id() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_codex_fixture(
+        home,
+        "rollout-semantic-1.jsonl",
+        "codex-semantic-events.jsonl",
+    );
+    let conn = store::open_memory().unwrap();
+    let mut early = rec(
+        "2026-08-21T00:00:05Z",
+        Source::Codex,
+        "gpt-5.6-sol",
+        "openai",
+        "/workspace/semantic-project",
+        "semantic-1",
+        110,
+    );
+    early.native_cost = Some(0.10);
+    let mut late = rec(
+        "2026-08-21T00:01:00Z",
+        Source::Codex,
+        "gpt-5.7-codex",
+        "openai",
+        "/workspace/semantic-project",
+        "semantic-1",
+        220,
+    );
+    late.native_cost = Some(0.20);
+    let wrong_source = rec(
+        "2026-08-21T00:02:00Z",
+        Source::Claude,
+        "claude-sonnet-5",
+        "anthropic",
+        "/workspace/semantic-project",
+        "semantic-1",
+        330,
+    );
+    let wrong_session = rec(
+        "2026-08-21T00:03:00Z",
+        Source::Codex,
+        "gpt-5.7-codex",
+        "openai",
+        "/workspace/semantic-project",
+        "semantic-2",
+        440,
+    );
+    store::insert_records(&conn, &[late, wrong_source, early, wrong_session]).unwrap();
+    crate::conversation::refresh_codex(&conn, home).unwrap();
+
+    let page =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    let row = page
+        .rows
+        .iter()
+        .find(|row| row.session_id == "semantic-1")
+        .expect("indexed conversation");
+    assert_eq!(row.total_tokens, 330);
+    assert!((row.cost.unwrap_or_default() - 0.30).abs() < 1e-9);
+    assert!(!row.unpriced);
+}
+
+#[test]
 fn codex_conversation_catalog_indexes_and_loads_messages_without_caching_body() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
@@ -1364,6 +1428,7 @@ fn codex_conversation_catalog_searches_only_indexed_metadata() {
                 search: Some(search.to_string()),
                 page: Some(1),
                 page_size: Some(10),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -1379,6 +1444,67 @@ fn codex_conversation_catalog_searches_only_indexed_metadata() {
     )
     .unwrap();
     assert_eq!(missing.total, 0, "正文不应进入元数据搜索索引");
+}
+
+#[test]
+fn conversation_catalog_filters_by_source_and_project() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_conversation_fixture(
+        home,
+        ".claude/projects/-workspace-claude-app/claude-parent-1.jsonl",
+        "claude-conversation.jsonl",
+    );
+    seed_conversation_fixture(
+        home,
+        ".pi/agent/sessions/pi-session-1.jsonl",
+        "pi-conversation.jsonl",
+    );
+    let overrides = crate::ingest::PathOverrides::from([
+        ("CLAUDE_CONFIG_DIR", vec![home.join(".claude")]),
+        ("PI_AGENT_DIR", vec![home.join(".pi/agent/sessions")]),
+    ]);
+    let conn = store::open_memory().unwrap();
+    crate::ingest::ingest_all_with_overrides(&conn, home, &overrides).unwrap();
+
+    let all =
+        crate::conversation::sessions_page(&conn, &crate::domain::ConversationQuery::default())
+            .unwrap();
+    assert_eq!(all.total, 2);
+
+    let claude = crate::conversation::sessions_page(
+        &conn,
+        &crate::domain::ConversationQuery {
+            sources: vec!["claude".into()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(claude.total, 1);
+    assert_eq!(claude.rows[0].source, "claude");
+    assert_eq!(claude.rows[0].session_id, "claude-parent-1");
+
+    let pi_project = crate::conversation::sessions_page(
+        &conn,
+        &crate::domain::ConversationQuery {
+            projects: vec!["/workspace/pi-app".into()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(pi_project.total, 1);
+    assert_eq!(pi_project.rows[0].session_id, "pi-session-1");
+
+    let miss = crate::conversation::sessions_page(
+        &conn,
+        &crate::domain::ConversationQuery {
+            sources: vec!["claude".into()],
+            projects: vec!["/workspace/pi-app".into()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(miss.total, 0);
 }
 
 #[test]
@@ -1799,6 +1925,9 @@ fn ingest_all_refreshes_codex_conversation_catalog_without_usage_records() {
             .unwrap();
     assert_eq!(page.total, 1);
     assert_eq!(page.rows[0].title, "发布 Tray 客户端版本支持图片编辑透传");
+    assert_eq!(page.rows[0].total_tokens, 0);
+    assert_eq!(page.rows[0].cost, None);
+    assert!(!page.rows[0].unpriced);
 }
 
 #[test]

@@ -255,13 +255,17 @@ export type View =
   | "model"
   | "provider"
   | "project"
-  | "sessions"
   | "conversations"
   | "cursor"
   | "cursor-sessions"
   | "worktime"
   | "instructions"
   | "settings";
+
+export type ConversationFocus = {
+  source: string;
+  session_id: string;
+};
 
 export type SeriesPoint = {
   bucket: string;
@@ -328,37 +332,14 @@ export type SessionRow = {
   unpriced: boolean;
 };
 
-export type SessionSortKey =
-  | "tokens"
-  | "session"
-  | "application"
-  | "project"
-  | "model"
-  | "cost"
-  | "time";
 export type SortDir = "asc" | "desc";
-
-export type SessionQuery = {
-  filter: Filter;
-  search?: string | null;
-  sortBy?: SessionSortKey | null;
-  sortDir?: SortDir | null;
-  page?: number;
-  pageSize?: number;
-  includeCost?: boolean;
-};
-
-export type SessionPage = {
-  rows: SessionRow[];
-  total: number;
-  totalTokens: number;
-  lastEnded: string | null;
-};
 
 export type ConversationQuery = {
   search?: string | null;
   page?: number;
   page_size?: number;
+  sources?: string[];
+  projects?: string[];
 };
 
 export type ConversationSessionRow = {
@@ -374,6 +355,9 @@ export type ConversationSessionRow = {
   capabilities: string[];
   support_status: string;
   file_available: boolean;
+  total_tokens: number;
+  cost: number | null;
+  unpriced: boolean;
 };
 
 export type ConversationPage = {
@@ -506,23 +490,6 @@ export type ConversationDetailStateDto = {
 export type CostSource = "native" | "user" | "snapshot" | "none";
 
 export type PriceOrigin = "user" | "snapshot";
-
-export type TurnRow = {
-  occurred_at: string;
-  model: string;
-  provider: string;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_creation_tokens: number;
-  reasoning_tokens: number;
-  total_tokens: number;
-  source_file: string;
-  cost: number | null;
-  unpriced: boolean;
-  cost_source: CostSource;
-  cost_note: string | null;
-};
 
 export type PriceEntry = {
   model: string;

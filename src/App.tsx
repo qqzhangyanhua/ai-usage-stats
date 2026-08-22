@@ -18,7 +18,6 @@ import {
   LazyCursorSessionPanel,
   LazyGlobalInstructionPanel,
   LazyOverview,
-  LazySessions,
   LazySettings,
   LazyTrend,
   LazyWorkTimeline,
@@ -68,7 +67,6 @@ export default function App() {
             active={
               data.loading &&
               !data.viewHasData &&
-              view !== "sessions" &&
               view !== "conversations" &&
               view !== "cursor" &&
               view !== "cursor-sessions" &&
@@ -97,7 +95,7 @@ export default function App() {
                     live={data.connected}
                     theme={theme}
                     onGrain={data.setGrain}
-                    onOpenSessions={data.openSessions}
+                    onOpenConversations={() => data.openConversations()}
                     onOpenCursor={() => data.navigate("cursor")}
                     onProjectClick={(project) =>
                       data.applyFilter({ ...data.filter, projects: [project] })
@@ -105,10 +103,7 @@ export default function App() {
                     onRangeSelect={data.drillRange}
                     onRangeBack={data.canGoBack ? data.popRange : undefined}
                     onModelClick={(model) => data.applyFilter(withModelFilter(data.filter, model))}
-                    onSessionClick={(session) => {
-                      data.openSessions();
-                      data.setSelectedSession(session);
-                    }}
+                    onSessionClick={(session) => data.openConversations(session)}
                     layout={overviewLayout}
                     onLayoutChange={setOverviewLayout}
                     detectedSources={detectedSources}
@@ -167,14 +162,17 @@ export default function App() {
                   />
                 ) : null}
                 {view === "conversations" ? (
-                  <LazyConversations revision={data.sessionsRevision} onError={data.reportError} />
+                  <LazyConversations
+                    filter={data.filter}
+                    revision={data.sessionsRevision}
+                    focus={data.conversationFocus}
+                    onFocusConsumed={data.clearConversationFocus}
+                    onError={data.reportError}
+                  />
                 ) : null}
                 {view === "worktime" ? (
                   <LazyWorkTimeline
-                    onSessionClick={(session) => {
-                      data.openSessions();
-                      data.setSelectedSession(session);
-                    }}
+                    onSessionClick={(session) => data.openConversations(session)}
                   />
                 ) : null}
                 {view === "instructions" ? <LazyGlobalInstructionPanel /> : null}
@@ -217,25 +215,6 @@ export default function App() {
                 ) : null}
               </Suspense>
             </ErrorBoundary>
-            {data.sessionsVisited ? (
-              <div hidden={view !== "sessions"}>
-                <ErrorBoundary fullscreen={false}>
-                  <Suspense fallback={<ViewFallback />}>
-                    <LazySessions
-                      filter={data.sessionsFilter}
-                      options={data.options}
-                      revision={data.sessionsRevision}
-                      turns={data.turns}
-                      turnsLoading={data.turnsLoading}
-                      selected={data.selectedSession}
-                      onSelect={data.setSelectedSession}
-                      onFilterChange={data.applySessionsFilter}
-                      onError={data.reportError}
-                    />
-                  </Suspense>
-                </ErrorBoundary>
-              </div>
-            ) : null}
           </LoadingOverlay>
         </main>
       </div>

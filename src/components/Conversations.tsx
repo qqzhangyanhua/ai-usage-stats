@@ -11,13 +11,6 @@ import {
 } from "react";
 import { Icon } from "../icons";
 import {
-  capabilityLabel,
-  conversationApplicationLabel,
-  conversationFileUnavailableLabel,
-  conversationSessionTime,
-  conversationStatusLabel,
-} from "../lib/conversationDisplay";
-import {
   conversationJumpBehavior,
   conversationJumpScrollTop,
   conversationTimelineScrollTarget,
@@ -37,7 +30,7 @@ import {
   shouldRequestConversationDetail,
   transitionConversationNavigation,
 } from "../lib/conversationNavigation";
-import { formatClock, formatTokens, humanStatus, projectLabel, relativeTime } from "../lib/format";
+import { formatClock, formatTokens, humanStatus } from "../lib/format";
 import type {
   ConversationAttachment,
   ConversationAgentLink,
@@ -49,10 +42,13 @@ import type {
   ConversationEventCapabilityStatus,
   ConversationEventContentDto,
   ConversationEventKind,
+  ConversationFocus,
   ConversationPage,
   ConversationSessionRow,
   ConversationUsageRecord,
+  Filter,
 } from "../types";
+import { ConversationCatalogRow } from "./ConversationCatalogRow";
 import { ConversationDetailHead } from "./ConversationDetailHead";
 import { ConversationJumpBar } from "./ConversationJumpBar";
 import { EmptyState } from "./EmptyState";
@@ -809,10 +805,16 @@ function UsageRecordsTable({ records }: { records: ConversationUsageRecord[] }) 
 }
 
 export function Conversations({
+  filter,
   revision,
+  focus,
+  onFocusConsumed,
   onError,
 }: {
+  filter: Filter;
   revision: number;
+  focus?: ConversationFocus | null;
+  onFocusConsumed?: () => void;
   onError?: (error: unknown) => void;
 }) {
   const [searchInput, setSearchInput] = useState("");
@@ -994,7 +996,7 @@ export function Conversations({
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [filter, search]);
 
   useEffect(() => {
     const generation = ++catalogGeneration.current;
@@ -1005,6 +1007,8 @@ export function Conversations({
         search: search || null,
         page,
         page_size: PAGE_SIZE,
+        sources: filter.sources,
+        projects: filter.projects,
       },
     })
       .then((result) => {
@@ -1023,7 +1027,7 @@ export function Conversations({
           setCatalogLoading(false);
         }
       });
-  }, [revision, search, page, onError]);
+  }, [filter, revision, search, page, onError]);
 
   const fetchDetail = useCallback(
     (session: ConversationSessionRow, followUpdates = false) => {
@@ -1291,6 +1295,27 @@ export function Conversations({
     [fetchDetail],
   );
 
+  useEffect(() => {
+    if (!focus) {
+      return;
+    }
+    const source = focus.source;
+    const sessionId = focus.session_id;
+    onFocusConsumed?.();
+    invoke<ConversationDetailDto>("get_conversation_detail", {
+      source,
+      sessionId,
+    })
+      .then((detail) => {
+        loadDetail(detail.session);
+      })
+      .catch((error) => {
+        setSearchInput(sessionId);
+        setSearch(sessionId);
+        onError?.(error);
+      });
+  }, [focus, loadDetail, onError, onFocusConsumed]);
+
   function closeDetail() {
     setNavigation((current) => transitionConversationNavigation(current, { type: "close" }));
     detailGenerations.current.clear();
@@ -1547,6 +1572,7 @@ export function Conversations({
 
   const { rows, total } = pageData;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const maxTotal = Math.max(1, ...rows.map((row) => row.total_tokens));
 
   return (
     <section className="panel conversation-catalog">
@@ -1593,68 +1619,25 @@ export function Conversations({
                 <th>来源</th>
                 <th>项目</th>
                 <th>模型</th>
-                <th>时间</th>
+                <th>token</th>
+                <th>费用</th>
+                <th>起止</th>
                 <th>能力</th>
                 <th>状态</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const time = conversationSessionTime(row);
-                return (
-                  <tr
-                    key={`${row.source}-${row.session_id}`}
-                    className="clickable"
-                    tabIndex={0}
-                    aria-label={`打开对话：${row.title}`}
-                    onClick={() => loadDetail(row)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        loadDetail(row);
-                      }
-                    }}
-                  >
-                    <td title={row.title}>
-                      <div className="conversation-title-cell">
-                        <strong>{row.title}</strong>
-                        <span className="mono">{row.session_id}</span>
-                      </div>
-                    </td>
-                    <td>{conversationApplicationLabel(row.source)}</td>
-                    <td title={row.project}>{projectLabel(row.project)}</td>
-                    <td>{row.model || "未标注"}</td>
-                    <td title={formatClock(time)}>{time ? relativeTime(time) : "—"}</td>
-                    <td>
-                      <div className="conversation-capabilities">
-                        {row.capabilities.length > 0 ? (
-                          row.capabilities.map((capability) => (
-                            <span key={capability}>{capabilityLabel(capability)}</span>
-                          ))
-                        ) : (
-                          <span>仅元数据</span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="conversation-row-statuses">
-                        <span className={`conversation-status status-${row.support_status}`}>
-                          {conversationStatusLabel(row.support_status)}
-                        </span>
-                        {row.file_available ? null : (
-                          <span className="conversation-file-unavailable">
-                            <Icon name="alertTriangle" size={12} />
-                            {conversationFileUnavailableLabel(row.source)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {rows.map((row) => (
+                <ConversationCatalogRow
+                  key={`${row.source}-${row.session_id}`}
+                  row={row}
+                  maxTotal={maxTotal}
+                  onOpen={loadDetail}
+                />
+              ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="analytics-empty">
+                  <td colSpan={9} className="analytics-empty">
                     {catalogLoading ? (
                       <EmptyState icon="chat" title="正在加载对话目录…" />
                     ) : (

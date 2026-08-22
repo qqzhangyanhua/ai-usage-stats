@@ -27,16 +27,13 @@ import type {
   View,
 } from "../../types";
 import { isViewFresh, viewStamp } from "../viewCache";
-import type { SelectedSession } from "./constants";
 
 type ViewRefreshArgs = {
   view: View;
   filter: Filter;
   preset: string;
   grain: Grain;
-  selectedSession: SelectedSession | null;
   hydratedViews: Set<View>;
-  loadSessionTurns: (session: SelectedSession, nextFilter?: Filter) => Promise<void>;
   requestGenerationRef: MutableRefObject<number>;
   dataEpochRef: MutableRefObject<number>;
   loadedStampsRef: MutableRefObject<Partial<Record<View, string>>>;
@@ -73,9 +70,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
     filter,
     preset,
     grain,
-    selectedSession,
     hydratedViews,
-    loadSessionTurns,
     requestGenerationRef,
     dataEpochRef,
     loadedStampsRef,
@@ -110,7 +105,6 @@ export function useViewRefresh(args: ViewRefreshArgs) {
     async (nextFilter = filter, nextPreset = preset) => {
       const generation = ++requestGenerationRef.current;
       const localOnly =
-        view === "sessions" ||
         view === "conversations" ||
         view === "cursor" ||
         view === "cursor-sessions" ||
@@ -147,7 +141,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
           }),
         );
       }
-      if (view !== "sessions" && view !== "conversations" && !overviewFresh) {
+      if (view !== "conversations" && !overviewFresh) {
         paint.push(
           invoke<OverviewDto>("get_overview", { filter: nextFilter }).then(commit(setOverview)),
         );
@@ -228,9 +222,6 @@ export function useViewRefresh(args: ViewRefreshArgs) {
           }).then(commit(setProjects)),
         );
       }
-      if (view === "sessions" && selectedSession) {
-        tasks.push(loadSessionTurns(selectedSession, nextFilter));
-      }
       if (view === "cursor") {
         setCodeVolumeLoading(true);
         tasks.push(
@@ -291,9 +282,7 @@ export function useViewRefresh(args: ViewRefreshArgs) {
       filter,
       preset,
       grain,
-      selectedSession,
       hydratedViews,
-      loadSessionTurns,
       markHydrated,
       requestGenerationRef,
       dataEpochRef,

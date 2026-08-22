@@ -150,6 +150,68 @@ fn placeholders(n: usize) -> String {
     std::iter::repeat_n("?", n).collect::<Vec<_>>().join(", ")
 }
 
+pub(crate) struct SessionUsageTotals {
+    pub total_tokens: i64,
+    pub cost: Option<f64>,
+    pub unpriced: bool,
+}
+
+/// 按精确 `(source, session_id)` 聚合消耗记录。对话目录挂用量，不改变会话管理口径。
+pub(crate) fn usage_rollups_for_sessions(
+    conn: &Connection,
+    prices: &PriceTable,
+    keys: &[(String, String)],
+) -> Result<BTreeMap<(String, String), SessionUsageTotals>, String> {
+    let mut totals = BTreeMap::new();
+    if keys.is_empty() {
+        return Ok(totals);
+    }
+    install_prices(conn, prices)?;
+    let mut clauses = Vec::with_capacity(keys.len());
+    let mut params: Vec<Value> = Vec::with_capacity(keys.len() * 2);
+    for (source, session_id) in keys {
+        clauses.push("(r.source = ? AND r.session_id = ?)".to_string());
+        params.push(Value::Text(source.clone()));
+        params.push(Value::Text(session_id.clone()));
+    }
+    let sql = format!(
+        "SELECT r.source, r.session_id,
+            COALESCE(SUM(r.total_tokens), 0),
+            SUM({COST_EXPR}),
+            COALESCE(SUM({UNPRICED_EXPR}), 0)
+         FROM usage_records r
+         {PRICE_JOINS}
+         WHERE {}
+         GROUP BY r.source, r.session_id",
+        clauses.join(" OR "),
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params_from_iter(params.iter()), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<f64>>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    for (source, session_id, total_tokens, cost, unpriced_count) in rows {
+        totals.insert(
+            (source, session_id),
+            SessionUsageTotals {
+                total_tokens,
+                cost,
+                unpriced: unpriced_count > 0,
+            },
+        );
+    }
+    Ok(totals)
+}
+
 /// 转义 LIKE 通配符，避免用户输入的 `%`/`_` 被解释为通配符。
 fn escape_like(input: &str) -> String {
     input
