@@ -1,6 +1,6 @@
 # 跨平台构建与运行
 
-码表基于 **Tauri 2**，核心逻辑跨平台；菜单栏托盘与钥匙串以 **macOS** 为一等公民。安装包由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 GitHub Actions 上打好，挂到 [Releases](https://github.com/qqzhangyanhua/ai-usage-stats/releases)。
+码表基于 **Tauri 2**，核心逻辑跨平台；菜单栏托盘与钥匙串以 **macOS** 为一等公民。安装包由 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 在 GitHub Actions 上打好，挂到 [Releases](https://github.com/qqzhangyanhua/mabiao/releases)。
 
 ## 支持矩阵
 

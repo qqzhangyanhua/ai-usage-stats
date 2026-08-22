@@ -4,7 +4,7 @@
 
 ## 下载安装
 
-安装包由 GitHub Actions 打好后挂在 [Releases](https://github.com/qqzhangyanhua/ai-usage-stats/releases)（首次发版为 draft，发布后即可下载）：
+安装包由 GitHub Actions 打好后挂在 [Releases](https://github.com/qqzhangyanhua/mabiao/releases)（首次发版为 draft，发布后即可下载）：
 
 | 平台 | 产物 |
 |------|------|
