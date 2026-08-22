@@ -494,7 +494,25 @@ button {
   position: sticky;
   top: 0;
   z-index: 8;
+  grid-row: 1;
   background: var(--bg);
+}
+
+/* 对话详情不需要目录筛选（全部项目 / 全部应用），把顶栏高度让给正文。 */
+.workspace:has(.conversation-detail-view) .topbar {
+  display: none;
+}
+
+.workspace:has(.conversation-detail-view) .main {
+  overflow: hidden;
+  padding-top: 8px;
+}
+
+.workspace:has(.conversation-detail-view) .main > .loading-overlay-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .topbar-main {
@@ -839,6 +857,7 @@ input[type="checkbox"] {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  grid-row: 2;
 }
 
 .dash {
@@ -3741,12 +3760,16 @@ td.row-actions {
 
 .conversation-detail-view {
   display: grid;
-  gap: 18px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+  height: 100%;
 }
 
 .conversation-detail-head {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .conversation-detail-head:has(.is-collapsed) {
@@ -3884,9 +3907,26 @@ td.row-actions {
 }
 
 .conversation-detail-body {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.conversation-detail-body > .table-scroll,
+.conversation-detail-body > .stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.conversation-detail-tabs,
+.conversation-detail-notice,
+.conversation-load-error,
+.conversation-agent-capability {
+  flex: 0 0 auto;
 }
 
 .conversation-detail-tabs {
@@ -3938,8 +3978,8 @@ td.row-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(1000px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   padding: 9px 0;
   color: var(--orange-fg);
   border-top: 1px solid rgba(245, 158, 11, 0.35);
@@ -3949,8 +3989,12 @@ td.row-actions {
 
 .conversation-events-view {
   position: relative;
-  width: min(1000px, 100%);
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
 }
 
 .conversation-timeline {
@@ -3966,6 +4010,9 @@ td.row-actions {
 }
 
 .conversation-events-view > .conversation-timeline {
+  flex: 1 1 auto;
+  min-height: 240px;
+  height: auto;
   padding-bottom: 52px;
 }
 
@@ -4584,7 +4631,7 @@ td.row-actions {
 }
 
 .conversation-usage-scroll {
-  max-height: calc(100vh - 260px);
+  max-height: none;
 }
 
 .conversation-usage-table {
@@ -4964,11 +5011,11 @@ td.row-actions {
   }
 
   .conversation-detail-view {
-    gap: 12px;
+    gap: 8px;
   }
 
   .conversation-detail-head {
-    gap: 10px;
+    gap: 8px;
     padding: 10px 12px 12px;
   }
 
@@ -5018,6 +5065,7 @@ td.row-actions {
   }
 
   .conversation-events-view > .conversation-timeline {
+    height: auto;
     padding-bottom: 48px;
   }
 
