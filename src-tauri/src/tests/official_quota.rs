@@ -160,6 +160,14 @@ fn apply_fetch_results_isolates_provider_failures() {
                 crate::domain::OfficialQuotaProvider::Antigravity,
                 Err("尚未登录 Antigravity".into()),
             ),
+            (
+                crate::domain::OfficialQuotaProvider::OpenCode,
+                Err("尚未登录 OpenCode Zen".into()),
+            ),
+            (
+                crate::domain::OfficialQuotaProvider::Copilot,
+                Err("未找到 GitHub Copilot 登录态".into()),
+            ),
         ],
     )
     .unwrap();
@@ -190,4 +198,14 @@ fn apply_fetch_results_isolates_provider_failures() {
         .unwrap();
     assert_eq!(antigravity.2.as_deref(), Some("尚未登录 Antigravity"));
     assert!(antigravity.0.is_empty());
+    for (provider, message) in [
+        ("opencode", "尚未登录 OpenCode Zen"),
+        ("copilot", "未找到 GitHub Copilot 登录态"),
+    ] {
+        let row = store::load_official_quota_row(&conn, provider)
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.2.as_deref(), Some(message));
+        assert!(row.0.is_empty());
+    }
 }

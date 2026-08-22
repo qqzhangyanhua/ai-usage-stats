@@ -126,6 +126,32 @@ Cursor 订阅限额是多档并行，不能只取总量：
 
 EU 区是 `https://api.eu.factory.ai`，当前不自动识别。
 
+## OpenCode (Zen / Go)
+
+`GET https://opencode.ai/zen/go/v1/usage`，`Authorization: Bearer <key>`。
+
+凭证读数据目录下的 `auth.json` 里 `opencode-go.key`。数据目录按 OpenCode 自己的顺序：`OPENCODE_DATA_DIR` > `$XDG_DATA_HOME/opencode` > `~/.local/share/opencode`。只认 `opencode-go` 这一条，其它 provider 的条目忽略。
+
+**文件缺失 = 没登录（不是错误）；文件在但坏了要报错**，别把坏掉的存储当成登出。
+
+响应 `usage.{rolling, weekly, monthly}`，每档 `percent`（**已用**口径，不用取反）+ `resetsAt`（ISO）。出错时是 `{type, error:{type, message}}`，把 `error.type` 带进提示；HTML / Cloudflare 页面则没有这个结构。
+
+## Copilot
+
+`GET https://api.github.com/copilot_internal/user`。
+
+- **`Authorization` 用 `token` 而不是 `Bearer`**，这是这个内部端点认的方案。
+- 还要带 Copilot 客户端那几个头：`Editor-Version`、`Editor-Plugin-Version`、`User-Agent`、`X-Github-Api-Version: 2025-04-01`。
+- 凭证按「不弹窗的文件优先」：`~/.config/github-copilot/apps.json`（老版本 `hosts.json`）→ 值里的 `oauth_token`（键名形如 `github.com:<clientId>`，不稳定，扫所有条目）；其次 `~/.config/gh/hosts.yml` 的 `oauth_token`（只取 `github.com:` 段，避免读到企业实例的）。macOS 钥匙串那条不做，会弹授权框。
+
+响应 `quota_snapshots.{premium_interactions, chat, completions}`，给的是**剩余**口径：
+
+- `percent_remaining`，或 `remaining` / `entitlement`，取反才是已用
+- **`unlimited: true`、`entitlement: -1`、`remaining: -1` 是无限额度**，`entitlement: 0` 是组织按量计费席位的零额度占位——四种都要丢掉，不能显示成 0% 或 100%
+- 重置时间 `quota_reset_date` / `limited_user_reset_date` 是**纯日期**（`2026-09-01`），通用的 `parse_resets_at` 认不了，要按 UTC 零点补一层
+
+组织账单 `orgs/{org}/settings/billing/usage/summary` 当前不采。
+
 ## Grok CLI-proxy billing
 
 读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token。优先 `https://auth.x.ai…` 作用域，其次 `https://accounts.x.ai/sign-in`。token 字段为 `key`（兼容 `access_token`）。跳过 `web_login` 与纯 API key（`xai::api_key` / `auth_mode=api_key`）。

@@ -3,12 +3,14 @@ pub mod claude;
 pub mod claude_usage;
 pub mod codex;
 pub mod codex_usage;
+pub mod copilot;
 pub mod cursor;
 pub mod droid;
 pub mod grok;
 pub(crate) mod grok_grpc;
 pub mod hook;
 pub mod notify;
+pub mod opencode;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -185,6 +187,8 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
         OfficialQuotaProvider::Grok => grok::fetch_rate_limits(),
         OfficialQuotaProvider::Droid => droid::fetch_rate_limits(),
         OfficialQuotaProvider::Antigravity => antigravity::fetch_rate_limits(),
+        OfficialQuotaProvider::OpenCode => opencode::fetch_usage(),
+        OfficialQuotaProvider::Copilot => copilot::fetch_usage(),
     }
 }
 
