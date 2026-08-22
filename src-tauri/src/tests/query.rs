@@ -1015,3 +1015,55 @@ fn source_token_totals_order_by_usage() {
         vec![("claude", 300), ("codex", 100), ("pi", 50)]
     );
 }
+
+/// 同一个连接上换价表后，下一次查询必须用新价，不能吃到上一次装好的那份。
+#[test]
+fn price_table_changes_take_effect_on_the_same_connection() {
+    let mut record = rec(
+        "2026-08-01T10:00:00Z",
+        Source::Codex,
+        "gpt-5.1-codex",
+        "official",
+        "/proj/a",
+        "s1",
+        0,
+    );
+    record.input_tokens = 1000;
+    record.total_tokens = 1000;
+    let conn = store::open_memory().unwrap();
+    store::insert_records(&conn, &[record]).unwrap();
+
+    let entry = |input: f64| PriceTable {
+        prices: vec![PriceEntry {
+            model: "gpt-5.1-codex".into(),
+            provider: Some("official".into()),
+            input,
+            output: 0.0,
+            cache_read: 0.0,
+            cache_creation: 0.0,
+            origin: PriceOrigin::User,
+        }],
+    };
+    let filter = Filter::default();
+
+    let first = query::overview(&conn, &filter, &entry(0.001)).unwrap();
+    assert_eq!(first.cost, Some(1.0));
+
+    // 单价翻十倍：必须立刻反映新价。
+    let raised = query::overview(&conn, &filter, &entry(0.01)).unwrap();
+    assert_eq!(raised.cost, Some(10.0));
+
+    // 同一张表再查一次，结果不能变。
+    let repeated = query::overview(&conn, &filter, &entry(0.01)).unwrap();
+    assert_eq!(repeated.cost, Some(10.0));
+
+    // 清空价表：回到未定价。
+    let cleared = query::overview(&conn, &filter, &PriceTable::default()).unwrap();
+    assert_eq!(cleared.cost, None);
+    assert!(cleared.unpriced);
+
+    // 从空表换回有价表，反向也要生效。
+    let restored = query::overview(&conn, &filter, &entry(0.001)).unwrap();
+    assert_eq!(restored.cost, Some(1.0));
+    assert!(!restored.unpriced);
+}

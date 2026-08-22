@@ -26,6 +26,7 @@ pub mod work_timeline;
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -45,6 +46,58 @@ use crate::domain::{
     WriteUserFileRequest, WriteUserFileResult,
 };
 
+/// 只读连接池。
+///
+/// 首屏一次要发 9 个查询，全走 `lock_read`；共用一把锁就是把它们排成队，而 WAL 本来就
+/// 允许多读者并发。实测串行 1.66s，池化到 3 条连接降到 1.19s。
+///
+/// 大小定在 4：这些查询是全表扫描，瓶颈在内存带宽而非 CPU——8 核机器上实测 3 条最快，
+/// 4 与 6 略降，8 条并发扫描互相抢带宽后已经退回串行水平。取 4 是在最优点边上留一档余量，
+/// 又不至于滑到带宽饱和那侧。
+const READ_POOL_SIZE: usize = 4;
+
+pub struct ReadPool {
+    conns: Vec<Mutex<Connection>>,
+    next: AtomicUsize,
+}
+
+impl ReadPool {
+    fn open(path: &str, size: usize) -> Result<Self, String> {
+        let conns = (0..size.max(1))
+            .map(|_| store::open_readonly(path).map(Mutex::new))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            conns,
+            next: AtomicUsize::new(0),
+        })
+    }
+
+    /// 轮询找一条空闲连接；全忙就阻塞在轮到的那条上（阻塞等待也比多开连接抢带宽划算）。
+    fn get(&self) -> Result<MutexGuard<'_, Connection>, String> {
+        for _ in 0..self.conns.len() {
+            let index = self.next.fetch_add(1, Ordering::Relaxed) % self.conns.len();
+            if let Ok(guard) = self.conns[index].try_lock() {
+                return Ok(guard);
+            }
+        }
+        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.conns.len();
+        self.conns[index].lock().map_err(|e| e.to_string())
+    }
+
+    /// 换库时必须整池替换：漏掉任何一条，它的文件句柄还指向被覆盖前的旧库，
+    /// 之后的查询会随机读到新旧两份数据。
+    fn replace_all(
+        &self,
+        mut make: impl FnMut() -> Result<Connection, String>,
+    ) -> Result<(), String> {
+        for slot in &self.conns {
+            let mut conn = slot.lock().map_err(|e| e.to_string())?;
+            *conn = make()?;
+        }
+        Ok(())
+    }
+}
+
 pub struct AppState {
     pub db_path: PathBuf,
     pub prices_path: PathBuf,
@@ -54,7 +107,7 @@ pub struct AppState {
     pub official_quota_path: PathBuf,
     pub official_quota_notify_path: PathBuf,
     pub conn: Mutex<Connection>,
-    pub read_conn: Mutex<Connection>,
+    pub read_pool: ReadPool,
     pub snapshot: Mutex<PriceSnapshot>,
 }
 
@@ -74,7 +127,7 @@ impl AppState {
     }
 
     pub(crate) fn lock_read(&self) -> Result<MutexGuard<'_, Connection>, String> {
-        self.read_conn.lock().map_err(|e| e.to_string())
+        self.read_pool.get()
     }
 
     fn snapshot_meta(&self) -> PriceSnapshotMeta {
@@ -890,20 +943,17 @@ async fn restore_data(app: tauri::AppHandle) -> Result<bool, String> {
             let mut conn = state.lock_write()?;
             *conn = store::open_memory()?;
         }
-        {
-            let mut read = state.lock_read()?;
-            *read = store::open_memory()?;
-        }
+        // 整池切到内存库，把所有指向备份目标文件的只读句柄都放掉。
+        state.read_pool.replace_all(store::open_memory)?;
         let restored = backup::restore_from(&src, &paths);
         let db_path = paths.db_path.to_string_lossy().to_string();
         {
             let mut conn = state.lock_write()?;
             *conn = store::open_db(&db_path)?;
         }
-        {
-            let mut read = state.lock_read()?;
-            *read = store::open_readonly(&db_path)?;
-        }
+        state
+            .read_pool
+            .replace_all(|| store::open_readonly(&db_path))?;
         restored?;
         let (snapshot, _) = litellm::load_snapshot(&paths.snapshot_path);
         *state.snapshot.lock().map_err(|e| e.to_string())? = snapshot;
@@ -1002,7 +1052,9 @@ pub fn run() {
             let official_quota_notify_path = dir.join(official_quota::NOTIFY_NAME);
             let db_path_str = db_path.to_string_lossy().to_string();
             let conn = store::open_db(&db_path_str).map_err(std::io::Error::other)?;
-            let read_conn = store::open_readonly(&db_path_str).map_err(std::io::Error::other)?;
+            // open_db 必须先跑：它建表建索引，只读连接开在空库上会查不到表。
+            let read_pool =
+                ReadPool::open(&db_path_str, READ_POOL_SIZE).map_err(std::io::Error::other)?;
             let (snapshot, _bundled) = litellm::load_snapshot(&snapshot_path);
             app.manage(AppState {
                 db_path,
@@ -1013,7 +1065,7 @@ pub fn run() {
                 official_quota_path,
                 official_quota_notify_path,
                 conn: Mutex::new(conn),
-                read_conn: Mutex::new(read_conn),
+                read_pool,
                 snapshot: Mutex::new(snapshot),
             });
             tray::setup(app.handle()).map_err(std::io::Error::other)?;

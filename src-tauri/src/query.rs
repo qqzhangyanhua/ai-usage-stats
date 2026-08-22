@@ -49,10 +49,20 @@ const COST_SOURCE_EXPR: &str = "
 
 /// 价格表两次 LEFT JOIN：pe 匹配 model+provider，pf 兜底 model 且 provider 为空。
 /// 键在 `install_prices` 里已折成 ASCII 小写，与 `cost::model_matches` 一致。
+///
+/// `r.model` 不套 `lower()`：`store::insert_records` 写入时已归一化，`migrate_lowercase_model`
+/// 也补齐了历史数据，两边同口径。对全表逐行调函数会让 17 万行各多付两次调用。
+/// `r.provider` 仍要 `lower()`——历史值里有 `cpaApi` 这类混合大小写，归一化会改到界面显示。
 const PRICE_JOINS: &str = "
-    LEFT JOIN price_rows pe ON pe.model = lower(r.model) AND pe.provider = lower(r.provider)
-    LEFT JOIN price_rows pf ON pf.model = lower(r.model) AND pf.provider IS NULL";
+    LEFT JOIN price_rows pe ON pe.model = r.model AND pe.provider = lower(r.provider)
+    LEFT JOIN price_rows pf ON pf.model = r.model AND pf.provider IS NULL";
 
+/// 把价目表装进临时表 `price_rows`，供 `PRICE_JOINS` 取价。
+///
+/// 每次查询重建一遍看着浪费，实测却只要 1.7ms——SQLite 在单个事务里插 1400 行就是这么快。
+/// 曾经按指纹跳过重建，收益不到首屏的 1%，不值当缓存失效那份复杂度，已经撤掉。
+/// 真正的开销在 `PRICE_JOINS` 逐行取价那边，那个换不掉：先按 (model, provider) 聚合再算价
+/// 数学上等价，但 GROUP BY 比 JOIN 更贵，实测反而慢。
 fn install_prices(conn: &Connection, prices: &PriceTable) -> Result<(), String> {
     conn.execute_batch(
         "DROP TABLE IF EXISTS price_rows;
@@ -747,6 +757,12 @@ pub fn top_sessions(
     Ok(rows)
 }
 
+/// 回表补齐 top N 会话的展示标签（项目 / 模型 / 原始文件）。
+///
+/// 与 `session_rollup_sql` 同一套「一次扫描取最晚非空值」写法：内层 GROUP BY 聚出
+/// `occurred_at || sep || value` 的 MAX，外层再切出值。早先这里用的是三个相关子查询，
+/// 每个会话每列都要把该会话的全部行按 occurred_at 排一遍——首屏 top 8 会话合计 6.2 万行时
+/// 实测 1.03s，换成一次扫描后 304ms。
 fn hydrate_session_labels(conn: &Connection, rows: &mut [SessionRow]) -> Result<(), String> {
     if rows.is_empty() {
         return Ok(());
@@ -759,13 +775,22 @@ fn hydrate_session_labels(conn: &Connection, rows: &mut [SessionRow]) -> Result<
         params.push(Value::Text(row.session_id.clone()));
     }
     let sql = format!(
-        "SELECT r.source, r.session_id, {}, {}, {}
-         FROM usage_records r
-         WHERE {}
-         GROUP BY r.source, r.session_id",
-        latest_nonempty_sql("project"),
-        latest_nonempty_sql("model"),
-        latest_nonempty_sql("source_file"),
+        "SELECT source, session_id, {} AS project, {} AS model, {} AS source_file
+         FROM (
+            SELECT r.source AS source, r.session_id AS session_id,
+                {} AS project_key,
+                {} AS model_key,
+                {} AS file_key
+            FROM usage_records r
+            WHERE {}
+            GROUP BY r.source, r.session_id
+         )",
+        unwrap_latest_key_sql("project_key"),
+        unwrap_latest_key_sql("model_key"),
+        unwrap_latest_key_sql("file_key"),
+        latest_nonempty_key_sql("project"),
+        latest_nonempty_key_sql("model"),
+        latest_nonempty_key_sql("source_file"),
         clauses.join(" OR "),
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -793,19 +818,6 @@ fn hydrate_session_labels(conn: &Connection, rows: &mut [SessionRow]) -> Result<
         }
     }
     Ok(())
-}
-
-/// 取该会话中 `occurred_at` 最晚的非空字段；时间并列时取字典序更大的值（与内存实现一致）。
-/// 只给已经收窄到少量会话的回表用。全表 GROUP BY 必须走 `latest_nonempty_key_sql`。
-fn latest_nonempty_sql(column: &str) -> String {
-    format!(
-        "COALESCE((\
-            SELECT r2.{column} FROM usage_records r2 \
-            WHERE r2.source = r.source AND r2.session_id = r.session_id AND r2.{column} != '' \
-            ORDER BY r2.occurred_at DESC, r2.{column} DESC \
-            LIMIT 1\
-        ), '')"
-    )
 }
 
 /// 一次扫描取出「最晚非空」键：`MAX(occurred_at || sep || value)` 与

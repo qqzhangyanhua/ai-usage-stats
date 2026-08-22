@@ -8,6 +8,9 @@ use crate::domain::{
 
 pub const ADAPTER_VERSION: i64 = 8;
 
+/// `user_version` 记账：1 = usage_records.model 已归一化成小写。
+const LOWERCASE_MODEL_VERSION: i64 = 1;
+
 pub fn open_db(path: &str) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
     configure_connection(&conn)?;
@@ -67,6 +70,9 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_records(model);
         CREATE INDEX IF NOT EXISTS idx_usage_project ON usage_records(project);
         CREATE INDEX IF NOT EXISTS idx_usage_session ON usage_records(session_id);
+        -- filter_options 每次首屏都要 SELECT DISTINCT provider；没有这个索引就是全表扫描
+        -- 加临时 B 树排序（实测 17 万行要 450ms，只为取回 26 个值）。
+        CREATE INDEX IF NOT EXISTS idx_usage_provider ON usage_records(provider);
         -- Ingestion replaces records by file; without this index every changed file scans the full cache.
         CREATE INDEX IF NOT EXISTS idx_usage_source_file ON usage_records(source_file);
         -- Almost every aggregate query in query.rs filters by source and/or occurred_at together
@@ -313,6 +319,26 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         WHERE source = '';
         "#,
     )
+    .map_err(|e| e.to_string())?;
+    migrate_lowercase_model(conn)
+}
+
+/// `insert_records` 从此保证写入的 `model` 是小写，价格 JOIN 才能直接比较列值。
+/// 老库里可能残留大写值，归一化一次让不变量对历史数据同样成立。
+///
+/// 用 `user_version` 记账而不是每次启动扫全表：`model <> lower(model)` 用不上索引，
+/// 库大了以后那是每次开机都要付的全表扫描。
+fn migrate_lowercase_model(conn: &Connection) -> Result<(), String> {
+    let version: i64 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if version >= LOWERCASE_MODEL_VERSION {
+        return Ok(());
+    }
+    conn.execute_batch(&format!(
+        "UPDATE usage_records SET model = lower(model) WHERE model <> lower(model);
+         PRAGMA user_version = {LOWERCASE_MODEL_VERSION};"
+    ))
     .map_err(|e| e.to_string())
 }
 
@@ -394,6 +420,9 @@ fn ensure_column(
     Ok(())
 }
 
+/// 写入前把 `model` 归一化成小写，与 `install_prices` 装载的价目表同口径。
+/// 有了这个不变量，价格 JOIN 才能直接比较列值，不必对 17 万行逐行调 `lower()`。
+/// `provider` 不动：历史值里有 `cpaApi` 这类混合大小写，归一化会改到界面上的显示。
 pub fn insert_records(conn: &Connection, records: &[UsageRecord]) -> Result<u64, String> {
     let mut stmt = conn
         .prepare(
@@ -411,7 +440,7 @@ pub fn insert_records(conn: &Connection, records: &[UsageRecord]) -> Result<u64,
         stmt.execute(params![
             record.occurred_at,
             record.source.as_str(),
-            record.model,
+            record.model.to_ascii_lowercase(),
             record.provider,
             record.project,
             record.session_id,

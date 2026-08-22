@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::domain::{
-    CostSource, CursorUsageEvent, DerivedCost, PriceOrigin, PriceTable, UsageRecord,
+    CostSource, CursorUsageEvent, DerivedCost, PriceEntry, PriceOrigin, PriceTable, UsageRecord,
 };
 
 struct PricedTokens<'a> {
@@ -10,6 +12,90 @@ struct PricedTokens<'a> {
     cache_read_tokens: i64,
     cache_creation_tokens: i64,
     native_cost: Option<f64>,
+}
+
+/// 批量计价时的价目查找缓存。
+///
+/// `find_price` 是对价表的线性扫描，而 LiteLLM 快照有 1400+ 条；一批记录里不同的
+/// (model, provider) 组合却极少——实测 17 万行消耗记录只有 41 个模型。缓存把
+/// O(记录数 × 价表长度) 压成 O(不同组合数 × 价表长度)。
+///
+/// 键直接借用记录里的字段，命中路径上不分配。
+struct PriceCache<'p, 'r> {
+    prices: &'p PriceTable,
+    /// `allow_signature` 会改变查找结果，必须进键，否则宽松与严格两条路径会互相污染。
+    entries: HashMap<(&'r str, &'r str, bool), Option<&'p PriceEntry>>,
+}
+
+impl<'p, 'r> PriceCache<'p, 'r> {
+    fn new(prices: &'p PriceTable) -> Self {
+        Self {
+            prices,
+            entries: HashMap::new(),
+        }
+    }
+
+    fn resolve(
+        &mut self,
+        model: &'r str,
+        provider: &'r str,
+        allow_signature_match: bool,
+    ) -> Option<&'p PriceEntry> {
+        let prices = self.prices;
+        *self
+            .entries
+            .entry((model, provider, allow_signature_match))
+            .or_insert_with(|| resolve_entry(model, provider, prices, allow_signature_match))
+    }
+}
+
+/// 查出该模型适用的价目条目；与 `derive_priced_lookup` 的取价顺序一致。
+fn resolve_entry<'p>(
+    model: &str,
+    provider: &str,
+    prices: &'p PriceTable,
+    allow_signature_match: bool,
+) -> Option<&'p PriceEntry> {
+    find_price(model, provider, prices).or_else(|| {
+        if allow_signature_match {
+            find_price_by_signature(model, prices)
+        } else {
+            None
+        }
+    })
+}
+
+/// 把查好的价目条目套到 token 数上。与查价分开，好让批量路径只缓存前者。
+fn apply_entry(usage: &PricedTokens<'_>, entry: Option<&PriceEntry>) -> DerivedCost {
+    if let Some(amount) = usage.native_cost {
+        return DerivedCost {
+            amount: Some(amount),
+            unpriced: false,
+            source_native: true,
+            cost_source: CostSource::Native,
+        };
+    }
+    let Some(entry) = entry else {
+        return DerivedCost {
+            amount: None,
+            unpriced: true,
+            source_native: false,
+            cost_source: CostSource::None,
+        };
+    };
+    let amount = (usage.input_tokens as f64) * entry.input
+        + (usage.output_tokens as f64) * entry.output
+        + (usage.cache_read_tokens as f64) * entry.cache_read
+        + (usage.cache_creation_tokens as f64) * entry.cache_creation;
+    DerivedCost {
+        amount: Some(amount),
+        unpriced: false,
+        source_native: false,
+        cost_source: match entry.origin {
+            PriceOrigin::Snapshot => CostSource::Snapshot,
+            PriceOrigin::User => CostSource::User,
+        },
+    }
 }
 
 pub fn derive_cost(record: &UsageRecord, prices: &PriceTable) -> DerivedCost {
@@ -28,13 +114,9 @@ pub fn derive_cost(record: &UsageRecord, prices: &PriceTable) -> DerivedCost {
 }
 
 /// 按模型计价：native_cost 优先，其次用户价目，再次 LiteLLM 快照（provider 为空的兜底）。
+/// 单条路径；批量计价走 `sum_costs` / `sum_cursor_event_costs`，那两条带 `PriceCache`。
 fn derive_priced(usage: PricedTokens<'_>, prices: &PriceTable) -> DerivedCost {
     derive_priced_lookup(usage, prices, false)
-}
-
-/// Cursor 账号事件专用：精确匹配失败后再按模型签名对齐 LiteLLM / 用户价目。
-fn derive_priced_relaxed(usage: PricedTokens<'_>, prices: &PriceTable) -> DerivedCost {
-    derive_priced_lookup(usage, prices, true)
 }
 
 fn derive_priced_lookup(
@@ -42,43 +124,11 @@ fn derive_priced_lookup(
     prices: &PriceTable,
     allow_signature_match: bool,
 ) -> DerivedCost {
-    if let Some(amount) = usage.native_cost {
-        return DerivedCost {
-            amount: Some(amount),
-            unpriced: false,
-            source_native: true,
-            cost_source: CostSource::Native,
-        };
+    if usage.native_cost.is_some() {
+        return apply_entry(&usage, None);
     }
-    let entry = find_price(usage.model, usage.provider, prices).or_else(|| {
-        if allow_signature_match {
-            find_price_by_signature(usage.model, prices)
-        } else {
-            None
-        }
-    });
-    if let Some(entry) = entry {
-        let amount = (usage.input_tokens as f64) * entry.input
-            + (usage.output_tokens as f64) * entry.output
-            + (usage.cache_read_tokens as f64) * entry.cache_read
-            + (usage.cache_creation_tokens as f64) * entry.cache_creation;
-        let cost_source = match entry.origin {
-            PriceOrigin::Snapshot => CostSource::Snapshot,
-            PriceOrigin::User => CostSource::User,
-        };
-        return DerivedCost {
-            amount: Some(amount),
-            unpriced: false,
-            source_native: false,
-            cost_source,
-        };
-    }
-    DerivedCost {
-        amount: None,
-        unpriced: true,
-        source_native: false,
-        cost_source: CostSource::None,
-    }
+    let entry = resolve_entry(usage.model, usage.provider, prices, allow_signature_match);
+    apply_entry(&usage, entry)
 }
 
 fn find_price<'a>(
@@ -388,7 +438,23 @@ fn is_noise_token(token: &str) -> bool {
 }
 
 pub fn sum_costs(records: &[&UsageRecord], prices: &PriceTable) -> (Option<f64>, bool) {
-    accumulate_costs(records.iter().map(|record| derive_cost(record, prices)))
+    let mut cache = PriceCache::new(prices);
+    accumulate_costs(records.iter().map(|record| {
+        let usage = PricedTokens {
+            model: &record.model,
+            provider: &record.provider,
+            input_tokens: record.input_tokens,
+            output_tokens: record.output_tokens,
+            cache_read_tokens: record.cache_read_tokens,
+            cache_creation_tokens: record.cache_creation_tokens,
+            native_cost: record.native_cost,
+        };
+        if usage.native_cost.is_some() {
+            return apply_entry(&usage, None);
+        }
+        let entry = cache.resolve(&record.model, &record.provider, false);
+        apply_entry(&usage, entry)
+    }))
 }
 
 /// Cursor 账号事件没有 native_cost，按模型走用户价目 / LiteLLM 快照。
@@ -397,19 +463,19 @@ pub fn sum_cursor_event_costs(
     events: &[&CursorUsageEvent],
     prices: &PriceTable,
 ) -> (Option<f64>, bool) {
+    let mut cache = PriceCache::new(prices);
     accumulate_costs(events.iter().map(|event| {
-        derive_priced_relaxed(
-            PricedTokens {
-                model: &event.model,
-                provider: "",
-                input_tokens: event.input_tokens,
-                output_tokens: event.output_tokens,
-                cache_read_tokens: event.cache_read_tokens,
-                cache_creation_tokens: event.cache_creation_tokens,
-                native_cost: None,
-            },
-            prices,
-        )
+        let usage = PricedTokens {
+            model: &event.model,
+            provider: "",
+            input_tokens: event.input_tokens,
+            output_tokens: event.output_tokens,
+            cache_read_tokens: event.cache_read_tokens,
+            cache_creation_tokens: event.cache_creation_tokens,
+            native_cost: None,
+        };
+        let entry = cache.resolve(&event.model, "", true);
+        apply_entry(&usage, entry)
     }))
 }
 
