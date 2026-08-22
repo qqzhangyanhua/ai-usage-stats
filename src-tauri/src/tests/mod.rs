@@ -34,5 +34,6 @@ mod quota_alerts;
 mod quota_backoff;
 mod qwen_copilot_conversation;
 mod read_pool;
+mod rollup;
 mod store;
 mod work_timeline;

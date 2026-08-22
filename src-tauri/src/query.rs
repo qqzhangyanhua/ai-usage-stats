@@ -259,6 +259,11 @@ fn ratio(numerator: i64, denominator: i64) -> Option<f64> {
 /// 预聚合表上的费用表达式。与 `COST_EXPR` 逐行版语义一一对应：
 /// `has_native` 进了主键，所以一组行要么全带 native_cost（直接取和），
 /// 要么全不带（按 token 计价），两类不会混在同一行里。
+///
+/// 与逐行版有一处无法消除的差别：这里是「先把 token 加起来再乘单价」，逐行版是
+/// 「每行乘完单价再相加」。数学上等价，浮点下不是——实测两者的费用差在 1e-14 量级
+/// （token 数与占比完全一致）。金额以美元计，这个差比一分钱的十亿分之一还小，
+/// 界面上取不到；但比对两条路径的测试得用容差，不能要求 f64 逐位相等。
 const ROLLUP_COST_EXPR: &str = "
     CASE
         WHEN d.has_native = 1 THEN d.native_cost
@@ -284,14 +289,22 @@ const ROLLUP_PRICE_JOINS: &str = "
 
 /// 能否用预聚合表。
 ///
-/// `usage_rollup` 按 UTC 天聚合，装不下任意时刻的边界：前端给的 `from`/`to` 是
-/// 「此刻往前 7 天」「本地午夜转 UTC」这类带时分秒的值，按天过滤会把边界那天整天算进来。
-/// 与其做容易错的边界修正，不如划清界限——带时间范围就走原始表。
+/// 两个条件：
 ///
-/// 这个划分正好落在痛点上：没有时间范围（首屏默认的「全部」）才是要扫全表的那种查询，
-/// 而选了时间范围时数据量本来就小。
-fn can_use_rollup(filter: &Filter) -> bool {
-    filter.from.is_none() && filter.to.is_none()
+/// 1. 没有时间范围。`usage_rollup` 按 UTC 天聚合，装不下任意时刻的边界——前端给的
+///    `from`/`to` 是「此刻往前 7 天」「本地午夜转 UTC」这类带时分秒的值，按天过滤会把
+///    边界那天整天算进来。与其做容易错的边界修正，不如划清界限：带时间范围就走原始表。
+///    这个划分正好落在痛点上，没有时间范围（首屏默认的「全部」）才是要扫全表的那种查询。
+///
+/// 2. 预聚合表已就绪。老库刚升级或从旧备份恢复时它还没建起来，补建又要十几秒，
+///    这段时间回退到原始表：慢一点，但数字是对的。
+///    就绪用显式标记而不是「表非空」——补建期间若发生一次摄取，增量重建会往空表里只写进
+///    那一两天，表非空了内容却只有零头，照着它算就会静默少掉全部历史。
+fn can_use_rollup(conn: &Connection, filter: &Filter) -> bool {
+    if filter.from.is_some() || filter.to.is_some() {
+        return false;
+    }
+    crate::store::rollup_is_ready(conn)
 }
 
 /// 预聚合表的维度过滤。列名与 `usage_records` 同名，只是别名换成 `d`；
@@ -322,7 +335,7 @@ pub fn overview(
     prices: &PriceTable,
 ) -> Result<OverviewDto, String> {
     install_prices(conn, prices)?;
-    let (sql, params) = if can_use_rollup(filter) {
+    let (sql, params) = if can_use_rollup(conn, filter) {
         let (clauses, params) = rollup_filter_clauses(filter);
         (
             format!(
@@ -488,7 +501,7 @@ pub fn trend(
     grain: &str,
 ) -> Result<Vec<SeriesPoint>, String> {
     install_prices(conn, prices)?;
-    let rollup_bucket = can_use_rollup(filter)
+    let rollup_bucket = can_use_rollup(conn, filter)
         .then(|| rollup_bucket_expr(grain))
         .flatten();
     let (sql, params) = match rollup_bucket {
@@ -602,7 +615,7 @@ pub fn breakdown(
     dimension: &str,
 ) -> Result<Vec<NamedAmount>, String> {
     install_prices(conn, prices)?;
-    let (sql, params) = if can_use_rollup(filter) {
+    let (sql, params) = if can_use_rollup(conn, filter) {
         let name_expr = rollup_breakdown_name_expr(dimension)?;
         let (clauses, params) = rollup_filter_clauses(filter);
         (
@@ -685,17 +698,36 @@ pub fn application_analytics(
     filter: &Filter,
     grain: &str,
 ) -> Result<ApplicationAnalyticsDto, String> {
-    let (clauses, params) = filter_clauses(filter);
+    // 这个视图要发四组聚合（总览 / 按应用 / 按时间桶 / 按项目），全走原始表就是把
+    // 同一份数据扫四遍——350 万行时实测 43 秒。预聚合表把每遍的基数压到几万行。
+    let use_rollup = can_use_rollup(conn, filter)
+        && rollup_bucket_expr(grain).is_some();
+    let (table, alias) = if use_rollup {
+        ("usage_rollup", "d")
+    } else {
+        ("usage_records", "r")
+    };
+    let (clauses, params) = if use_rollup {
+        rollup_filter_clauses(filter)
+    } else {
+        filter_clauses(filter)
+    };
     let where_sql = where_sql(&clauses);
+    let bucket = if use_rollup {
+        rollup_bucket_expr(grain).unwrap_or("d.day").to_string()
+    } else {
+        bucket_expr(grain).to_string()
+    };
+    let a = alias;
 
     let summary_sql = format!(
         "SELECT
-            COALESCE(SUM(r.total_tokens), 0),
-            COALESCE(SUM(r.input_tokens), 0),
-            COALESCE(SUM(r.cache_read_tokens), 0),
-            COALESCE(SUM(r.reasoning_tokens), 0),
-            COUNT(DISTINCT r.source || char(31) || r.session_id)
-        FROM usage_records r
+            COALESCE(SUM({a}.total_tokens), 0),
+            COALESCE(SUM({a}.input_tokens), 0),
+            COALESCE(SUM({a}.cache_read_tokens), 0),
+            COALESCE(SUM({a}.reasoning_tokens), 0),
+            COUNT(DISTINCT {a}.source || char(31) || {a}.session_id)
+        FROM {table} {a}
         {where_sql}"
     );
     let (total, input, cache_read, reasoning, session_count) = conn
@@ -722,15 +754,15 @@ pub fn application_analytics(
     };
 
     let app_sql = format!(
-        "SELECT r.source,
-            SUM(r.total_tokens),
-            SUM(r.input_tokens),
-            SUM(r.cache_read_tokens),
-            SUM(r.reasoning_tokens),
-            COUNT(DISTINCT r.session_id)
-        FROM usage_records r
+        "SELECT {a}.source,
+            SUM({a}.total_tokens),
+            SUM({a}.input_tokens),
+            SUM({a}.cache_read_tokens),
+            SUM({a}.reasoning_tokens),
+            COUNT(DISTINCT {a}.session_id)
+        FROM {table} {a}
         {where_sql}
-        GROUP BY r.source"
+        GROUP BY {a}.source"
     );
     let mut stmt = conn.prepare(&app_sql).map_err(|e| e.to_string())?;
     let app_rows = stmt
@@ -777,10 +809,9 @@ pub fn application_analytics(
             .then_with(|| a.application.cmp(&b.application))
     });
 
-    let bucket = bucket_expr(grain);
     let trend_sql = format!(
-        "SELECT {bucket} AS bucket, r.source, SUM(r.total_tokens)
-        FROM usage_records r
+        "SELECT {bucket} AS bucket, {a}.source, SUM({a}.total_tokens)
+        FROM {table} {a}
         {where_sql}
         GROUP BY 1, 2
         ORDER BY 1, 2"
@@ -811,8 +842,8 @@ pub fn application_analytics(
     }
 
     let project_sql = format!(
-        "SELECT r.project, r.source, SUM(r.total_tokens)
-        FROM usage_records r
+        "SELECT {a}.project, {a}.source, SUM({a}.total_tokens)
+        FROM {table} {a}
         {where_sql}
         GROUP BY 1, 2
         ORDER BY 1, 2"
@@ -865,6 +896,69 @@ pub fn application_analytics(
     ))
 }
 
+/// 从预聚合表取 Top N 会话。
+///
+/// 比原始表那条路少一次回表：`usage_rollup` 的主键里就带着 project / model，
+/// `file_key` 也已按「最晚非空」的形式存好，一次 GROUP BY 就能把展示标签一并算出来。
+///
+/// project / model 的键这里用 `last_at` 现拼——组内 `last_at` 就是该组 `occurred_at`
+/// 的最大值，与逐行版 `MAX(occurred_at || sep || value)` 选出的是同一个值：
+/// 时间大的胜出，时间并列时字典序大的胜出。
+fn top_sessions_from_rollup(
+    conn: &Connection,
+    filter: &Filter,
+    limit: usize,
+) -> Result<Vec<SessionRow>, String> {
+    let (clauses, mut params) = rollup_filter_clauses(filter);
+    let project = unwrap_latest_key_sql("project_key");
+    let model = unwrap_latest_key_sql("model_key");
+    let source_file = unwrap_latest_key_sql("file_key");
+    let sql = format!(
+        "SELECT source, session_id, total_tokens, started_at, ended_at, cost, unpriced_count,
+            {project} AS project,
+            {model} AS model,
+            {source_file} AS source_file
+         FROM (
+            SELECT d.source AS source, d.session_id AS session_id,
+                SUM(d.total_tokens) AS total_tokens,
+                MIN(d.first_at) AS started_at,
+                MAX(d.last_at) AS ended_at,
+                SUM({ROLLUP_COST_EXPR}) AS cost,
+                COALESCE(SUM({ROLLUP_UNPRICED_EXPR}), 0) AS unpriced_count,
+                MAX(CASE WHEN d.project != '' THEN d.last_at || char(31) || d.project END) AS project_key,
+                MAX(CASE WHEN d.model != '' THEN d.last_at || char(31) || d.model END) AS model_key,
+                MAX(d.file_key) AS file_key
+            FROM usage_rollup d
+            {ROLLUP_PRICE_JOINS}
+            {}
+            GROUP BY d.source, d.session_id
+            ORDER BY total_tokens DESC, source ASC, session_id ASC
+            LIMIT ?
+         )",
+        where_sql(&clauses),
+    );
+    params.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params_from_iter(params.iter()), |row| {
+            Ok(SessionRow {
+                source: row.get(0)?,
+                session_id: row.get(1)?,
+                total_tokens: row.get(2)?,
+                started_at: row.get(3)?,
+                ended_at: row.get(4)?,
+                cost: row.get(5)?,
+                unpriced: row.get::<_, i64>(6)? > 0,
+                project: row.get(7)?,
+                model: row.get(8)?,
+                source_file: row.get(9)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn top_sessions(
     conn: &Connection,
     filter: &Filter,
@@ -875,6 +969,9 @@ pub fn top_sessions(
         return Ok(Vec::new());
     }
     install_prices(conn, prices)?;
+    if can_use_rollup(conn, filter) {
+        return top_sessions_from_rollup(conn, filter, limit);
+    }
     let (clauses, mut params) = filter_clauses(filter);
     // 先按 token 取出 Top N。相关子查询不能放进全表 GROUP BY：
     // 17 万行 × 3 次会话回表会把首屏卡死。
@@ -1006,6 +1103,53 @@ fn unwrap_latest_key_sql(alias: &str) -> String {
     format!("COALESCE(substr({alias}, instr({alias}, char(31)) + 1), '')")
 }
 
+/// 预聚合表版的会话汇总，输出列与 `session_rollup_sql` 完全一致，
+/// 所以外层的搜索 / 排序 / 分页原样复用，不必为两条路径各写一遍。
+///
+/// project / model 的键用 `last_at` 现拼：组内 `last_at` 就是该组 `occurred_at` 的最大值，
+/// 与逐行版 `MAX(occurred_at || sep || value)` 选出同一个值。`file_key` 建表时已按这个
+/// 形式存好，直接 MAX 即可。
+fn rollup_session_rollup_sql(clauses: &[String], include_cost: bool) -> String {
+    let project = unwrap_latest_key_sql("project_key");
+    let model = unwrap_latest_key_sql("model_key");
+    let source_file = unwrap_latest_key_sql("file_key");
+    let (cost_select, joins) = if include_cost {
+        (
+            format!(
+                "SUM({ROLLUP_COST_EXPR}) AS cost, COALESCE(SUM({ROLLUP_UNPRICED_EXPR}), 0) AS unpriced_count"
+            ),
+            ROLLUP_PRICE_JOINS,
+        )
+    } else {
+        (
+            "CAST(NULL AS REAL) AS cost, 0 AS unpriced_count".to_string(),
+            "",
+        )
+    };
+    format!(
+        "SELECT source, session_id, total_tokens, started_at, ended_at,
+            {project} AS project,
+            {model} AS model,
+            {source_file} AS source_file,
+            cost, unpriced_count
+         FROM (
+            SELECT d.source AS source, d.session_id AS session_id,
+                SUM(d.total_tokens) AS total_tokens,
+                MIN(d.first_at) AS started_at,
+                MAX(d.last_at) AS ended_at,
+                MAX(CASE WHEN d.project != '' THEN d.last_at || char(31) || d.project END) AS project_key,
+                MAX(CASE WHEN d.model != '' THEN d.last_at || char(31) || d.model END) AS model_key,
+                MAX(d.file_key) AS file_key,
+                {cost_select}
+            FROM usage_rollup d
+            {joins}
+            {}
+            GROUP BY d.source, d.session_id
+         )",
+        where_sql(clauses),
+    )
+}
+
 fn session_rollup_sql(clauses: &[String], include_cost: bool) -> String {
     let project_key = latest_nonempty_key_sql("project");
     let model_key = latest_nonempty_key_sql("model");
@@ -1061,8 +1205,18 @@ pub fn sessions_page(
     if include_cost {
         install_prices(conn, prices)?;
     }
-    let (clauses, mut params) = filter_clauses(&query.filter);
-    let sessions_cte = session_rollup_sql(&clauses, include_cost);
+    // 会话汇总来自哪张表由这里决定，外层的搜索 / 排序 / 分页对此无感。
+    let use_rollup = can_use_rollup(conn, &query.filter);
+    let (clauses, mut params) = if use_rollup {
+        rollup_filter_clauses(&query.filter)
+    } else {
+        filter_clauses(&query.filter)
+    };
+    let sessions_cte = if use_rollup {
+        rollup_session_rollup_sql(&clauses, include_cost)
+    } else {
+        session_rollup_sql(&clauses, include_cost)
+    };
 
     let search_clause = match query
         .search

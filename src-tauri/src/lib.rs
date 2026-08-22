@@ -1045,6 +1045,38 @@ async fn export_image(default_name: String, base64: String) -> Result<bool, Stri
     .map_err(|e| e.to_string())?
 }
 
+/// 老库首次升级、或从不含预聚合表的旧备份恢复后，把它在后台补建起来。
+///
+/// 350 万行要十几秒，放在 `setup` 里同步做会让应用启动像卡死。挪到后台线程之后：
+/// 补建期间 `rollup_is_ready` 为假，查询自动回退原始表——慢，但数字是对的；
+/// 摄取也会跳过增量重建，免得往空表里只写进一两天，让它「非空却残缺」。
+/// 补建拿的是写锁，与摄取天然互斥；完成时置就绪位，之后的查询自然切到预聚合表。
+fn spawn_rollup_backfill(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let needs = {
+            let Ok(conn) = state.lock_read() else {
+                return;
+            };
+            store::rollup_needs_backfill(&conn).unwrap_or(false)
+        };
+        if !needs {
+            return;
+        }
+        let Ok(conn) = state.lock_write() else {
+            return;
+        };
+        // 再查一次：等锁期间可能已经有别的路径把它建好了。
+        if !store::rollup_needs_backfill(&conn).unwrap_or(false) {
+            return;
+        }
+        if let Err(error) = store::backfill_rollup(&conn) {
+            eprintln!("预聚合表补建失败，查询将继续走原始表：{error}");
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1077,6 +1109,7 @@ pub fn run() {
                 snapshot: Mutex::new(snapshot),
             });
             tray::setup(app.handle()).map_err(std::io::Error::other)?;
+            spawn_rollup_backfill(app.handle());
             #[cfg(desktop)]
             {
                 use tauri_plugin_notification::NotificationExt;

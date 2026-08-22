@@ -358,23 +358,44 @@ pub(crate) fn ingest_all_with_overrides(
     let removed_unknown = store::remove_unknown_sources(&transaction)?;
     let mut report = ingest_all_inner(&transaction, home, overrides)?;
     report.records_removed += removed_unknown;
+    // 清理未知来源是整表 DELETE，定位不到具体是哪几天，只能整张重来。罕见路径。
+    report.rollup_full_rebuild = removed_unknown > 0;
     report.partial_success = report.files_failed > 0 || !report.conversation_issues.is_empty();
     sync_rollup(&transaction, &report)?;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(report)
 }
 
-/// 消耗记录有增删时重建预聚合表。
+/// 把预聚合表同步到本轮摄取的结果。
 ///
 /// 放在提交前的同一个事务里：预聚合表和 `usage_records` 必须一起可见，
-/// 中间态被查询读到就是错的数字。缓存全命中（既没写入也没删除）时跳过重建，
-/// 那种情况下托盘每几分钟一次的心跳不必付这份开销。
+/// 中间态被查询读到就是错的数字。
+///
+/// 优先按天重算——一次摄取通常只动到最近一两天，而全量重建在 350 万行的库上要十几秒，
+/// 那会把摄取拖成跟历史数据总量成正比。只有整源清理这种定位不到天的改动才整表重来。
+/// 供测试直接驱动 `sync_rollup`，验证「补建未完成时不碰预聚合表」这条约束。
+#[cfg(test)]
+pub(crate) fn sync_rollup_for_tests(
+    conn: &Connection,
+    report: &IngestReport,
+) -> Result<(), String> {
+    sync_rollup(conn, report)
+}
+
 fn sync_rollup(conn: &Connection, report: &IngestReport) -> Result<(), String> {
-    if report.records_written == 0 && report.records_removed == 0 {
+    // 还没补建完就别碰：往空表里塞进这一两天，会让它「非空却残缺」。
+    // 补建本身会整表重来，这轮的改动到时一并覆盖进去。
+    if !store::rollup_is_ready(conn) {
         return Ok(());
     }
-    store::rebuild_rollup(conn)?;
-    Ok(())
+    if report.rollup_full_rebuild {
+        store::rebuild_rollup(conn)?;
+        return Ok(());
+    }
+    if report.touched_days.is_empty() {
+        return Ok(());
+    }
+    store::rebuild_rollup_days(conn, &report.touched_days)
 }
 
 pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDiagnostic>, String> {
@@ -704,10 +725,18 @@ fn ingest_one(
         );
         return Ok(());
     }
+    // 必须在删除之前问：记录一删，就查不出它们原来落在哪几天了。
+    let previous_days = store::days_for_file(conn, &loc)?;
 
     store::delete_records_for_file(conn, &loc)?;
     let written = store::insert_records(conn, &records)?;
     store::mark_file(conn, &loc, mtime_ms, size, source, &cache_fingerprint)?;
+    // 删掉的旧记录和刚写入的新记录各自占了哪些天，这些天的预聚合行都得重算。
+    // 两次查询都走 idx_usage_source_file，比重建整张表便宜得多。
+    report.touched_days.extend(previous_days);
+    report
+        .touched_days
+        .extend(store::days_for_file(conn, &loc)?);
     report.records_written += written;
     report.files_parsed += 1;
     increment(report, source, |source_report| {

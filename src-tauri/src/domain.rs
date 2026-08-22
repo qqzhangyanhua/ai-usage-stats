@@ -1459,6 +1459,13 @@ pub struct IngestReport {
     #[serde(default)]
     pub conversation_issues: Vec<IngestIssue>,
     pub sources: Vec<SourceIngestReport>,
+    /// 本轮摄取动过的 UTC 日期（`YYYY-MM-DD`）。只用来把预聚合表的重建收窄到这些天，
+    /// 不返回给前端。空集合配合 `rollup_full_rebuild = false` 表示无事可做。
+    #[serde(skip)]
+    pub touched_days: std::collections::BTreeSet<String>,
+    /// 罕见的整源清理（删掉未知来源的记录）无法按天定位，只能整表重来。
+    #[serde(skip)]
+    pub rollup_full_rebuild: bool,
 }
 
 impl Default for IngestReport {
@@ -1488,6 +1495,8 @@ impl Default for IngestReport {
                     records_archived: 0,
                 })
                 .collect(),
+            touched_days: std::collections::BTreeSet::new(),
+            rollup_full_rebuild: false,
         }
     }
 }
