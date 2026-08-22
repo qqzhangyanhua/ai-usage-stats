@@ -150,10 +150,23 @@ fn cursor_transcripts_usage_and_behavior_feed_one_exact_conversation_detail() {
     assert!(parent_detail.events.iter().any(|event| {
         event.kind == ConversationEventKind::ToolCall && event.name.as_deref() == Some("Read")
     }));
-    assert!(parent_detail.events.iter().any(|event| {
+    assert!(!parent_detail.events.iter().any(|event| {
         event.kind == ConversationEventKind::SystemStatus
             && event.name.as_deref() == Some("cursor_session_stats")
     }));
+    let parent_behavior = parent_detail
+        .cursor_behavior
+        .as_ref()
+        .expect("parent conversation should carry cursor behavior");
+    assert_eq!(parent_behavior.session.session_id, "sess-parent");
+    assert!(parent_behavior
+        .tools
+        .iter()
+        .any(|tool| tool.name == "Read" && tool.call_count >= 1));
+    assert!(parent_behavior
+        .read_paths
+        .iter()
+        .any(|path| path.ends_with("src/lib.rs")));
     assert_eq!(parent_detail.agent_relations.children.len(), 1);
     let child = &parent_detail.agent_relations.children[0];
     assert_eq!(child.session_id.as_deref(), Some("child-1"));
@@ -183,6 +196,7 @@ fn cursor_transcripts_usage_and_behavior_feed_one_exact_conversation_detail() {
         conversation::load_detail(&conn, home, "cursor_agent", "sess-usage-only").unwrap();
     assert_eq!(usage_only.usage_records.len(), 1);
     assert!(usage_only.messages.is_empty());
+    assert!(usage_only.cursor_behavior.is_none());
     assert!(usage_only.events.iter().any(|event| {
         event.kind == ConversationEventKind::SystemStatus
             && event.name.as_deref() == Some("transcript_missing")
@@ -203,8 +217,35 @@ fn cursor_transcripts_usage_and_behavior_feed_one_exact_conversation_detail() {
     let missing = conversation::load_detail(&conn, home, "cursor_agent", "sess-parent").unwrap();
     assert_eq!(missing.usage_records.len(), 1);
     assert!(missing.messages.is_empty());
+    assert!(missing.cursor_behavior.is_none());
     assert!(missing.events.iter().any(|event| {
         event.kind == ConversationEventKind::SystemStatus
             && event.name.as_deref() == Some("transcript_missing")
     }));
+}
+
+#[test]
+fn cursor_catalog_surfaces_rows_when_conversation_clock_is_empty() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path();
+    seed_cursor_conversations(home);
+    let conn = store::open_memory().unwrap();
+    ingest::ingest_all_with_overrides(&conn, home, &Default::default()).unwrap();
+    conn.execute(
+        "UPDATE conversation_sessions SET started_at = '', ended_at = '' WHERE source = 'cursor_agent'",
+        [],
+    )
+    .unwrap();
+
+    let page = conversation::sessions_page(&conn, &ConversationQuery::default()).unwrap();
+    let cursor = page
+        .rows
+        .iter()
+        .filter(|row| row.source == Source::CursorAgent.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !cursor.is_empty(),
+        "empty conversation clocks should still appear via cursor_sessions times"
+    );
+    assert!(cursor.iter().all(|row| !row.ended_at.is_empty()));
 }

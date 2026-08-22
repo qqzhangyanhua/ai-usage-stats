@@ -1,9 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
-import {
-  getCachedCursorSessionDetail,
-  setCachedCursorSessionDetail,
-} from "../lib/cursorSessionDetailCache";
 import {
   formatClock,
   formatDuration,
@@ -16,72 +10,16 @@ import {
   cursorSessionHashFileTable,
   cursorSessionPathTable,
 } from "../lib/exportRows";
-import type { CursorSessionDetailDto } from "../types";
-import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
-import { LoadingOverlay } from "./LoadingOverlay";
 import { SessionIdCell } from "./SessionTableParts";
+import type { CursorSessionDetailProps } from "./type";
 
 function fileLabel(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
 }
 
-export function CursorSessionDetail({
-  sourceFile,
-  onError,
-}: {
-  sourceFile: string;
-  onError?: (error: unknown) => void;
-}) {
-  const cached = getCachedCursorSessionDetail(sourceFile);
-  const [fetched, setFetched] = useState<CursorSessionDetailDto | null>(null);
-  const [loading, setLoading] = useState(() => !getCachedCursorSessionDetail(sourceFile));
-  const generationRef = useRef(0);
-  const detail = cached ?? fetched;
-
-  useEffect(() => {
-    if (getCachedCursorSessionDetail(sourceFile)) {
-      return;
-    }
-    const generation = ++generationRef.current;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 发起请求前先置 loading
-    setLoading(true);
-    invoke<CursorSessionDetailDto>("get_cursor_session_detail", { sourceFile })
-      .then((next) => {
-        if (generation === generationRef.current) {
-          setCachedCursorSessionDetail(sourceFile, next);
-          setFetched(next);
-        }
-      })
-      .catch((error: unknown) => {
-        if (generation === generationRef.current) {
-          onError?.(error);
-        }
-      })
-      .finally(() => {
-        if (generation === generationRef.current) {
-          setLoading(false);
-        }
-      });
-  }, [sourceFile, onError]);
-
-  if (!detail && loading) {
-    return (
-      <LoadingOverlay active className="panel partition">
-        <EmptyState icon="sessions" title="正在加载会话详情…" />
-      </LoadingOverlay>
-    );
-  }
-
-  if (!detail) {
-    return (
-      <div className="panel partition">
-        <EmptyState icon="sessions" title="无法加载会话详情" />
-      </div>
-    );
-  }
-
+export function CursorSessionDetail({ detail, embedded = false }: CursorSessionDetailProps) {
   const session = detail.session;
   const duration = formatDuration(session.first_seen_at, session.last_seen_at);
   const toolTable = cursorSessionDetailToolTable(detail);
@@ -89,12 +27,14 @@ export function CursorSessionDetail({
   const hashTable = cursorSessionHashFileTable(detail);
 
   return (
-    <LoadingOverlay active={loading} className="stack">
+    <div className="stack">
       <section className="panel partition">
-        <div className="panel-head">
-          <h2>会话详情</h2>
-          <SessionIdCell sessionId={session.session_id} />
-        </div>
+        {embedded ? null : (
+          <div className="panel-head">
+            <h2>会话详情</h2>
+            <SessionIdCell sessionId={session.session_id} />
+          </div>
+        )}
         <p className="note">
           {projectLabel(session.project)} · {session.models.join(", ") || "无模型"} ·{" "}
           {session.sources.join(", ") || "无来源"}
@@ -117,7 +57,11 @@ export function CursorSessionDetail({
         <section className="panel partition">
           <div className="panel-head">
             <h2>工具次数</h2>
-            <ExportButton filename="Cursor会话工具明细" headers={toolTable.headers} rows={toolTable.rows} />
+            <ExportButton
+              filename="Cursor会话工具明细"
+              headers={toolTable.headers}
+              rows={toolTable.rows}
+            />
           </div>
           {detail.tools.length > 0 ? (
             <div className="table-scroll">
@@ -146,11 +90,15 @@ export function CursorSessionDetail({
         <section className="panel partition">
           <div className="panel-head">
             <h2>读写路径</h2>
-            <ExportButton filename="Cursor会话路径" headers={pathTable.headers} rows={pathTable.rows} />
+            <ExportButton
+              filename="Cursor会话路径"
+              headers={pathTable.headers}
+              rows={pathTable.rows}
+            />
           </div>
           <p className="note">
-            只统计工具参数里的 path，不含命令和正文。读 {formatTokens(detail.read_paths.length)}{" "}
-            · 写 {formatTokens(detail.write_paths.length)}
+            只统计工具参数里的 path，不含命令和正文。读 {formatTokens(detail.read_paths.length)} ·
+            写 {formatTokens(detail.write_paths.length)}
           </p>
           <PathList title="读" paths={detail.read_paths} />
           <PathList title="写" paths={detail.write_paths} />
@@ -160,7 +108,11 @@ export function CursorSessionDetail({
       <section className="panel partition">
         <div className="panel-head">
           <h2>AI 记过哈希的文件</h2>
-          <ExportButton filename="Cursor会话哈希文件" headers={hashTable.headers} rows={hashTable.rows} />
+          <ExportButton
+            filename="Cursor会话哈希文件"
+            headers={hashTable.headers}
+            rows={hashTable.rows}
+          />
         </div>
         <p className="note">来自 ai_code_hashes，不是「读过的文件」，也不是代码行数。</p>
         {detail.hash_files.length > 0 ? (
@@ -188,7 +140,7 @@ export function CursorSessionDetail({
           <p className="note">该会话没有关联的代码哈希。</p>
         )}
       </section>
-    </LoadingOverlay>
+    </div>
   );
 }
 

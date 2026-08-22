@@ -1,6 +1,6 @@
 import type { ConversationSessionRow } from "../types";
 
-export type ConversationDetailTab = "events" | "usage";
+export type ConversationDetailTab = "events" | "usage" | "behavior";
 
 export type ConversationNavigationFrame = {
   session: ConversationSessionRow;

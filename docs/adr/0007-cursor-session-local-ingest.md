@@ -22,3 +22,4 @@ Cursor IDE Agent 与 `cursor-agent` CLI 共用本机目录：`~/.cursor/chats/<m
 - 会话正文留在磁盘 jsonl，App 不索引；详情页、搜索不在本 ADR 范围。
 - 子代理不再占用会话数。升级后旧的子路径会话行会在一次成功对账后删掉。
 - 会话详情按需读盘：工具次数用缓存 JSON，读写 path 重解析 transcript（只取 `input.path` / `paths`），hash 文件按 conversationId 只读查询。详情不入库，不触发 schema_version。
+- 单条会话的浏览入口是对话记录：仪表盘点行跳到 `source=cursor_agent` 的对话详情，行为聚合作为 `cursor_behavior` 挂在同一条记录上，不再用独立详情页。跨会话 KPI/图表仍留在 Cursor 会话页。

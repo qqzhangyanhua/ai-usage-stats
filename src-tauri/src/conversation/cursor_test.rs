@@ -89,3 +89,50 @@ fn adapter_projects_cursor_records_with_stable_ids_and_structural_unknowns() {
         assert_eq!(stable_ids.get(&key), Some(&event.event_id));
     }
 }
+
+#[test]
+fn adapter_reads_embedded_timestamp_and_strips_query_wrappers_from_title() {
+    let temp = tempfile::tempdir().unwrap();
+    let session_dir = temp
+        .path()
+        .join(".cursor/projects/Users-workspace-project/agent-transcripts/sess-clock");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("sess-clock.jsonl");
+    std::fs::write(
+        &path,
+        concat!(
+            "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"<timestamp>Thursday, May 28, 2026, 8:37 PM (UTC+8)</timestamp>\\n<user_query>\\n检查构建\\n</user_query>\"}]}}\n",
+            "{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"好的\"}]}}\n"
+        ),
+    )
+    .unwrap();
+
+    let parsed = &index(&path).unwrap().conversations[0];
+    assert_eq!(parsed.session.title, "检查构建");
+    assert_eq!(parsed.session.started_at, "2026-05-28T20:37:00+08:00");
+    assert_eq!(parsed.session.ended_at, "2026-05-28T20:37:00+08:00");
+}
+
+#[test]
+fn adapter_falls_back_to_file_mtime_when_transcript_has_no_clock() {
+    let temp = tempfile::tempdir().unwrap();
+    let session_dir = temp
+        .path()
+        .join(".cursor/projects/Users-workspace-project/agent-transcripts/sess-mtime");
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let path = session_dir.join("sess-mtime.jsonl");
+    std::fs::write(
+        &path,
+        "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"没有时间戳\"}]}}\n",
+    )
+    .unwrap();
+
+    let parsed = &index(&path).unwrap().conversations[0];
+    assert!(
+        !parsed.session.started_at.is_empty(),
+        "{}",
+        parsed.session.started_at
+    );
+    assert_eq!(parsed.session.started_at, parsed.session.ended_at);
+    assert_eq!(parsed.session.title, "没有时间戳");
+}

@@ -22,19 +22,22 @@ pub fn load_detail(
     }
     let record = store::load_cursor_session(conn, source_file)?
         .ok_or_else(|| "未找到该 Cursor 会话".to_string())?;
+    Ok(detail_from_record(home, &record))
+}
 
+pub fn detail_from_record(home: &Path, record: &CursorSessionRecord) -> CursorSessionDetailDto {
     let tools = tools_from_json(&record.tool_calls_json);
-    let hash_files = load_hash_files(home, &record.session_id)?;
-    let (paths, transcript_missing) = collect_paths(&record);
+    let hash_files = load_hash_files(home, &record.session_id).unwrap_or_default();
+    let (paths, transcript_missing) = collect_paths(record);
 
-    Ok(CursorSessionDetailDto {
-        session: list_row_from_record(&record, tools.iter().map(|row| row.call_count).sum()),
+    CursorSessionDetailDto {
+        session: list_row_from_record(record, tools.iter().map(|row| row.call_count).sum()),
         tools,
         hash_files,
         read_paths: paths.read_paths.into_iter().collect(),
         write_paths: paths.write_paths.into_iter().collect(),
         transcript_missing,
-    })
+    }
 }
 
 fn collect_paths(record: &CursorSessionRecord) -> (ParsedCursorSession, bool) {

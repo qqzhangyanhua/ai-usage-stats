@@ -474,14 +474,15 @@ export type ConversationAgentRelations = {
   children: ConversationAgentLink[];
 };
 
-export type ConversationDetailDto = {
+export interface ConversationDetailDto {
   revision: string;
   session: ConversationSessionRow;
   messages: ConversationMessage[];
   events: ConversationEvent[];
   usage_records: ConversationUsageRecord[];
   agent_relations: ConversationAgentRelations;
-};
+  cursor_behavior?: CursorSessionDetailDto | null;
+}
 
 export type ConversationDetailStateDto = {
   revision: string;

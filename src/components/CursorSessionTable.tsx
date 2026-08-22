@@ -13,6 +13,7 @@ import type {
   CursorSessionSortKey,
   SortDir,
 } from "../types";
+import type { CursorSessionTableSelect } from "./type";
 import { EmptyState } from "./EmptyState";
 import { ExportButton } from "./ExportButton";
 import { LoadingOverlay } from "./LoadingOverlay";
@@ -89,7 +90,6 @@ export function CursorSessionTable({
   revision,
   projectNames,
   selectedProject,
-  selectedSourceFile,
   onSelectProject,
   onSelectSession,
   onError,
@@ -97,9 +97,8 @@ export function CursorSessionTable({
   revision: number;
   projectNames: string[];
   selectedProject: string | null;
-  selectedSourceFile: string | null;
   onSelectProject: (project: string | null) => void;
-  onSelectSession: (sourceFile: string) => void;
+  onSelectSession: CursorSessionTableSelect;
   onError?: (error: unknown) => void;
 }) {
   const [searchInput, setSearchInput] = useState("");
@@ -215,7 +214,10 @@ export function CursorSessionTable({
           getRows={fetchAllMatchingRows}
         />
       </div>
-      <LoadingOverlay active={loading && rows.length > 0} className="table-scroll cursor-session-table-scroll">
+      <LoadingOverlay
+        active={loading && rows.length > 0}
+        className="table-scroll cursor-session-table-scroll"
+      >
         <table className="cursor-session-table">
           <thead>
             <tr>
@@ -251,7 +253,11 @@ export function CursorSessionTable({
                       </button>
                     </div>
                   ) : (
-                    <button type="button" className="sort-th" onClick={() => toggleSort(column.key)}>
+                    <button
+                      type="button"
+                      className="sort-th"
+                      onClick={() => toggleSort(column.key)}
+                    >
                       {column.label}
                       <SortArrow active={sortKey === column.key} dir={sortDir} />
                     </button>
@@ -264,10 +270,16 @@ export function CursorSessionTable({
             {rows.map((row) => (
               <tr
                 key={`${row.source_file}-${row.session_id}`}
-                className={
-                  selectedSourceFile === row.source_file ? "clickable selected" : "clickable"
-                }
-                onClick={() => onSelectSession(row.source_file)}
+                className="clickable"
+                tabIndex={0}
+                aria-label={`打开对话：${row.session_id}`}
+                onClick={() => onSelectSession(row)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectSession(row);
+                  }
+                }}
               >
                 <td>
                   <SessionIdCell sessionId={row.session_id} />

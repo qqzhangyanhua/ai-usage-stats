@@ -159,6 +159,7 @@ export default function App() {
                     theme={theme}
                     revision={data.sessionsRevision}
                     onError={data.reportError}
+                    onOpenConversation={(session) => data.openConversations(session)}
                   />
                 ) : null}
                 {view === "conversations" ? (

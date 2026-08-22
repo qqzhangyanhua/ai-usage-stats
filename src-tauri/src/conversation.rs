@@ -18,7 +18,7 @@ use crate::domain::{
     ConversationEventContentDto, ConversationEventContentStatus as ContentStatus,
     ConversationEventKind as EventKind, ConversationExportDto, ConversationExportFormat,
     ConversationMessage, ConversationPage, ConversationQuery, ConversationSessionRow,
-    CursorSessionRecord, PriceTable, Source, UsageRecord,
+    CursorSessionDetailDto, CursorSessionRecord, PriceTable, Source, UsageRecord,
 };
 use crate::ingest;
 use crate::query;
@@ -61,7 +61,7 @@ const LARGE_CONTENT_THRESHOLD: usize = 4_096;
 const CONTENT_PREVIEW_CHARS: usize = 2_000;
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 240;
-pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 6;
+pub(crate) const CONVERSATION_ADAPTER_VERSION: i64 = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationIndexIssue {
@@ -642,16 +642,16 @@ fn sql_placeholders(count: usize) -> String {
 }
 
 fn catalog_filter_sql(query: &ConversationQuery) -> (String, Vec<rusqlite::types::Value>) {
-    let mut clauses = vec!["is_top_level = 1".to_string()];
+    let mut clauses = vec!["sessions.is_top_level = 1".to_string()];
     let mut params = Vec::new();
     let search = query.search.as_deref().unwrap_or("").trim();
     if !search.is_empty() {
         let pattern = format!("%{}%", escape_like(search));
         clauses.push(
-            "(title LIKE ? ESCAPE '\\' OR source LIKE ? ESCAPE '\\' \
-             OR project LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' \
-             OR session_id LIKE ? ESCAPE '\\' OR started_at LIKE ? ESCAPE '\\' \
-             OR ended_at LIKE ? ESCAPE '\\')"
+            "(sessions.title LIKE ? ESCAPE '\\' OR sessions.source LIKE ? ESCAPE '\\' \
+             OR sessions.project LIKE ? ESCAPE '\\' OR sessions.model LIKE ? ESCAPE '\\' \
+             OR sessions.session_id LIKE ? ESCAPE '\\' OR sessions.started_at LIKE ? ESCAPE '\\' \
+             OR sessions.ended_at LIKE ? ESCAPE '\\')"
                 .to_string(),
         );
         for _ in 0..7 {
@@ -660,7 +660,7 @@ fn catalog_filter_sql(query: &ConversationQuery) -> (String, Vec<rusqlite::types
     }
     if !query.sources.is_empty() {
         clauses.push(format!(
-            "source IN ({})",
+            "sessions.source IN ({})",
             sql_placeholders(query.sources.len())
         ));
         for source in &query.sources {
@@ -669,7 +669,7 @@ fn catalog_filter_sql(query: &ConversationQuery) -> (String, Vec<rusqlite::types
     }
     if !query.projects.is_empty() {
         clauses.push(format!(
-            "project IN ({})",
+            "sessions.project IN ({})",
             sql_placeholders(query.projects.len())
         ));
         for project in &query.projects {
@@ -701,7 +701,7 @@ pub fn sessions_page_with_prices(
 
     let total = conn
         .query_row(
-            &format!("SELECT COUNT(*) FROM conversation_sessions WHERE {predicate}"),
+            &format!("SELECT COUNT(*) FROM conversation_sessions AS sessions WHERE {predicate}"),
             params_from_iter(params.iter()),
             |row| row.get::<_, i64>(0),
         )
@@ -711,11 +711,21 @@ pub fn sessions_page_with_prices(
     params.push(rusqlite::types::Value::Integer(offset));
     let sql = format!(
         r#"
-        SELECT source, session_id, title, project, model, started_at, ended_at,
-               source_file, capabilities_json, support_status, file_available
-        FROM conversation_sessions
+        SELECT sessions.source, sessions.session_id, sessions.title, sessions.project, sessions.model,
+               COALESCE(NULLIF(sessions.started_at, ''), cursor_times.first_seen_at, '') AS started_at,
+               COALESCE(NULLIF(sessions.ended_at, ''), cursor_times.last_seen_at, cursor_times.first_seen_at, '') AS ended_at,
+               sessions.source_file, sessions.capabilities_json, sessions.support_status, sessions.file_available
+        FROM conversation_sessions AS sessions
+        LEFT JOIN cursor_sessions AS cursor_times
+          ON sessions.source = 'cursor_agent' AND sessions.session_id = cursor_times.session_id
         WHERE {predicate}
-        ORDER BY ended_at DESC, source ASC, session_id ASC
+        ORDER BY COALESCE(
+            NULLIF(sessions.ended_at, ''),
+            NULLIF(sessions.started_at, ''),
+            cursor_times.last_seen_at,
+            cursor_times.first_seen_at,
+            ''
+        ) DESC, sessions.source ASC, sessions.session_id ASC
         LIMIT ? OFFSET ?
         "#
     );
@@ -812,11 +822,12 @@ pub(crate) fn load_prepared_detail(
         cursor_session_stats,
     } = prepared;
     let source_path = Path::new(&session.source_file);
+    let cursor_behavior = cursor_behavior_dto(home, cursor_session_stats.as_ref());
     if source == Source::CursorAgent
         && (!cursor::is_native_transcript(source_path) || !source_path.is_file())
     {
         session.file_available = false;
-        let events = cursor_supplemental_events(&session, cursor_session_stats.as_ref(), true);
+        let events = cursor_missing_transcript_events(&session);
         return Ok(ConversationDetailDto {
             revision: cursor_metadata_revision(&usage_records, cursor_session_stats.as_ref()),
             session,
@@ -824,6 +835,7 @@ pub(crate) fn load_prepared_detail(
             events,
             usage_records,
             agent_relations,
+            cursor_behavior,
         });
     }
     let paths = trusted_paths_for_session(home, source, &session)?;
@@ -833,11 +845,6 @@ pub(crate) fn load_prepared_detail(
     session.file_available = true;
     session.source_files = parsed.session.source_files.clone();
     let mut events = parsed.events;
-    events.extend(cursor_supplemental_events(
-        &session,
-        cursor_session_stats.as_ref(),
-        false,
-    ));
     events.sort_by(compare_event_order);
     for (sequence, event) in events.iter_mut().enumerate() {
         event.sequence = sequence as u32;
@@ -849,6 +856,7 @@ pub(crate) fn load_prepared_detail(
         events,
         usage_records,
         agent_relations,
+        cursor_behavior,
     })
 }
 
@@ -869,56 +877,26 @@ fn load_exact_cursor_session(
     }
 }
 
-fn cursor_supplemental_events(
-    session: &ConversationSessionRow,
+fn cursor_behavior_dto(
+    home: &Path,
     stats: Option<&CursorSessionRecord>,
-    transcript_missing: bool,
-) -> Vec<ConversationEvent> {
-    let mut events = Vec::new();
-    if transcript_missing {
-        let mut event = semantic_event(
-            0,
-            EventKind::SystemStatus,
-            &session.ended_at,
-            None,
-            Some("transcript_missing".to_string()),
-            Some("Cursor transcript 不可读取；仅展示确定性关联的用量与状态".to_string()),
-            serde_json::json!({"session_id": session.session_id}),
-        );
-        event.event_id = format!("cursor-transcript-missing:{}", session.session_id);
-        event.source_file = session.source_file.clone();
-        events.push(event);
-    }
-    if let Some(stats) = stats {
-        let mut event = semantic_event(
-            events.len(),
-            EventKind::SystemStatus,
-            stats
-                .last_seen_at
-                .as_deref()
-                .or(stats.first_seen_at.as_deref())
-                .unwrap_or(""),
-            None,
-            Some("cursor_session_stats".to_string()),
-            None,
-            serde_json::json!({
-                "session_id": stats.session_id,
-                "turn_count": stats.turn_count,
-                "success_count": stats.success_count,
-                "error_count": stats.error_count,
-                "aborted_count": stats.aborted_count,
-                "user_prompt_count": stats.user_prompt_count,
-                "subagent_count": stats.subagent_count,
-                "tool_calls": serde_json::from_str::<Value>(&stats.tool_calls_json)
-                    .unwrap_or_else(|_| serde_json::json!({})),
-                "files_touched": stats.files_touched,
-            }),
-        );
-        event.event_id = format!("cursor-session-stats:{}", session.session_id);
-        event.source_file = stats.source_file.clone();
-        events.push(event);
-    }
-    events
+) -> Option<CursorSessionDetailDto> {
+    stats.map(|record| crate::cursor_session_detail::detail_from_record(home, record))
+}
+
+fn cursor_missing_transcript_events(session: &ConversationSessionRow) -> Vec<ConversationEvent> {
+    let mut event = semantic_event(
+        0,
+        EventKind::SystemStatus,
+        &session.ended_at,
+        None,
+        Some("transcript_missing".to_string()),
+        Some("Cursor transcript 不可读取；仅展示确定性关联的用量与状态".to_string()),
+        serde_json::json!({"session_id": session.session_id}),
+    );
+    event.event_id = format!("cursor-transcript-missing:{}", session.session_id);
+    event.source_file = session.source_file.clone();
+    vec![event]
 }
 
 fn cursor_metadata_revision(
@@ -1423,7 +1401,8 @@ fn parse_codex_file_mode(
         title = messages
             .iter()
             .find(|message| message.role == "user")
-            .map(|message| truncate_title(&message.text))
+            .map(|message| truncate_title(&strip_prompt_wrappers(&message.text)))
+            .filter(|title| !title.is_empty())
             .unwrap_or_else(|| session_id.clone());
     }
     let mut capabilities = Vec::new();
@@ -1660,7 +1639,8 @@ fn finish_source_conversation(
         title = messages
             .iter()
             .find(|message| message.role == "user")
-            .map(|message| truncate_title(&message.text))
+            .map(|message| truncate_title(&strip_prompt_wrappers(&message.text)))
+            .filter(|title| !title.is_empty())
             .unwrap_or_else(|| session_id.clone());
     }
     let mut capabilities = Vec::new();
@@ -2609,6 +2589,29 @@ fn text_field(value: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string()
+}
+
+fn strip_prompt_wrappers(text: &str) -> String {
+    let mut remaining = text;
+    let mut stripped = String::new();
+    while let Some(start) = remaining.find("<timestamp>") {
+        stripped.push_str(&remaining[..start]);
+        let after = &remaining[start + "<timestamp>".len()..];
+        match after.find("</timestamp>") {
+            Some(end) => remaining = &after[end + "</timestamp>".len()..],
+            None => {
+                remaining = "";
+                break;
+            }
+        }
+    }
+    stripped.push_str(remaining);
+    stripped
+        .replace("<user_query>", " ")
+        .replace("</user_query>", " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn truncate_title(text: &str) -> String {

@@ -20,7 +20,7 @@ import {
   relativeTime,
 } from "../lib/format";
 import type { CursorSessionSummaryDto } from "../types";
-import { CursorSessionDetail } from "./CursorSessionDetail";
+import type { ConversationOpenRequest } from "./type";
 import { CursorSessionTable } from "./CursorSessionTable";
 import { DonutChart } from "./DonutChart";
 import { EmptyState } from "./EmptyState";
@@ -67,16 +67,17 @@ export function CursorSessionPanel({
   theme,
   revision,
   onError,
+  onOpenConversation,
 }: {
   summary: CursorSessionSummaryDto | null;
   loading?: boolean;
   theme: ResolvedTheme;
   revision: number;
   onError?: (error: unknown) => void;
+  onOpenConversation: (session: ConversationOpenRequest) => void;
 }) {
   const data = summary ?? emptySummary();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [selectedSourceFile, setSelectedSourceFile] = useState<string | null>(null);
 
   const trendOption = useMemo(
     () => cursorSessionDailyOption(data.daily, theme),
@@ -107,9 +108,7 @@ export function CursorSessionPanel({
   }, [data.top_tools, theme]);
 
   const toolGroupOption = useMemo(() => {
-    const labels = data.tool_groups
-      .map((row) => TOOL_GROUP_LABELS[row.name] ?? row.name)
-      .reverse();
+    const labels = data.tool_groups.map((row) => TOOL_GROUP_LABELS[row.name] ?? row.name).reverse();
     const values = data.tool_groups.map((row) => row.call_count).reverse();
     return breakdownBarOption(labels, values, theme);
   }, [data.tool_groups, theme]);
@@ -197,22 +196,13 @@ export function CursorSessionPanel({
         revision={revision}
         projectNames={data.by_project.map((row) => row.name)}
         selectedProject={selectedProject}
-        selectedSourceFile={selectedSourceFile}
         onSelectProject={setSelectedProject}
-        onSelectSession={(sourceFile) =>
-          setSelectedSourceFile((current) => (current === sourceFile ? null : sourceFile))
+        onSelectSession={(row) =>
+          onOpenConversation({ id: row.session_id, source: "cursor_agent" })
         }
         onError={onError}
       />
-      {selectedSourceFile ? (
-        <CursorSessionDetail
-          key={selectedSourceFile}
-          sourceFile={selectedSourceFile}
-          onError={onError}
-        />
-      ) : (
-        <p className="note">点击上方会话行查看工具、读写路径和哈希文件。</p>
-      )}
+      <p className="note">点击会话行打开对话记录，查看正文、工具、读写路径和哈希文件。</p>
 
       <section className="panel partition">
         <div className="panel-head">

@@ -1,5 +1,8 @@
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
+use chrono::{FixedOffset, NaiveDateTime, TimeZone};
 use serde_json::{json, Value};
 
 use super::*;
@@ -177,6 +180,16 @@ fn parse(
         sequence += 1;
     }
 
+    if started_at.is_empty() && ended_at.is_empty() {
+        let mtime = path_mtime_rfc3339(path);
+        started_at = mtime.clone();
+        ended_at = mtime;
+    } else if started_at.is_empty() {
+        started_at = ended_at.clone();
+    } else if ended_at.is_empty() {
+        ended_at = started_at.clone();
+    }
+
     let parsed = finish_source_conversation(
         Source::CursorAgent,
         path,
@@ -341,12 +354,85 @@ fn timestamp(value: &Value) -> String {
         value,
         &["timestamp", "created_at", "createdAt", "occurred_at"],
     );
-    if direct.is_empty() {
-        value
-            .get("message")
-            .map(|message| first_text(message, &["timestamp", "created_at", "createdAt"]))
-            .unwrap_or_default()
-    } else {
-        direct
+    if !direct.is_empty() {
+        return direct;
     }
+    let nested = value
+        .get("message")
+        .map(|message| first_text(message, &["timestamp", "created_at", "createdAt"]))
+        .unwrap_or_default();
+    if !nested.is_empty() {
+        return nested;
+    }
+    value
+        .get("message")
+        .map(content_text)
+        .map(|text| parse_embedded_timestamp(&text))
+        .unwrap_or_default()
+}
+
+fn parse_embedded_timestamp(text: &str) -> String {
+    let Some(inner) = text
+        .split("<timestamp>")
+        .nth(1)
+        .and_then(|rest| rest.split("</timestamp>").next())
+    else {
+        return String::new();
+    };
+    parse_cursor_clock(inner.trim()).unwrap_or_default()
+}
+
+fn parse_cursor_clock(raw: &str) -> Option<String> {
+    let (datetime, tz) = raw
+        .rsplit_once(" (")
+        .map(|(datetime, tz)| (datetime.trim(), tz.trim().trim_end_matches(')')))
+        .unwrap_or((raw, "UTC"));
+    let naive = NaiveDateTime::parse_from_str(datetime, "%A, %B %d, %Y, %I:%M %p")
+        .or_else(|_| NaiveDateTime::parse_from_str(datetime, "%A, %B %e, %Y, %I:%M %p"))
+        .ok()?;
+    let offset = parse_utc_offset_label(tz)?;
+    Some(offset.from_local_datetime(&naive).single()?.to_rfc3339())
+}
+
+fn parse_utc_offset_label(label: &str) -> Option<FixedOffset> {
+    let label = label.trim();
+    if label.eq_ignore_ascii_case("utc") || label.eq_ignore_ascii_case("gmt") {
+        return FixedOffset::east_opt(0);
+    }
+    let rest = label
+        .strip_prefix("UTC")
+        .or_else(|| label.strip_prefix("GMT"))
+        .or_else(|| label.strip_prefix("utc"))
+        .or_else(|| label.strip_prefix("gmt"))?;
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return FixedOffset::east_opt(0);
+    }
+    let sign = if rest.starts_with('-') { -1 } else { 1 };
+    let digits = rest.trim_start_matches(['+', '-']).replace(':', "");
+    let seconds = if digits.len() <= 2 {
+        digits.parse::<i32>().ok()? * 3600
+    } else if digits.len() == 4 {
+        let hours = digits[..2].parse::<i32>().ok()?;
+        let minutes = digits[2..].parse::<i32>().ok()?;
+        hours * 3600 + minutes * 60
+    } else {
+        return None;
+    };
+    FixedOffset::east_opt(sign * seconds)
+}
+
+fn path_mtime_rfc3339(path: &Path) -> String {
+    let Ok(metadata) = fs::metadata(path) else {
+        return String::new();
+    };
+    let Ok(modified) = metadata.modified() else {
+        return String::new();
+    };
+    let Ok(duration) = modified.duration_since(UNIX_EPOCH) else {
+        return String::new();
+    };
+    chrono::DateTime::from_timestamp(duration.as_secs() as i64, duration.subsec_nanos())
+        .map(|time| time.to_rfc3339())
+        .unwrap_or_default()
 }

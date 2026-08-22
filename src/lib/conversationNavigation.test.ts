@@ -37,6 +37,18 @@ describe("conversation navigation", () => {
     expect(shouldRequestConversationDetail(session("available"))).toBe(true);
   });
 
+  it("keeps behavior as a detail tab without losing the events frame", () => {
+    let state = transitionConversationNavigation(initialConversationNavigationState, {
+      type: "open_root",
+      session: session("cursor"),
+    });
+    state = transitionConversationNavigation(state, { type: "set_tab", tab: "behavior" });
+    expect(currentConversationFrame(state)).toMatchObject({
+      session: { session_id: "cursor" },
+      tab: "behavior",
+    });
+  });
+
   it("restores the parent tab, expansion, scroll, and relationship focus after child detail", () => {
     let state = transitionConversationNavigation(initialConversationNavigationState, {
       type: "open_root",

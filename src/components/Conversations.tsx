@@ -51,6 +51,7 @@ import type {
 import { ConversationCatalogRow } from "./ConversationCatalogRow";
 import { ConversationDetailHead } from "./ConversationDetailHead";
 import { ConversationJumpBar } from "./ConversationJumpBar";
+import { CursorSessionDetail } from "./CursorSessionDetail";
 import { EmptyState } from "./EmptyState";
 import { LoadingOverlay } from "./LoadingOverlay";
 import { Pagination } from "./Pagination";
@@ -69,10 +70,14 @@ type ConversationDetailRequestIntent = {
   generation: number;
   followUpdates: boolean;
 };
-const DETAIL_TABS = [
+const DETAIL_TABS: { value: ConversationDetailTab; label: string }[] = [
   { value: "events", label: "完整事件" },
   { value: "usage", label: "用量明细" },
-] as const;
+];
+const BEHAVIOR_TAB: { value: ConversationDetailTab; label: string } = {
+  value: "behavior",
+  label: "行为统计",
+};
 
 const AGENT_LINK_LABELS = {
   linked: "已关联",
@@ -1471,7 +1476,7 @@ export function Conversations({
           <div className="conversation-detail-tabs">
             <Segmented
               value={detailTab}
-              options={DETAIL_TABS}
+              options={detail?.cursor_behavior ? [...DETAIL_TABS, BEHAVIOR_TAB] : DETAIL_TABS}
               disabled={detailLoading || Boolean(detailError)}
               ariaLabel="对话详情视图"
               onChange={handleDetailTabChange}
@@ -1480,7 +1485,9 @@ export function Conversations({
               <span className="muted">
                 {detailTab === "events"
                   ? `${detail.events.length} 条事件`
-                  : `${detail.usage_records.length} 条记录`}
+                  : detailTab === "behavior"
+                    ? "Cursor 行为聚合"
+                    : `${detail.usage_records.length} 条记录`}
               </span>
             ) : null}
           </div>
@@ -1495,7 +1502,7 @@ export function Conversations({
                 </strong>
                 <span>
                   {session.source === "cursor_agent"
-                    ? "仍可查看确定性关联的用量与会话状态。"
+                    ? "仍可查看确定性关联的用量、行为统计与会话状态。"
                     : detail
                       ? "当前显示的是已加载快照；文件恢复后将自动更新。"
                       : "仍可查看目录元数据；文件恢复后将自动读取详情。"}
@@ -1525,7 +1532,11 @@ export function Conversations({
               <Button onClick={() => fetchDetail(selected)}>重新读取</Button>
             </div>
           ) : detail ? (
-            detailTab === "events" ? (
+            detailTab === "usage" ? (
+              <UsageRecordsTable records={detail.usage_records} />
+            ) : detailTab === "behavior" && detail.cursor_behavior ? (
+              <CursorSessionDetail detail={detail.cursor_behavior} embedded />
+            ) : (
               <div className="conversation-events-view">
                 {detail.agent_relations.capability_status !== "complete" ? (
                   <div
@@ -1561,8 +1572,6 @@ export function Conversations({
                   onJumpBottom={() => jumpTimeline("bottom")}
                 />
               </div>
-            ) : (
-              <UsageRecordsTable records={detail.usage_records} />
             )
           ) : null}
         </section>
@@ -1644,7 +1653,7 @@ export function Conversations({
                       <EmptyState
                         icon="chat"
                         title="当前条件下暂无对话记录"
-                        hint="请确认本机已有 Codex 会话，并执行一次刷新。"
+                        hint="请确认本机已有会话文件，并执行一次刷新。Cursor 与其它来源共用此目录。"
                       />
                     )}
                   </td>

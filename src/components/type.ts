@@ -2,7 +2,11 @@ import type { ReactElement } from "react";
 import type { ThemeMode } from "../hooks/useTheme";
 import type { IconName } from "../icons";
 import type { SettingsTabId } from "../lib/type";
-import type { ConversationSessionRow } from "../types";
+import type {
+  ConversationSessionRow,
+  CursorSessionDetailDto,
+  CursorSessionListRow,
+} from "../types";
 
 export type ThemeOption = {
   value: ThemeMode;
@@ -43,6 +47,18 @@ export type ConversationCatalogRowProps = {
   row: ConversationSessionRow;
   maxTotal: number;
   onOpen: (row: ConversationSessionRow) => void;
+};
+
+export type CursorSessionDetailProps = {
+  detail: CursorSessionDetailDto;
+  embedded?: boolean;
+};
+
+export type CursorSessionTableSelect = (row: CursorSessionListRow) => void;
+
+export type ConversationOpenRequest = {
+  id: string;
+  source: string;
 };
 
 export type ConversationDetailHeadProps = {

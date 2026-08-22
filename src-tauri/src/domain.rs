@@ -860,6 +860,9 @@ pub struct ConversationDetailDto {
     pub events: Vec<ConversationEvent>,
     pub usage_records: Vec<UsageRecord>,
     pub agent_relations: ConversationAgentRelations,
+    /// Cursor 本机行为聚合；非 Cursor 或对不上 `cursor_sessions` 时为空。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_behavior: Option<CursorSessionDetailDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
