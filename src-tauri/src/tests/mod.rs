@@ -14,6 +14,7 @@ mod cursor_conversation;
 mod cursor_credentials;
 mod cursor_quota;
 mod cursor_session;
+mod devin_quota;
 mod droid_quota;
 mod dsh_droid_conversation;
 mod grok_quota;

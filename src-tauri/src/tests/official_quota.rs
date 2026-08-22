@@ -168,6 +168,10 @@ fn apply_fetch_results_isolates_provider_failures() {
                 crate::domain::OfficialQuotaProvider::Copilot,
                 Err("未找到 GitHub Copilot 登录态".into()),
             ),
+            (
+                crate::domain::OfficialQuotaProvider::Devin,
+                Err("尚未登录 Devin / Windsurf".into()),
+            ),
         ],
     )
     .unwrap();
@@ -201,6 +205,7 @@ fn apply_fetch_results_isolates_provider_failures() {
     for (provider, message) in [
         ("opencode", "尚未登录 OpenCode Zen"),
         ("copilot", "未找到 GitHub Copilot 登录态"),
+        ("devin", "尚未登录 Devin / Windsurf"),
     ] {
         let row = store::load_official_quota_row(&conn, provider)
             .unwrap()

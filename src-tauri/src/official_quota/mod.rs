@@ -5,6 +5,7 @@ pub mod codex;
 pub mod codex_usage;
 pub mod copilot;
 pub mod cursor;
+pub mod devin;
 pub mod droid;
 pub mod grok;
 pub(crate) mod grok_grpc;
@@ -189,6 +190,7 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
         OfficialQuotaProvider::Antigravity => antigravity::fetch_rate_limits(),
         OfficialQuotaProvider::OpenCode => opencode::fetch_usage(),
         OfficialQuotaProvider::Copilot => copilot::fetch_usage(),
+        OfficialQuotaProvider::Devin => devin::fetch_usage(),
     }
 }
 

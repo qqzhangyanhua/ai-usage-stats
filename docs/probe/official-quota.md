@@ -152,6 +152,32 @@ EU 区是 `https://api.eu.factory.ai`，当前不自动识别。
 
 组织账单 `orgs/{org}/settings/billing/usage/summary` 当前不采。
 
+## Devin / Windsurf
+
+Cognition 收购 Windsurf 后统一发 Devin 凭证，两者是同一条链路。
+
+凭证在 VSCode 风格 `state.vscdb` 的 `windsurfAuthStatus`（和 Antigravity 同构的 `{apiKey, userStatusProtoBinaryBase64}`），`apiKey` 形如 `devin-…`，明文。**客户端目录两边都要找**：装 Windsurf 的在 `Windsurf/`，装 Devin 的在 `Devin/`。
+
+```
+POST https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus
+Content-Type: application/json
+Connect-Protocol-Version: 1
+{"metadata":{"apiKey":"devin-…","ideName":"devin","ideVersion":"1.108.2",
+             "extensionName":"devin","extensionVersion":"1.108.2","locale":"en"}}
+```
+
+**apiKey 走 body 的 metadata，不是 Authorization 头**（Connect 协议）。
+
+响应 `userStatus.planStatus`：
+
+- `dailyQuotaRemainingPercent` / `weeklyQuotaRemainingPercent` —— **剩余**口径，取反才是已用
+- `dailyQuotaResetAtUnix` / `weeklyQuotaResetAtUnix` —— epoch 秒
+- **数字可能被包成字符串**（`"100"`），两种都要认
+- `planInfo.hideDailyQuota` 为 true 时藏掉日额度，但**周额度也没有时不能一起藏**——那日额度就是唯一有意义的一条
+- `planInfo.planName` / `teamsTier`、`overageBalanceMicros` 当前不采
+
+服务端地址可被客户端配置覆盖（`windsurf_auth.apiServerUrl`，存在加密的 `secret://` 条目里），当前只用默认值。
+
 ## Grok CLI-proxy billing
 
 读取本机 `~/.grok/auth.json`（`GROK_HOME` 可覆盖）里未过期的会话 token。优先 `https://auth.x.ai…` 作用域，其次 `https://accounts.x.ai/sign-in`。token 字段为 `key`（兼容 `access_token`）。跳过 `web_login` 与纯 API key（`xai::api_key` / `auth_mode=api_key`）。

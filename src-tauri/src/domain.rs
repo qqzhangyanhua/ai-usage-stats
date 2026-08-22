@@ -158,10 +158,11 @@ pub enum OfficialQuotaProvider {
     Antigravity,
     OpenCode,
     Copilot,
+    Devin,
 }
 
 impl OfficialQuotaProvider {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Claude,
         Self::Codex,
         Self::Cursor,
@@ -170,6 +171,7 @@ impl OfficialQuotaProvider {
         Self::Antigravity,
         Self::OpenCode,
         Self::Copilot,
+        Self::Devin,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -182,6 +184,7 @@ impl OfficialQuotaProvider {
             Self::Antigravity => "antigravity",
             Self::OpenCode => "opencode",
             Self::Copilot => "copilot",
+            Self::Devin => "devin",
         }
     }
 
@@ -195,6 +198,7 @@ impl OfficialQuotaProvider {
             Self::Antigravity => "Antigravity",
             Self::OpenCode => "OpenCode",
             Self::Copilot => "Copilot",
+            Self::Devin => "Devin",
         }
     }
 
@@ -208,6 +212,7 @@ impl OfficialQuotaProvider {
             "antigravity" => Some(Self::Antigravity),
             "opencode" => Some(Self::OpenCode),
             "copilot" => Some(Self::Copilot),
+            "devin" => Some(Self::Devin),
             _ => None,
         }
     }
