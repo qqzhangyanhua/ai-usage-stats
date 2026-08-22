@@ -87,7 +87,9 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
         <div className="panel-head">
           <div>
             <h2>应用趋势堆叠图</h2>
-            <p className="panel-note">查看各应用在总 Token 中的时间分布，遵循本页筛选。</p>
+            <p className="panel-note">
+              查看各应用在总 Token 中的时间分布。Cursor 为账号用量，不计入上方本机效率卡片。
+            </p>
           </div>
           <GrainSwitch value={grain} onChange={setGrain} />
         </div>
@@ -104,7 +106,9 @@ export const ApplicationAnalytics = memo(function ApplicationAnalytics({
         <div className="panel-head">
           <div>
             <h2>应用效率明细</h2>
-            <p className="panel-note">按应用比较缓存复用、单会话规模与推理开销。</p>
+            <p className="panel-note">
+              按应用比较缓存复用、单会话规模与推理开销。Cursor 会话数按账号事件计。
+            </p>
           </div>
           <ExportButton
             filename="应用效率"

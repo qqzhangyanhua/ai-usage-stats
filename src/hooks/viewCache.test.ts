@@ -71,7 +71,7 @@ describe("filtersEqual", () => {
 });
 
 describe("syncSourceProjectFilters", () => {
-  it("copies source and project to every view without touching time or model", () => {
+  it("copies project to every view and usage sources to non-conversation views", () => {
     const scopes = initialViewScopes();
     scopes.overview = {
       filter: { ...filter, from: "2026-08-01", to: "2026-08-07", models: ["gpt-5"] },
@@ -82,7 +82,7 @@ describe("syncSourceProjectFilters", () => {
       preset: "all",
     };
 
-    const next = syncSourceProjectFilters(scopes, ["claude"], ["/workspace/app"]);
+    const next = syncSourceProjectFilters(scopes, ["claude"], ["/workspace/app"], "overview");
 
     expect(next.overview.filter).toEqual({
       ...filter,
@@ -95,13 +95,33 @@ describe("syncSourceProjectFilters", () => {
     expect(next.overview.preset).toBe("7");
     expect(next.trend.filter.sources).toEqual(["claude"]);
     expect(next.trend.filter.projects).toEqual(["/workspace/app"]);
-    expect(next.conversations.filter.sources).toEqual(["claude"]);
+    expect(next.conversations.filter.sources).toEqual([]);
     expect(next.conversations.filter.projects).toEqual(["/workspace/app"]);
+  });
+
+  it("keeps usage sources unchanged when the conversation source filter changes", () => {
+    const scopes = initialViewScopes();
+    scopes.overview = {
+      filter: { ...filter, sources: ["codex"] },
+      preset: "all",
+    };
+
+    const next = syncSourceProjectFilters(
+      scopes,
+      ["cursor_agent"],
+      ["/workspace/app"],
+      "conversations",
+    );
+
+    expect(next.conversations.filter.sources).toEqual(["cursor_agent"]);
+    expect(next.conversations.filter.projects).toEqual(["/workspace/app"]);
+    expect(next.overview.filter.sources).toEqual(["codex"]);
+    expect(next.overview.filter.projects).toEqual(["/workspace/app"]);
   });
 
   it("returns the same object when source and project already match", () => {
     const scopes = initialViewScopes();
-    expect(syncSourceProjectFilters(scopes, [], [])).toBe(scopes);
+    expect(syncSourceProjectFilters(scopes, [], [], "overview")).toBe(scopes);
   });
 });
 

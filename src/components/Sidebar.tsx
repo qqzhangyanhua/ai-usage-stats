@@ -145,7 +145,7 @@ export function viewTitle(view: View): { title: string; subtitle: string } {
     case "trend":
       return { title: "使用统计", subtitle: "按时间查看 Token 消耗" };
     case "conversations":
-      return { title: "对话记录", subtitle: "本地会话正文，按需读取原始文件" };
+      return { title: "对话记录", subtitle: "本地会话正文，含 Cursor Agent" };
     case "model":
       return { title: "模型统计", subtitle: "按模型拆分 Token 与费用" };
     case "project":

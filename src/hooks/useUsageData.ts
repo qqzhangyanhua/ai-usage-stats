@@ -356,6 +356,7 @@ export function useUsageData() {
           },
           next.sources,
           next.projects,
+          target,
         ),
       );
       if (target === view) {

@@ -3,7 +3,12 @@ import { Icon, type IconName } from "../icons";
 import { useAnchoredPanel } from "../hooks/useAnchoredPanel";
 import { useDismissible } from "../hooks/useDismissible";
 import {
+  conversationApplicationLabel,
+  conversationSourceOptions,
+} from "../lib/conversationDisplay";
+import {
   applicationLabel,
+  applicationSourceOptions,
   customRangeFilter,
   formatRangeLabel,
   projectLabel,
@@ -78,6 +83,13 @@ export function Topbar({
     view === "settings";
   const showSharedDimensionFilters = !hideAllFilters;
   const showUsageOnlyFilters = showSharedDimensionFilters && view !== "conversations";
+  const sourceOptions =
+    view === "conversations"
+      ? conversationSourceOptions(options.sources)
+      : view === "application" || view === "trend" || view === "project"
+        ? applicationSourceOptions(options.sources)
+        : options.sources;
+  const sourceLabel = view === "conversations" ? conversationApplicationLabel : applicationLabel;
   const committedFrom = (filter.from ?? "").slice(0, 10);
   const committedTo = (filter.to ?? "").slice(0, 10);
   const rangeKey = `${preset}:${filter.from ?? ""}:${filter.to ?? ""}`;
@@ -182,9 +194,9 @@ export function Topbar({
             <MultiSelect
               label="全部应用"
               icon="filter"
-              options={options.sources}
+              options={sourceOptions}
               selected={filter.sources}
-              renderLabel={applicationLabel}
+              renderLabel={sourceLabel}
               renderIcon={(source) => <SourceIcon source={source} size={14} />}
               disabled={disabled}
               onChange={(sources) => onChange({ ...filter, sources })}

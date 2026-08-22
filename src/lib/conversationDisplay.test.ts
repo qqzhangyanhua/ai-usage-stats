@@ -8,6 +8,7 @@ import {
   conversationRangeLabel,
   conversationRangeTitle,
   conversationSessionTime,
+  conversationSourceOptions,
   conversationStatusLabel,
 } from "./conversationDisplay";
 
@@ -41,6 +42,15 @@ describe("conversation display labels", () => {
   it("keeps Cursor Agent grouped with Cursor", () => {
     expect(conversationApplicationLabel("cursor_agent")).toBe("Cursor / Cursor Agent");
     expect(conversationApplicationLabel("codex")).toBe("Codex");
+  });
+
+  it("always offers Cursor Agent in the conversation source list", () => {
+    expect(conversationSourceOptions(["claude", "codex"])).toEqual([
+      "claude",
+      "codex",
+      "cursor_agent",
+    ]);
+    expect(conversationSourceOptions(["cursor_agent"])).toEqual(["cursor_agent"]);
   });
 
   it("translates experimental status and file-missing chips", () => {

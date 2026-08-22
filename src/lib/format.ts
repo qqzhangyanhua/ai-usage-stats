@@ -107,6 +107,12 @@ export function applicationLabel(source: string): string {
   return applicationNames[source] ?? source;
 }
 
+export function applicationSourceOptions(usageSources: string[]): string[] {
+  const sources = new Set(usageSources);
+  sources.add("cursor");
+  return [...sources].sort();
+}
+
 export function projectLabel(path: string): string {
   if (!path) {
     return "未标注";

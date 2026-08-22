@@ -15,6 +15,12 @@ export function conversationApplicationLabel(source: string): string {
   return source === "cursor_agent" ? "Cursor / Cursor Agent" : applicationLabel(source);
 }
 
+export function conversationSourceOptions(usageSources: string[]): string[] {
+  const sources = new Set(usageSources);
+  sources.add("cursor_agent");
+  return [...sources].sort();
+}
+
 export function conversationStatusLabel(status: string): string {
   return status === "experimental" ? "实验性" : status;
 }

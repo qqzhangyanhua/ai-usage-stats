@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Filter } from "../types";
 import {
   applicationLabel,
+  applicationSourceOptions,
   weeklyCountLabel,
   customRangeFilter,
   deltaPct,
@@ -122,6 +123,11 @@ describe("applicationLabel", () => {
     expect(applicationLabel("droid")).toBe("Droid");
     expect(applicationLabel("antigravity")).toBe("Antigravity");
     expect(applicationLabel("devin")).toBe("Devin");
+  });
+
+  it("always offers Cursor in the application source list", () => {
+    expect(applicationSourceOptions(["claude", "codex"])).toEqual(["claude", "codex", "cursor"]);
+    expect(applicationSourceOptions(["cursor"])).toEqual(["cursor"]);
   });
 
   it("labels cursor weekly rows as events", () => {

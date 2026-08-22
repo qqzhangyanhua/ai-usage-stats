@@ -49,18 +49,27 @@ function sameItems(left: string[], right: string[]): boolean {
   return left.every((item) => other.has(item));
 }
 
-/** 项目 / 来源在各视图间共用；时间、模型、provider 仍按视图独立。 */
+/** 项目在各视图间共用。用量来源不覆盖对话记录来源：Cursor Agent 往往没有消耗记录。 */
 export function syncSourceProjectFilters(
   scopes: Record<View, ViewScope>,
   sources: string[],
   projects: string[],
+  origin: View,
 ): Record<View, ViewScope> {
   let changed = false;
   const next = { ...scopes };
   for (const view of views) {
     const scope = next[view];
+    const nextSources =
+      view === "conversations"
+        ? origin === "conversations"
+          ? sources
+          : scope.filter.sources
+        : origin === "conversations"
+          ? scope.filter.sources
+          : sources;
     if (
-      sameItems(scope.filter.sources, sources) &&
+      sameItems(scope.filter.sources, nextSources) &&
       sameItems(scope.filter.projects, projects)
     ) {
       continue;
@@ -68,7 +77,7 @@ export function syncSourceProjectFilters(
     changed = true;
     next[view] = {
       ...scope,
-      filter: { ...scope.filter, sources, projects },
+      filter: { ...scope.filter, sources: nextSources, projects },
     };
   }
   return changed ? next : scopes;

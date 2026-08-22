@@ -537,3 +537,218 @@ fn billing_windows_query_appends_cursor_weekly_from_account_cache() {
         .iter()
         .all(|window| window.source != "cursor"));
 }
+
+#[test]
+fn application_analytics_overlays_cursor_account_usage_without_touching_summary() {
+    use crate::domain::CursorUsageEvent;
+
+    let conn = store::open_memory().unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-16T09:00:00Z",
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            100,
+        )],
+    )
+    .unwrap();
+    store::upsert_cursor_account_events(
+        &conn,
+        &[
+            CursorUsageEvent {
+                occurred_at: "2026-08-16T10:00:00Z".into(),
+                model: "claude-4.5-sonnet".into(),
+                input_tokens: 80,
+                output_tokens: 20,
+                cache_read_tokens: 10,
+                cache_creation_tokens: 0,
+                is_headless: false,
+            },
+            CursorUsageEvent {
+                occurred_at: "2026-07-01T10:00:00Z".into(),
+                model: "claude-4.5-sonnet".into(),
+                input_tokens: 9_000,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+                is_headless: false,
+            },
+        ],
+    )
+    .unwrap();
+
+    let dto = query::application_analytics(
+        &conn,
+        &Filter {
+            from: Some("2026-08-01T00:00:00Z".into()),
+            to: Some("2026-08-31T23:59:59Z".into()),
+            sources: vec!["codex".into()],
+            ..Filter::default()
+        },
+        "day",
+    )
+    .unwrap();
+
+    assert_eq!(dto.summary.total_tokens, 100);
+    let cursor = dto
+        .by_application
+        .iter()
+        .find(|row| row.source == "cursor")
+        .expect("cursor application row");
+    assert_eq!(cursor.application, "Cursor");
+    assert_eq!(cursor.metrics.total_tokens, 110);
+    assert_eq!(cursor.metrics.session_count, 1);
+    let day = dto
+        .trend
+        .iter()
+        .find(|point| point.bucket == "2026-08-16")
+        .expect("cursor trend bucket");
+    assert_eq!(day.values["cursor"], 110);
+    let unlabeled = dto
+        .projects
+        .iter()
+        .find(|row| row.project == "（未标注）")
+        .expect("cursor unlabeled project");
+    assert_eq!(unlabeled.values["cursor"], 110);
+}
+
+#[test]
+fn trend_overlays_cursor_account_usage_into_matching_buckets() {
+    use crate::domain::CursorUsageEvent;
+
+    let conn = store::open_memory().unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-16T09:00:00Z",
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            100,
+        )],
+    )
+    .unwrap();
+    store::upsert_cursor_account_events(
+        &conn,
+        &[
+            CursorUsageEvent {
+                occurred_at: "2026-08-16T10:00:00Z".into(),
+                model: "claude-4.5-sonnet".into(),
+                input_tokens: 80,
+                output_tokens: 20,
+                cache_read_tokens: 10,
+                cache_creation_tokens: 0,
+                is_headless: false,
+            },
+            CursorUsageEvent {
+                occurred_at: "2026-07-01T10:00:00Z".into(),
+                model: "claude-4.5-sonnet".into(),
+                input_tokens: 9_000,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+                is_headless: false,
+            },
+        ],
+    )
+    .unwrap();
+
+    let points = query::trend(
+        &conn,
+        &Filter {
+            from: Some("2026-08-01T00:00:00Z".into()),
+            to: Some("2026-08-31T23:59:59Z".into()),
+            ..Filter::default()
+        },
+        &PriceTable::default(),
+        "day",
+    )
+    .unwrap();
+    assert_eq!(points.len(), 1);
+    assert_eq!(points[0].bucket, "2026-08-16");
+    assert_eq!(points[0].total_tokens, 210);
+    assert_eq!(points[0].input_tokens, 180);
+    assert_eq!(points[0].output_tokens, 20);
+    assert_eq!(points[0].cache_read_tokens, 10);
+}
+
+#[test]
+fn project_breakdown_adds_cursor_account_usage_as_its_own_row() {
+    use crate::domain::CursorUsageEvent;
+
+    let conn = store::open_memory().unwrap();
+    store::insert_records(
+        &conn,
+        &[rec(
+            "2026-08-16T09:00:00Z",
+            Source::Codex,
+            "gpt-5.1-codex",
+            "official",
+            "/proj/a",
+            "s1",
+            100,
+        )],
+    )
+    .unwrap();
+    store::upsert_cursor_account_events(
+        &conn,
+        &[
+            CursorUsageEvent {
+                occurred_at: "2026-08-16T10:00:00Z".into(),
+                model: "claude-4.5-sonnet".into(),
+                input_tokens: 80,
+                output_tokens: 20,
+                cache_read_tokens: 10,
+                cache_creation_tokens: 0,
+                is_headless: false,
+            },
+            CursorUsageEvent {
+                occurred_at: "2026-07-01T10:00:00Z".into(),
+                model: "claude-4.5-sonnet".into(),
+                input_tokens: 9_000,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_creation_tokens: 0,
+                is_headless: false,
+            },
+        ],
+    )
+    .unwrap();
+
+    let rows = query::breakdown(
+        &conn,
+        &Filter {
+            from: Some("2026-08-01T00:00:00Z".into()),
+            to: Some("2026-08-31T23:59:59Z".into()),
+            ..Filter::default()
+        },
+        &PriceTable::default(),
+        "project",
+    )
+    .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].name, "Cursor");
+    assert_eq!(rows[0].total_tokens, 110);
+    assert!((rows[0].share - 110.0 / 210.0).abs() < 1e-9);
+    assert_eq!(rows[1].name, "/proj/a");
+    assert_eq!(rows[1].total_tokens, 100);
+
+    let models = query::breakdown(
+        &conn,
+        &Filter {
+            from: Some("2026-08-01T00:00:00Z".into()),
+            to: Some("2026-08-31T23:59:59Z".into()),
+            ..Filter::default()
+        },
+        &PriceTable::default(),
+        "model",
+    )
+    .unwrap();
+    assert!(models.iter().all(|row| row.name != "Cursor"));
+}

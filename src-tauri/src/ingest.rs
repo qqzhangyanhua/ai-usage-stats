@@ -359,8 +359,22 @@ pub(crate) fn ingest_all_with_overrides(
     let mut report = ingest_all_inner(&transaction, home, overrides)?;
     report.records_removed += removed_unknown;
     report.partial_success = report.files_failed > 0 || !report.conversation_issues.is_empty();
+    sync_rollup(&transaction, &report)?;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(report)
+}
+
+/// 消耗记录有增删时重建预聚合表。
+///
+/// 放在提交前的同一个事务里：预聚合表和 `usage_records` 必须一起可见，
+/// 中间态被查询读到就是错的数字。缓存全命中（既没写入也没删除）时跳过重建，
+/// 那种情况下托盘每几分钟一次的心跳不必付这份开销。
+fn sync_rollup(conn: &Connection, report: &IngestReport) -> Result<(), String> {
+    if report.records_written == 0 && report.records_removed == 0 {
+        return Ok(());
+    }
+    store::rebuild_rollup(conn)?;
+    Ok(())
 }
 
 pub fn source_diagnostics(conn: &Connection, home: &Path) -> Result<Vec<SourceDiagnostic>, String> {
@@ -455,6 +469,8 @@ pub fn rebuild_cache(
         }
     }
     report.partial_success = report.files_failed > 0 || !report.conversation_issues.is_empty();
+    // 重建缓存必然动了记录，不走 sync_rollup 的「没变就跳过」判断。
+    store::rebuild_rollup(&transaction)?;
     transaction.commit().map_err(|e| e.to_string())?;
     Ok(report)
 }

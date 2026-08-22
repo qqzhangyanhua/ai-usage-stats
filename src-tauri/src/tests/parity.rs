@@ -5,6 +5,7 @@ fn sql_queries_match_in_memory_aggregates() {
     let conn = store::open_memory().unwrap();
     let records = diverse_records();
     store::insert_records(&conn, &records).unwrap();
+    store::rebuild_rollup(&conn).unwrap();
     let prices = diverse_prices();
 
     // overview

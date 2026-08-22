@@ -129,7 +129,7 @@ export const Trend = memo(function Trend({
           <div>
             <h2>时间趋势</h2>
             <p className="panel-note">
-              按{grainUnit[grain]}查看输入 / 输出 Token
+              按{grainUnit[grain]}查看输入 / 输出 Token。Cursor 为账号用量，叠加在本机消耗之上
               {onRangeSelect ? "。点击数据点可下钻到该时段" : ""}
               {onRangeBack ? "，返回上一级可回到之前的范围" : ""}
             </p>

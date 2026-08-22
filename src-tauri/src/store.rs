@@ -80,6 +80,43 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         -- a full scan + occurred_at index-only scan.
         CREATE INDEX IF NOT EXISTS idx_usage_source_occurred ON usage_records(source, occurred_at);
 
+        -- 按天预聚合，给不带时间过滤的全量查询用（首屏默认就是「全部」）。
+        --
+        -- 键里带 session_id 看着反直觉，实测却几乎不涨行数：一个会话通常落在同一天、
+        -- 用同一个模型和项目。17 万行原始记录聚成 943 行（不含 session）或 3031 行
+        -- （含 session），57:1 的压缩换来 COUNT(DISTINCT session) 和 top_sessions
+        -- 也能走这张表，不必再为会话维度单开一张。
+        --
+        -- has_native 进主键，是为了让「native_cost 优先，否则按 token 计价」这条规则
+        -- 在聚合后依然成立：两类行分开存，各自的 token 和不会混。实测只多出 4 行。
+        CREATE TABLE IF NOT EXISTS usage_rollup (
+            day TEXT NOT NULL,
+            source TEXT NOT NULL,
+            model TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            project TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            has_native INTEGER NOT NULL,
+            input_tokens INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            cache_read_tokens INTEGER NOT NULL,
+            cache_creation_tokens INTEGER NOT NULL,
+            reasoning_tokens INTEGER NOT NULL,
+            total_tokens INTEGER NOT NULL,
+            native_cost REAL NOT NULL DEFAULT 0,
+            record_count INTEGER NOT NULL,
+            first_at TEXT NOT NULL,
+            last_at TEXT NOT NULL,
+            -- 「最晚非空」排序键，与 query.rs 的 latest_nonempty_key_sql 同构，
+            -- 这样上层还能继续用 MAX() 跨行归并出会话级的展示标签。
+            file_key TEXT,
+            PRIMARY KEY (day, source, session_id, model, provider, project, has_native)
+        );
+        CREATE INDEX IF NOT EXISTS idx_usage_rollup_day ON usage_rollup(day);
+        CREATE INDEX IF NOT EXISTS idx_usage_rollup_model ON usage_rollup(model);
+        CREATE INDEX IF NOT EXISTS idx_usage_rollup_project ON usage_rollup(project);
+        CREATE INDEX IF NOT EXISTS idx_usage_rollup_session ON usage_rollup(source, session_id);
+
         CREATE TABLE IF NOT EXISTS ingested_files (
             path TEXT PRIMARY KEY,
             mtime_ms INTEGER NOT NULL,
@@ -320,7 +357,8 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         "#,
     )
     .map_err(|e| e.to_string())?;
-    migrate_lowercase_model(conn)
+    migrate_lowercase_model(conn)?;
+    ensure_rollup_initialized(conn)
 }
 
 /// `insert_records` 从此保证写入的 `model` 是小写，价格 JOIN 才能直接比较列值。
@@ -418,6 +456,72 @@ fn ensure_column(
         .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// 预聚合表为空但原始表有数据时补建一次。
+///
+/// 覆盖两个「表建好了却没内容」的入口：老库第一次升到带 `usage_rollup` 的版本，
+/// 以及从不含该表的旧备份恢复。两种情况下 `CREATE TABLE IF NOT EXISTS` 只会造出空表，
+/// 而查询会照着空表返回 0——界面上就是所有统计突然归零，且看不出原因。
+///
+/// 用 EXISTS 而不是比对两边行数：EXISTS 找到第一行就返回，几百万行的库上也是常数开销，
+/// 放在每次开库的路径上不心疼。真出现「有内容但不同步」，靠摄取那次重建兜底。
+fn ensure_rollup_initialized(conn: &Connection) -> Result<(), String> {
+    let has_rollup: bool = conn
+        .query_row("SELECT EXISTS(SELECT 1 FROM usage_rollup)", [], |row| {
+            row.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    if has_rollup {
+        return Ok(());
+    }
+    let has_records: bool = conn
+        .query_row("SELECT EXISTS(SELECT 1 FROM usage_records)", [], |row| {
+            row.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    if !has_records {
+        return Ok(());
+    }
+    rebuild_rollup(conn)?;
+    Ok(())
+}
+
+/// 从 `usage_records` 整表重建 `usage_rollup`。
+///
+/// 刻意做成全量重建而不是增量维护：预聚合表一旦和原始表对不上，界面会显示错误数字
+/// 且很难察觉，而增量维护的边界（删文件、改文件、跨天会话）正是最容易漏的地方。
+/// 实测 17 万行重建约 0.2s，摄取本身要扫几千个文件，这点开销可以忽略；调用方只在
+/// 真有记录写入或删除时才调，缓存全命中的摄取不会触发。
+pub fn rebuild_rollup(conn: &Connection) -> Result<u64, String> {
+    conn.execute("DELETE FROM usage_rollup", [])
+        .map_err(|e| e.to_string())?;
+    let written = conn
+        .execute(
+            r#"
+            INSERT INTO usage_rollup (
+                day, source, model, provider, project, session_id, has_native,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                reasoning_tokens, total_tokens, native_cost, record_count,
+                first_at, last_at, file_key
+            )
+            SELECT
+                substr(r.occurred_at, 1, 10),
+                r.source, r.model, r.provider, r.project, r.session_id,
+                CASE WHEN r.native_cost IS NOT NULL THEN 1 ELSE 0 END,
+                SUM(r.input_tokens), SUM(r.output_tokens), SUM(r.cache_read_tokens),
+                SUM(r.cache_creation_tokens), SUM(r.reasoning_tokens), SUM(r.total_tokens),
+                COALESCE(SUM(r.native_cost), 0),
+                COUNT(*),
+                MIN(r.occurred_at), MAX(r.occurred_at),
+                MAX(CASE WHEN r.source_file != '' THEN r.occurred_at || char(31) || r.source_file END)
+            FROM usage_records r
+            GROUP BY 1, 2, 3, 4, 5, 6, 7
+            "#,
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(written as u64)
 }
 
 /// 写入前把 `model` 归一化成小写，与 `install_prices` 装载的价目表同口径。

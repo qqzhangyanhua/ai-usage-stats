@@ -106,7 +106,12 @@ export const Breakdown = memo(function Breakdown({
 
       <div className="panel">
         <div className="panel-head">
-          <h2>{title}</h2>
+          <div>
+            <h2>{title}</h2>
+            {projectNames ? (
+              <p className="panel-note">Cursor 为账号用量，无项目路径，单独成一行。</p>
+            ) : null}
+          </div>
         </div>
         <ExportableChart option={option} style={{ height: 360 }} filename={`${title}图`} />
       </div>

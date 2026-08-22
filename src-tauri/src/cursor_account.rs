@@ -189,6 +189,26 @@ pub fn load_summary_filtered(
     Ok(dto)
 }
 
+/// 供应用统计挂一行：认时间与模型，不套用来源/项目/provider。
+pub fn events_for_application_analytics(
+    conn: &Connection,
+    filter: &Filter,
+) -> Result<Vec<CursorUsageEvent>, String> {
+    let scoped = Filter {
+        from: filter.from.clone(),
+        to: filter.to.clone(),
+        sources: Vec::new(),
+        models: filter.models.clone(),
+        projects: Vec::new(),
+        providers: Vec::new(),
+    };
+    let events = store::load_cursor_account_events(conn)?;
+    Ok(events
+        .into_iter()
+        .filter(|event| event_matches_filter(event, &scoped))
+        .collect())
+}
+
 /// 供概览 7 天滚动挂一行：只认模型筛选，不套用来源/项目/provider，也不跟总览日期预设。
 pub fn events_for_weekly_window(
     conn: &Connection,

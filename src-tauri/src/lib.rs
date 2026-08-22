@@ -453,7 +453,14 @@ async fn purge_archived_records(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let conn = state.lock_write()?;
-        store::purge_archived(&conn, source)
+        // 删记录和重建预聚合表要么一起生效要么都不生效，中间态被读到就是错的数字。
+        let transaction = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let removed = store::purge_archived(&transaction, source)?;
+        if removed > 0 {
+            store::rebuild_rollup(&transaction)?;
+        }
+        transaction.commit().map_err(|e| e.to_string())?;
+        Ok(removed)
     })
     .await
     .map_err(|e| e.to_string())?
