@@ -100,6 +100,12 @@ export function OfficialQuotaSettingsPanel({
           ))}
         </ul>
       ) : null}
+      {quota && quota.undetected.length > 0 ? (
+        <p className="panel-note">
+          未检测到本机登录态、暂不显示：{quota.undetected.join("、")}
+          。登录对应客户端后会自动出现。
+        </p>
+      ) : null}
       {hook ? (
         <div className="official-quota-hook">
           <p className="panel-note">

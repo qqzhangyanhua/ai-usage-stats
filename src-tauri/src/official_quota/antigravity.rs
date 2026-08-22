@@ -148,6 +148,11 @@ fn load_local_tokens() -> Result<LocalTokens, String> {
     Ok(tokens)
 }
 
+/// 探针：本机有没有 Antigravity 的登录态（access token 或 refresh token 任一即可）。
+pub fn has_local_tokens() -> bool {
+    load_local_tokens().is_ok()
+}
+
 pub fn read_local_tokens_at(global_storage: &Path) -> Result<LocalTokens, String> {
     let Some(conn) = vscode_state::open_read_only(global_storage)? else {
         return Ok(LocalTokens::default());

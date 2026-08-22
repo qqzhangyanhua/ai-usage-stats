@@ -208,6 +208,11 @@ fn resolve_user_id(session: &GrokSession) -> Result<String, String> {
     parse_user_id_response(&raw)
 }
 
+/// 探针：只看文件在不在，不解析、不判过期——过期的账号仍该显示出来提示重登。
+pub fn auth_file_exists() -> bool {
+    auth_path().exists()
+}
+
 fn auth_path() -> PathBuf {
     grok_home().join("auth.json")
 }

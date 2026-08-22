@@ -47,6 +47,11 @@ fn load_api_key() -> Result<String, String> {
     Err(NOT_SIGNED_IN.to_string())
 }
 
+/// 探针：Windsurf / Devin 任一客户端里有没有 apiKey。
+pub fn has_local_api_key() -> bool {
+    load_api_key().is_ok()
+}
+
 pub fn read_api_key_at(global_storage: &Path) -> Result<Option<String>, String> {
     let Some(conn) = vscode_state::open_read_only(global_storage)? else {
         return Ok(None);

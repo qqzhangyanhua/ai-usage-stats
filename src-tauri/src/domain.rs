@@ -268,6 +268,9 @@ pub struct OfficialQuotaDto {
     pub rows: Vec<OfficialQuotaRow>,
     pub alerts_enabled: bool,
     pub stale_after_minutes: i64,
+    /// 本机没检测到登录态、因而没出现在 `rows` 里的账号（展示名）。
+    /// 隐藏可以少一堆红字，但不能让用户不知道我们支持它。
+    pub undetected: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

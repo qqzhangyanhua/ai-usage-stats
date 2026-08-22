@@ -5,6 +5,7 @@ pub mod codex;
 pub mod codex_usage;
 pub mod copilot;
 pub mod cursor;
+pub mod detect;
 pub mod devin;
 pub mod droid;
 pub mod grok;
@@ -72,14 +73,28 @@ pub fn load_dto(
     config: &OfficialQuotaConfig,
     now: DateTime<Utc>,
 ) -> OfficialQuotaDto {
-    let rows = OfficialQuotaProvider::ALL
+    // 本机没凭证、也没历史缓存的 provider 不占一行——否则家数一多，
+    // 界面上全是永远好不了的红字。曾经拉到过数据的仍然保留，避免临时登出就丢历史。
+    let rows: Vec<OfficialQuotaRow> = OfficialQuotaProvider::ALL
         .into_iter()
         .map(|provider| load_row(conn, provider, now))
+        .filter(|row| {
+            !row.windows.is_empty()
+                || row.captured_at.is_some()
+                || OfficialQuotaProvider::parse(&row.provider)
+                    .is_some_and(detect::has_local_credentials)
+        })
+        .collect();
+    let undetected = OfficialQuotaProvider::ALL
+        .into_iter()
+        .filter(|provider| !rows.iter().any(|row| row.provider == provider.as_str()))
+        .map(|provider| provider.display_name().to_string())
         .collect();
     OfficialQuotaDto {
         rows,
         alerts_enabled: config.alerts_enabled,
         stale_after_minutes: STALE_AFTER_MINUTES,
+        undetected,
     }
 }
 
@@ -198,6 +213,7 @@ pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
 pub fn fetch_all_providers() -> Vec<(OfficialQuotaProvider, ProviderFetch)> {
     OfficialQuotaProvider::ALL
         .into_iter()
+        .filter(|provider| detect::has_local_credentials(*provider))
         .map(|provider| (provider, fetch_provider(provider)))
         .collect()
 }

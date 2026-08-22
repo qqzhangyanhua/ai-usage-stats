@@ -18,6 +18,7 @@ fn quota_alerts_dedupe_by_reset_and_skip_stale() {
         }],
         alerts_enabled: true,
         stale_after_minutes: 10,
+        undetected: Vec::new(),
     };
     let (after, alerts) = official_quota::notify::prepare_notifications(
         official_quota::notify::NotifyState::default(),
@@ -53,6 +54,7 @@ fn quota_alerts_reset_when_resets_at_changes() {
         }],
         alerts_enabled: true,
         stale_after_minutes: 10,
+        undetected: Vec::new(),
     };
     let (state, alerts) = official_quota::notify::prepare_notifications(
         official_quota::notify::NotifyState::default(),
