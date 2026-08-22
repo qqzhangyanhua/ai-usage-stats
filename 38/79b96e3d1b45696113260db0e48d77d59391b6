@@ -1,0 +1,82 @@
+src/components/OverviewLayoutControls.tsx
+  s_c96a8e57db1a93::t_117671beca8289 102-104
+  s_c96a8e57db1a93::t_49673a84c8731b 22,98,149,201,207,219
+src/components/ConversationCatalogRow.tsx
+  s_c96a8e57db1a93::t_a09bbbd8d42d00 11,35-37
+src/components/OfficialQuotaSettingsPanel.tsx
+  s_c96a8e57db1a93::t_4c724afda254a8 4,85-87
+src/lib/format.ts
+  s_c96a8e57db1a93::t_6155773672dd4b 84
+  s_c96a8e57db1a93::t_117671beca8289 258-264
+src/components/Topbar.tsx
+  s_c96a8e57db1a93::t_117671beca8289 231-235
+  s_c96a8e57db1a93::t_6e15669930aba9 24,188,226
+src/components/OfficialQuotaPanel.tsx
+  s_c96a8e57db1a93::t_87060be5420ba2 7,92-94
+  s_c96a8e57db1a93::t_117671beca8289 54-56,87
+src/styles.css
+  s_c96a8e57db1a93::t_48c74d9c6f2725 1038-1040,1116,1121-1124,2328,2345,2348-2349,2598-2599,2608-2609,3306,5252-5255,5589
+  s_c96a8e57db1a93::t_152f85049618e5 3299,3304-3305
+  s_c96a8e57db1a93::t_b79ecbd2983161 3307
+src/components/BillingWindows.tsx
+  s_c96a8e57db1a93::t_76860dcfc7b24c 2,4,45
+src/components/InstructionInsight.tsx
+  s_c96a8e57db1a93::t_e29080427e4e94 3,21-23
+src/lib/format.test.ts
+  s_c96a8e57db1a93::t_0505f57a5f6dd9 121-122
+src/components/WorkTimeline.tsx
+  s_c96a8e57db1a93::t_117671beca8289 158,168-172,227
+  s_c96a8e57db1a93::t_677dee23b8fa01 21,248-250
+src/components/WeeklyWindows.tsx
+  s_c96a8e57db1a93::t_91c71005e27c6e 2,5,39
+src/lib/sourceIcon.test.ts
+  s_c96a8e57db1a93::t_b83caf255ab30f 1-40,46-51
+  s_c96a8e57db1a93::t_cf1b2f3d9a750d 41-45
+src/components/type.ts
+  s_c96a8e57db1a93::t_7b145bb4394c47 31-41
+  s_c96a8e57db1a93::t_956599134cbf4a 1
+  s_c96a8e57db1a93::t_c7b014afc030c1 26-30
+src/components/SourceIcon.tsx
+  s_c96a8e57db1a93::t_4292b495c116e9 2-3,6,96-112,115-119,121-129,131-135,137-150
+  s_c96a8e57db1a93::t_3b4d58c37da0eb 10-12,16-22,26-28,32-34,38-40,44-46,50-52,60-66,70-85,89-91
+  s_c96a8e57db1a93::t_b6065a4557f74e 1,4
+  s_c96a8e57db1a93::t_eee5ff51dc1e20 5,7-9,13-15,23-25,29-31,35-37,41-43,47-49,53-59,67-69,86-88,92-95,113-114,120,130,136
+src/lib/type.ts
+  s_c96a8e57db1a93::t_8cdfaa73e2c49b 14-28
+  s_c96a8e57db1a93::t_117671beca8289 4
+src/components/OverviewDetail.tsx
+  s_c96a8e57db1a93::t_9918ea51ce7048 9,118
+src/lib/sourceIcon.ts
+  s_c96a8e57db1a93::t_afb05fd092a7b9 13
+  s_c96a8e57db1a93::t_f43c4fa1f8a67e 1-12,14-22
+src/components/SourceDiagnosticsPanel.tsx
+  s_c96a8e57db1a93::t_117671beca8289 65
+  s_c96a8e57db1a93::t_208efd8fc862db 3,16,92-97
+src/components/ApplicationAnalytics.tsx
+  s_c96a8e57db1a93::t_ba7ef3f2e2b7e3 175-179
+  s_c96a8e57db1a93::t_37914120a46a71 11,131-133,174,180
+src/components/ConversationDetailHead.tsx
+  s_c96a8e57db1a93::t_1daf2737d9f8de 12,83-89
+src/components/GlobalInstructionPanel.tsx
+  s_c96a8e57db1a93::t_117671beca8289 11,155,236
+  s_c96a8e57db1a93::t_ed1a1d66369841 17,142-144
+src/components/InstructionCheckup.tsx
+  s_c96a8e57db1a93::t_117671beca8289 30
+  s_c96a8e57db1a93::t_6ad698729d6935 3,31-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "3879b96e3d1b45696113260db0e48d77d59391b6",
+  "prompts": {},
+  "sessions": {
+    "s_c96a8e57db1a93": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a02722-7d0d-7aa0-b9c9-aff5a1bb7363",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
