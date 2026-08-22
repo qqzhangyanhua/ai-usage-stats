@@ -2,6 +2,7 @@ pub mod antigravity;
 pub mod claude;
 pub mod claude_usage;
 pub mod codex;
+pub mod codex_usage;
 pub mod cursor;
 pub mod droid;
 pub mod grok;
@@ -146,6 +147,21 @@ pub type ProviderFetch = Result<(Vec<OfficialQuotaWindow>, String), String>;
 /// 先问官方用量接口（零配置），读不到再回落到 statusline 捕获文件——后者是老路径，
 /// 装了 hook 的用户和走第三方代理的用户都还得靠它。两条都没有才报错，
 /// 错误信息取自动接口那条，因为那是多数人应该走的路。
+/// 先打 ChatGPT 的用量接口（不依赖 CLI 装没装），读不到再拉起 `codex app-server`。
+/// 两条都失败时报接口那条：多数人应该走的是它。
+fn fetch_codex() -> ProviderFetch {
+    match codex_usage::fetch_usage() {
+        Ok(result) => Ok(result),
+        Err(error) => codex::fetch_rate_limits().map_err(|app_server_error| {
+            if app_server_error.contains("未找到 Codex CLI") {
+                error
+            } else {
+                app_server_error
+            }
+        }),
+    }
+}
+
 fn fetch_claude() -> ProviderFetch {
     match claude_usage::fetch_usage() {
         Ok(result) => Ok(result),
@@ -164,7 +180,7 @@ fn fetch_claude() -> ProviderFetch {
 pub fn fetch_provider(provider: OfficialQuotaProvider) -> ProviderFetch {
     match provider {
         OfficialQuotaProvider::Claude => fetch_claude(),
-        OfficialQuotaProvider::Codex => codex::fetch_rate_limits(),
+        OfficialQuotaProvider::Codex => fetch_codex(),
         OfficialQuotaProvider::Cursor => cursor::fetch_usage_summary(),
         OfficialQuotaProvider::Grok => grok::fetch_rate_limits(),
         OfficialQuotaProvider::Droid => droid::fetch_rate_limits(),

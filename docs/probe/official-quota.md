@@ -35,6 +35,24 @@ Claude Code 2.1.80+ 在 statusline 命令的 stdin JSON 里提供：
 
 捕获文件：应用数据目录 `claude_statusline.json`。
 
+## Codex
+
+首选 `GET https://chatgpt.com/backend-api/wham/usage`（不依赖 CLI 装没装），失败才回落下面的 app-server。
+
+凭证读 `~/.codex/auth.json`（`CODEX_HOME` 可覆盖）的 `tokens.{access_token, account_id}`：
+
+- 请求头：`Authorization: Bearer`、`Accept: application/json`、`User-Agent`，有 `account_id` 时加 `ChatGPT-Account-Id`。
+- **只有 `OPENAI_API_KEY`、没有 `tokens` 的账号是按量计费，没有额度百分比**，直接判定不可用，别报解析错误。
+- 只读不刷新（ADR 0010）。
+
+响应 `rate_limit.{primary_window, secondary_window}`，每个窗口：
+
+- `used_percent`（0–100）；缺了就取响应头 `x-codex-primary-used-percent` / `x-codex-secondary-used-percent`
+- `limit_window_seconds` 决定窗口种类——**不能按 primary/secondary 的位置认**，Codex 会把临时只剩一条的周限额挪进 primary 槽。18000 → 5 小时，604800 → 7 天，其它按小时数命名。
+- `reset_at`（epoch 秒）或 `reset_after_seconds`（相对量，要按当前时间换算）
+
+`plan_type`、`rate_limit_reset_credits` 当前不采。
+
 ## Codex app-server
 
 一次性启动 `codex app-server`，`initialize` → `initialized` → `account/rateLimits/read`。

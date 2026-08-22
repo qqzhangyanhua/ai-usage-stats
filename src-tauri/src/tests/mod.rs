@@ -6,6 +6,7 @@ mod billing;
 mod claude_quota;
 mod claude_usage;
 mod codex_quota;
+mod codex_usage;
 mod conversation;
 mod cursor_account;
 mod cursor_conversation;
