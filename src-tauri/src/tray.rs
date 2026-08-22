@@ -17,6 +17,9 @@ struct TrayItems {
     cost: MenuItem<Wry>,
     tokens: MenuItem<Wry>,
     note: MenuItem<Wry>,
+    show: MenuItem<Wry>,
+    refresh: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
 }
 
 pub fn local_day_filter(now: DateTime<Local>) -> Filter {
@@ -77,6 +80,50 @@ pub fn format_title_with_quota(
     }
 }
 
+/// 托盘菜单里每家一行。标题只放得下最紧的那一个窗口，但从菜单栏一眼看全各家
+/// 才是这个功能的意义，所以这里按 provider 汇总。
+///
+/// 每行最多列 3 个窗口——Droid 一家就有 4~6 个，全列会把菜单撑得很长；
+/// 多出来的用 `+N` 带过，细节去主窗口看。
+pub fn quota_menu_lines(quota: &OfficialQuotaDto) -> Vec<String> {
+    const MAX_WINDOWS: usize = 3;
+    quota
+        .rows
+        .iter()
+        .map(|row| {
+            let shown: Vec<String> = row
+                .windows
+                .iter()
+                .filter_map(|window| {
+                    let percent = window.used_percent?;
+                    Some(format!("{} {percent:.0}%", window.label))
+                })
+                .collect();
+            if shown.is_empty() {
+                // 没数字的行放一句原因，比凭空消失强。
+                let reason = row.error.as_deref().unwrap_or("暂无数据");
+                return format!("{}：{reason}", row.application);
+            }
+            let extra = shown.len().saturating_sub(MAX_WINDOWS);
+            let mut text = shown
+                .iter()
+                .take(MAX_WINDOWS)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" · ");
+            if extra > 0 {
+                text.push_str(&format!(" +{extra}"));
+            }
+            let stale = matches!(row.freshness, crate::domain::OfficialQuotaFreshness::Stale);
+            format!(
+                "{}  {text}{}",
+                row.application,
+                if stale { "*" } else { "" }
+            )
+        })
+        .collect()
+}
+
 pub fn format_compact(n: i64) -> String {
     let abs = n.unsigned_abs();
     if abs >= 1_000_000_000 {
@@ -125,7 +172,14 @@ pub fn setup(app: &AppHandle) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
-    app.manage(TrayItems { cost, tokens, note });
+    app.manage(TrayItems {
+        cost,
+        tokens,
+        note,
+        show,
+        refresh: refresh_item,
+        quit,
+    });
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
@@ -257,6 +311,45 @@ fn load_quota_dto(app: &AppHandle) -> Result<OfficialQuotaDto, String> {
     Ok(official_quota::load_dto(&conn, &config, chrono::Utc::now()))
 }
 
+/// 额度区每次重建：哪些 provider 可见由本地凭证检测决定，数量会变，
+/// 固定槽位撑不住。菜单项全是禁用的纯展示行。
+fn rebuild_quota_menu(app: &AppHandle, quota: &OfficialQuotaDto) -> Result<(), String> {
+    let lines = quota_menu_lines(quota);
+    let items = app
+        .try_state::<TrayItems>()
+        .ok_or_else(|| "托盘菜单尚未初始化".to_string())?;
+    let mut entries: Vec<Box<dyn tauri::menu::IsMenuItem<Wry>>> = Vec::new();
+    entries.push(Box::new(items.cost.clone()));
+    entries.push(Box::new(items.tokens.clone()));
+    entries.push(Box::new(items.note.clone()));
+    for (index, line) in lines.iter().enumerate() {
+        entries.push(Box::new(
+            PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?,
+        ));
+        entries.push(Box::new(
+            MenuItem::with_id(app, format!("quota_{index}"), line, false, None::<&str>)
+                .map_err(|e| e.to_string())?,
+        ));
+    }
+    entries.push(Box::new(
+        PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?,
+    ));
+    entries.push(Box::new(items.show.clone()));
+    entries.push(Box::new(items.refresh.clone()));
+    entries.push(Box::new(
+        PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?,
+    ));
+    entries.push(Box::new(items.quit.clone()));
+
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> =
+        entries.iter().map(|item| item.as_ref()).collect();
+    let menu = Menu::with_items(app, &refs).map_err(|e| e.to_string())?;
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        tray.set_menu(Some(menu)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn apply_labels_now(app: &AppHandle, overview: &OverviewDto, quota: Option<&OfficialQuotaDto>) {
     let tightest = quota.and_then(official_quota::tightest_window);
     let title = format_title_with_quota(overview.cost, overview.unpriced, tightest.as_ref());
@@ -274,5 +367,9 @@ fn apply_labels_now(app: &AppHandle, overview: &OverviewDto, quota: Option<&Offi
         } else {
             "已按单价核算"
         });
+    }
+    // 重建失败不该拖垮标题更新——标题已经写上去了。
+    if let Some(quota) = quota {
+        let _ = rebuild_quota_menu(app, quota);
     }
 }
