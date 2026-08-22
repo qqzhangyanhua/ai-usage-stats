@@ -1,0 +1,21 @@
+src/styles.css
+  s_81f5b7d99b9194::t_cf1309d42fa863 3925-3929
+  s_81f5b7d99b9194::t_09361455be33ef 497,501-517,860,3763-3767,3772,3910-3912,3914-3923,3981-3982,3992-3997,4013-4015,4634,5014,5018,5068
+  s_81f5b7d99b9194::t_baf8857ed70d81 3924
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "e9f56bc6723cf5ad4153ff92a2020fad47e91f7f",
+  "prompts": {},
+  "sessions": {
+    "s_81f5b7d99b9194": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a028ce-299e-7251-bf71-ef71e27b334f",
+        "model": "grok-4.6"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}
